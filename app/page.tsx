@@ -1,166 +1,162 @@
+import Link from "next/link";
+import AppShell from "@/components/AppShell";
+import { formatMoney, obras } from "@/data/mockData";
+
 export default function Home() {
+  const totalGastado = obras.reduce((acc, obra) => acc + obra.gastoTotal, 0);
+  const totalEmpresaA = obras.reduce((acc, obra) => acc + obra.empresaA, 0);
+  const totalEmpresaB = obras.reduce((acc, obra) => acc + obra.empresaB, 0);
+  const compensacion = Math.abs(totalEmpresaA - totalGastado / 2);
+
   return (
-    <main style={{
-      minHeight: "100vh",
-      background: "#ffffff",
-      color: "#111111",
-      fontFamily: "Arial, Helvetica, sans-serif",
-      padding: "48px"
-    }}>
-      <section style={{
-        maxWidth: "1200px",
-        margin: "0 auto"
-      }}>
-        <header style={{
+    <AppShell>
+      <header
+        style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-start",
           borderBottom: "1px solid #e5e5e5",
           paddingBottom: "24px",
-          marginBottom: "40px"
-        }}>
-          <div>
-            <h1 style={{
-              fontSize: "32px",
-              fontWeight: 400,
-              margin: 0
-            }}>
-              Gestión de Desarrollo
-            </h1>
-            <p style={{
-              color: "#666666",
-              marginTop: "8px"
-            }}>
-              Obras, gastos, documentación y avances.
-            </p>
-          </div>
+          marginBottom: "32px",
+        }}
+      >
+        <div>
+          <p style={eyebrow}>Panel general</p>
+          <h2 style={title}>Obras</h2>
+          <p style={subtitle}>
+            Resumen de gastos, avances y documentación de los desarrollos.
+          </p>
+        </div>
 
-          <button style={{
-            background: "#111111",
-            color: "#ffffff",
-            border: "none",
-            padding: "12px 20px",
-            fontSize: "14px",
-            cursor: "pointer"
-          }}>
-            Nueva obra
-          </button>
-        </header>
+        <button style={button}>Nueva obra</button>
+      </header>
 
-        <section style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: "16px",
-          marginBottom: "40px"
-        }}>
-          <div style={cardStyle}>
-            <p style={labelStyle}>Total gastado</p>
-            <h2 style={numberStyle}>$128.750.000</h2>
-          </div>
-
-          <div style={cardStyle}>
-            <p style={labelStyle}>Empresa A</p>
-            <h2 style={numberStyle}>$70.000.000</h2>
-          </div>
-
-          <div style={cardStyle}>
-            <p style={labelStyle}>Empresa B</p>
-            <h2 style={numberStyle}>$58.750.000</h2>
-          </div>
-
-          <div style={cardStyle}>
-            <p style={labelStyle}>Compensación</p>
-            <h2 style={numberStyle}>$5.625.000</h2>
-          </div>
-        </section>
-
-        <section>
-          <h3 style={{
-            fontSize: "18px",
-            fontWeight: 400,
-            marginBottom: "16px"
-          }}>
-            Obras
-          </h3>
-
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "20px"
-          }}>
-            <article style={obraStyle}>
-              <p style={labelStyle}>En ejecución</p>
-              <h2 style={{ fontWeight: 400 }}>Edificio San Isidro</h2>
-              <p style={{ color: "#666666" }}>San Isidro, Buenos Aires</p>
-
-              <div style={{ marginTop: "24px" }}>
-                <p style={smallRow}>Avance: 42%</p>
-                <p style={smallRow}>Gasto: $84.500.000</p>
-                <p style={smallRow}>Inicio: 01/06/2026</p>
-              </div>
-            </article>
-
-            <article style={obraStyle}>
-              <p style={labelStyle}>Proyecto</p>
-              <h2 style={{ fontWeight: 400 }}>Viviendas Tigre</h2>
-              <p style={{ color: "#666666" }}>Tigre, Buenos Aires</p>
-
-              <div style={{ marginTop: "24px" }}>
-                <p style={smallRow}>Avance: 12%</p>
-                <p style={smallRow}>Gasto: $22.100.000</p>
-                <p style={smallRow}>Inicio: 15/07/2026</p>
-              </div>
-            </article>
-
-            <article style={obraStyle}>
-              <p style={labelStyle}>Finalizada</p>
-              <h2 style={{ fontWeight: 400 }}>Reforma Belgrano</h2>
-              <p style={{ color: "#666666" }}>CABA</p>
-
-              <div style={{ marginTop: "24px" }}>
-                <p style={smallRow}>Avance: 100%</p>
-                <p style={smallRow}>Gasto: $38.150.000</p>
-                <p style={smallRow}>Inicio: 10/02/2026</p>
-              </div>
-            </article>
-          </div>
-        </section>
+      <section style={statsGrid}>
+        <div style={card}>
+          <p style={label}>Total gastado</p>
+          <h3 style={number}>{formatMoney(totalGastado)}</h3>
+        </div>
+        <div style={card}>
+          <p style={label}>Empresa A</p>
+          <h3 style={number}>{formatMoney(totalEmpresaA)}</h3>
+        </div>
+        <div style={card}>
+          <p style={label}>Empresa B</p>
+          <h3 style={number}>{formatMoney(totalEmpresaB)}</h3>
+        </div>
+        <div style={card}>
+          <p style={label}>Compensación estimada</p>
+          <h3 style={number}>{formatMoney(compensacion)}</h3>
+        </div>
       </section>
-    </main>
+
+      <section style={{ marginTop: "40px" }}>
+        <h3 style={sectionTitle}>Listado de obras</h3>
+
+        <div style={obraGrid}>
+          {obras.map((obra) => (
+            <Link
+              key={obra.id}
+              href={`/obras/${obra.id}`}
+              style={{
+                ...obraCard,
+                textDecoration: "none",
+                color: "#111111",
+              }}
+            >
+              <p style={eyebrow}>{obra.estado}</p>
+              <h3 style={{ fontWeight: 400, fontSize: "22px", margin: "12px 0" }}>
+                {obra.nombre}
+              </h3>
+              <p style={{ color: "#666666", margin: 0 }}>{obra.ubicacion}</p>
+
+              <div style={{ marginTop: "28px" }}>
+                <p style={smallRow}>Avance: {obra.avance}%</p>
+                <p style={smallRow}>Gasto: {formatMoney(obra.gastoTotal)}</p>
+                <p style={smallRow}>Inicio: {obra.fechaInicio}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </AppShell>
   );
 }
 
-const cardStyle = {
+const eyebrow = {
+  fontSize: "12px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.1em",
+  color: "#777777",
+  margin: 0,
+};
+
+const title = {
+  fontSize: "36px",
+  fontWeight: 400,
+  margin: "8px 0",
+};
+
+const subtitle = {
+  color: "#666666",
+  margin: 0,
+};
+
+const button = {
+  background: "#111111",
+  color: "#ffffff",
+  border: "none",
+  padding: "12px 20px",
+  fontSize: "14px",
+  cursor: "pointer",
+};
+
+const statsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 1fr)",
+  gap: "16px",
+};
+
+const card = {
   border: "1px solid #e5e5e5",
   padding: "24px",
-  background: "#ffffff"
-};
-
-const obraStyle = {
-  border: "1px solid #e5e5e5",
-  padding: "28px",
   background: "#ffffff",
-  minHeight: "240px"
 };
 
-const labelStyle = {
+const label = {
   fontSize: "13px",
   color: "#777777",
   margin: 0,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.08em"
 };
 
-const numberStyle = {
-  fontSize: "24px",
+const number = {
+  fontSize: "22px",
   fontWeight: 400,
-  marginTop: "12px",
-  marginBottom: 0
+  margin: "12px 0 0",
+};
+
+const sectionTitle = {
+  fontSize: "18px",
+  fontWeight: 400,
+  marginBottom: "16px",
+};
+
+const obraGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: "20px",
+};
+
+const obraCard = {
+  border: "1px solid #e5e5e5",
+  padding: "28px",
+  background: "#ffffff",
+  minHeight: "250px",
 };
 
 const smallRow = {
   color: "#444444",
   borderTop: "1px solid #eeeeee",
   paddingTop: "10px",
-  marginTop: "10px"
+  marginTop: "10px",
 };
