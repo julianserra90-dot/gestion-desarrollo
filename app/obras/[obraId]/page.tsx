@@ -48,6 +48,9 @@ export default async function ObraDetalle({
         <Link href={`/obras/${obra.id}/avances`} style={tab}>
           Avances
         </Link>
+        <Link href={`/obras/${obra.id}/reportes`} style={tab}>
+  Reportes
+</Link>
       </nav>
 
       <section style={statsGrid}>
