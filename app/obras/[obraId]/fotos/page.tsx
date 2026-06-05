@@ -1,25 +1,17 @@
+"use client";
+
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useState } from "react";
 import AppShell from "@/components/AppShell";
 import { fotos, obras } from "@/data/mockData";
 
-export default async function FotosPage({
-  params,
-}: {
-  params: Promise<{ obraId: string }>;
-}) {
-  const { obraId } = await params;
+export default function FotosPage() {
+  const params = useParams();
+  const obraId = params.obraId as string;
+
   const obra = obras.find((item) => item.id === obraId);
   const fotosObra = fotos.filter((foto) => foto.obraId === obraId);
-
-  if (!obra) {
-    return <AppShell>Obra no encontrada</AppShell>;
-  }
-
-  const totalRegistros = fotosObra.length;
-  const totalFotos = fotosObra.reduce((acc, foto) => acc + foto.cantidad, 0);
-  const pendientes = fotosObra.filter(
-    (foto) => foto.estado === "Pendiente de revisión"
-  ).length;
 
   const rubros = [
     "Todos",
@@ -31,6 +23,25 @@ export default async function FotosPage({
     "Carpinterías",
     "Terminaciones",
   ];
+
+  const [rubroActivo, setRubroActivo] = useState("Todos");
+
+  if (!obra) {
+    return <AppShell>Obra no encontrada</AppShell>;
+  }
+
+  const fotosFiltradas =
+    rubroActivo === "Todos"
+      ? fotosObra
+      : fotosObra.filter((foto) => foto.rubro === rubroActivo);
+
+  const totalRegistros = fotosFiltradas.length;
+  const totalFotos = fotosFiltradas.reduce((acc, foto) => acc + foto.cantidad, 0);
+  const pendientes = fotosFiltradas.filter(
+    (foto) => foto.estado === "Pendiente de revisión"
+  ).length;
+
+  const rubrosConFotos = new Set(fotosFiltradas.map((foto) => foto.rubro)).size;
 
   return (
     <AppShell>
@@ -60,8 +71,8 @@ export default async function FotosPage({
         </div>
 
         <div style={statCard}>
-          <p style={label}>Rubros con fotos</p>
-          <h3 style={number}>{new Set(fotosObra.map((foto) => foto.rubro)).size}</h3>
+          <p style={label}>Rubros visibles</p>
+          <h3 style={number}>{rubrosConFotos}</h3>
         </div>
 
         <div style={statCard}>
@@ -93,7 +104,9 @@ export default async function FotosPage({
           return (
             <button
               key={rubro}
-              style={rubro === "Todos" ? filterButtonActive : filterButton}
+              type="button"
+              onClick={() => setRubroActivo(rubro)}
+              style={rubroActivo === rubro ? filterButtonActive : filterButton}
             >
               {rubro} <span style={filterCount}>{count}</span>
             </button>
@@ -101,57 +114,72 @@ export default async function FotosPage({
         })}
       </section>
 
+      <section style={activeFilterBar}>
+        <span>Filtro activo</span>
+        <strong>{rubroActivo}</strong>
+      </section>
+
       <section style={contentLayout}>
         <div>
           <h3 style={sectionTitle}>Galería por rubro</h3>
 
-          <div style={galleryGrid}>
-            {fotosObra.map((foto) => (
-              <article key={foto.id} style={photoCard}>
-                <div style={imagePlaceholder}>
-                  <div style={imageText}>
-                    <span>{foto.rubro}</span>
-                    <strong>{foto.cantidad} fotos</strong>
-                  </div>
-                </div>
-
-                <div style={cardContent}>
-                  <div style={cardHeader}>
-                    <p style={eyebrow}>{foto.fecha}</p>
-                    <p
-                      style={
-                        foto.estado === "Registrado"
-                          ? statusRegistrado
-                          : statusPendiente
-                      }
-                    >
-                      {foto.estado}
-                    </p>
-                  </div>
-
-                  <h3 style={photoTitle}>{foto.rubro}</h3>
-                  <p style={description}>{foto.descripcion}</p>
-
-                  <div style={meta}>
-                    <div style={metaRow}>
-                      <span>Subido por</span>
-                      <strong>{foto.subidoPor}</strong>
-                    </div>
-
-                    <div style={metaRow}>
-                      <span>Cantidad</span>
-                      <strong>{foto.cantidad} imágenes</strong>
+          {fotosFiltradas.length === 0 ? (
+            <div style={emptyState}>
+              <h3 style={emptyTitle}>No hay fotos cargadas en este rubro</h3>
+              <p style={emptyText}>
+                Cuando se carguen imágenes de esta etapa, van a aparecer en esta
+                sección.
+              </p>
+            </div>
+          ) : (
+            <div style={galleryGrid}>
+              {fotosFiltradas.map((foto) => (
+                <article key={foto.id} style={photoCard}>
+                  <div style={imagePlaceholder}>
+                    <div style={imageText}>
+                      <span>{foto.rubro}</span>
+                      <strong>{foto.cantidad} fotos</strong>
                     </div>
                   </div>
 
-                  <div style={cardActions}>
-                    <button style={secondaryButton}>Ver galería</button>
-                    <button style={downloadButton}>Descargar</button>
+                  <div style={cardContent}>
+                    <div style={cardHeader}>
+                      <p style={eyebrow}>{foto.fecha}</p>
+                      <p
+                        style={
+                          foto.estado === "Registrado"
+                            ? statusRegistrado
+                            : statusPendiente
+                        }
+                      >
+                        {foto.estado}
+                      </p>
+                    </div>
+
+                    <h3 style={photoTitle}>{foto.rubro}</h3>
+                    <p style={description}>{foto.descripcion}</p>
+
+                    <div style={meta}>
+                      <div style={metaRow}>
+                        <span>Subido por</span>
+                        <strong>{foto.subidoPor}</strong>
+                      </div>
+
+                      <div style={metaRow}>
+                        <span>Cantidad</span>
+                        <strong>{foto.cantidad} imágenes</strong>
+                      </div>
+                    </div>
+
+                    <div style={cardActions}>
+                      <button style={secondaryButton}>Ver galería</button>
+                      <button style={downloadButton}>Descargar</button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
-          </div>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
 
         <aside style={sidePanel}>
@@ -171,21 +199,36 @@ export default async function FotosPage({
                 );
 
                 return (
-                  <div key={rubro} style={folderRow}>
+                  <button
+                    key={rubro}
+                    type="button"
+                    onClick={() => setRubroActivo(rubro)}
+                    style={
+                      rubroActivo === rubro ? folderRowActive : folderRowButton
+                    }
+                  >
                     <div>
                       <span>{rubro}</span>
                       <p style={folderNote}>{registros.length} registros</p>
                     </div>
                     <strong>{cantidadFotos}</strong>
-                  </div>
+                  </button>
                 );
               })}
           </div>
 
+          <button
+            type="button"
+            onClick={() => setRubroActivo("Todos")}
+            style={clearFilterButton}
+          >
+            Ver todos los rubros
+          </button>
+
           <p style={note}>
-            La idea es que luego el filtro sea funcional: al seleccionar un rubro,
-            se muestran solo las fotos de esa etapa. Las imágenes reales se pueden
-            guardar en Google Drive y vincular desde Google Sheets.
+            Este filtro ya funciona visualmente. Más adelante las imágenes reales
+            se van a guardar en Google Drive y se van a vincular desde Google
+            Sheets.
           </p>
         </aside>
       </section>
@@ -297,7 +340,7 @@ const filters = {
   display: "flex",
   flexWrap: "wrap" as const,
   gap: "8px",
-  marginBottom: "32px",
+  marginBottom: "16px",
 };
 
 const filterButton = {
@@ -322,6 +365,16 @@ const filterCount = {
   marginLeft: "6px",
   color: "inherit",
   opacity: 0.65,
+};
+
+const activeFilterBar = {
+  display: "flex",
+  justifyContent: "space-between",
+  border: "1px solid #e5e5e5",
+  padding: "12px 16px",
+  marginBottom: "32px",
+  color: "#555555",
+  fontSize: "14px",
 };
 
 const contentLayout = {
@@ -459,17 +512,63 @@ const folderList = {
   gap: "10px",
 };
 
-const folderRow = {
+const folderRowButton = {
   display: "flex",
   justifyContent: "space-between",
+  width: "100%",
+  background: "#ffffff",
+  color: "#111111",
+  border: "none",
   borderTop: "1px solid #eeeeee",
-  paddingTop: "10px",
+  padding: "10px 0 0",
+  textAlign: "left" as const,
+  cursor: "pointer",
+  fontFamily: "Arial, Helvetica, sans-serif",
+};
+
+const folderRowActive = {
+  display: "flex",
+  justifyContent: "space-between",
+  width: "100%",
+  background: "#f7f7f7",
+  color: "#111111",
+  border: "1px solid #111111",
+  padding: "10px",
+  textAlign: "left" as const,
+  cursor: "pointer",
+  fontFamily: "Arial, Helvetica, sans-serif",
 };
 
 const folderNote = {
   color: "#777777",
   fontSize: "13px",
   margin: "4px 0 0",
+};
+
+const clearFilterButton = {
+  width: "100%",
+  marginTop: "18px",
+  background: "#ffffff",
+  color: "#111111",
+  border: "1px solid #dcdcdc",
+  padding: "10px",
+  cursor: "pointer",
+};
+
+const emptyState = {
+  border: "1px solid #e5e5e5",
+  padding: "32px",
+};
+
+const emptyTitle = {
+  fontSize: "22px",
+  fontWeight: 400,
+  marginTop: 0,
+};
+
+const emptyText = {
+  color: "#666666",
+  lineHeight: 1.5,
 };
 
 const note = {
