@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import ObraHeader from "@/components/ObraHeader";
 import { avances, obras } from "@/data/mockData";
 
 export default async function AvancesPage({
@@ -34,20 +35,18 @@ export default async function AvancesPage({
 
   return (
     <AppShell>
-      <header style={header}>
+      <ObraHeader obra={obra} activeSection="avances" />
+
+      <section style={sectionHeader}>
         <div>
-          <p style={eyebrow}>{obra.nombre}</p>
+          <p style={eyebrow}>Seguimiento de obra</p>
           <h2 style={title}>Avances</h2>
           <p style={subtitle}>
             Seguimiento físico por rubro, con comentarios técnicos y fotos
             asociadas.
           </p>
         </div>
-
-        <Link href={`/obras/${obra.id}`} style={backLink}>
-          Volver al resumen
-        </Link>
-      </header>
+      </section>
 
       <section style={statsGrid}>
         <div style={statCard}>
@@ -76,8 +75,8 @@ export default async function AvancesPage({
           <p style={eyebrow}>Avance físico promedio</p>
           <h3 style={mainProgressTitle}>{avancePromedio}% ejecutado</h3>
           <p style={subtitle}>
-            Este porcentaje surge del promedio de avance registrado en los rubros
-            cargados.
+            Este porcentaje surge del promedio de avance registrado en los
+            rubros cargados.
           </p>
         </div>
 
@@ -149,19 +148,16 @@ export default async function AvancesPage({
                 </div>
 
                 <div style={cardActions}>
-                  <Link
-                    href={`/obras/${obra.id}/fotos`}
-                    style={secondaryButton}
-                  >
+                  <Link href={`/obras/${obra.id}/fotos`} style={secondaryButton}>
                     Ver fotos
                   </Link>
 
                   <Link
-  href={`/obras/${obra.id}/avances/${item.id}/editar`}
-  style={downloadButton}
->
-  Editar avance
-</Link>
+                    href={`/obras/${obra.id}/avances/${item.id}/editar`}
+                    style={downloadButton}
+                  >
+                    Editar avance
+                  </Link>
                 </div>
               </article>
             ))}
@@ -208,10 +204,7 @@ export default async function AvancesPage({
   );
 }
 
-const header = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
+const sectionHeader = {
   borderBottom: "1px solid #e5e5e5",
   paddingBottom: "24px",
   marginBottom: "32px",
@@ -236,13 +229,6 @@ const subtitle = {
   margin: 0,
   maxWidth: "640px",
   lineHeight: 1.5,
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
 };
 
 const statsGrid = {
@@ -430,6 +416,7 @@ const downloadButton = {
   padding: "10px 16px",
   cursor: "pointer",
   textDecoration: "none",
+  fontSize: "14px",
 };
 
 const sidePanel = {

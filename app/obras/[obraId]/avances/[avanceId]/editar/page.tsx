@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import AppShell from "@/components/AppShell";
+import ObraHeader from "@/components/ObraHeader";
 import { avances, obras } from "@/data/mockData";
 
 export default function EditarAvancePage() {
@@ -24,10 +25,12 @@ export default function EditarAvancePage() {
 
   return (
     <AppShell>
-      <header style={header}>
+      <ObraHeader obra={obra} activeSection="avances" />
+
+      <section style={pageHeader}>
         <div>
-          <p style={eyebrow}>{obra.nombre}</p>
-          <h2 style={title}>Editar avance</h2>
+          <p style={eyebrow}>Editar avance</p>
+          <h2 style={title}>{avance.rubro}</h2>
           <p style={subtitle}>
             Actualizar el porcentaje de avance, estado y comentario técnico del
             rubro.
@@ -37,7 +40,7 @@ export default function EditarAvancePage() {
         <Link href={`/obras/${obra.id}/avances`} style={backLink}>
           Volver a avances
         </Link>
-      </header>
+      </section>
 
       <section style={layout}>
         <form style={formPanel}>
@@ -155,7 +158,7 @@ export default function EditarAvancePage() {
   );
 }
 
-const header = {
+const pageHeader = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
@@ -173,7 +176,7 @@ const eyebrow = {
 };
 
 const title = {
-  fontSize: "36px",
+  fontSize: "32px",
   fontWeight: 400,
   margin: "8px 0",
 };

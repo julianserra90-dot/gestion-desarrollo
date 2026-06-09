@@ -18,11 +18,7 @@ export default function Home() {
 
       <section style={obraGrid}>
         {obras.map((obra) => (
-          <Link
-            key={obra.id}
-            href={`/obras/${obra.id}`}
-            style={obraCard}
-          >
+          <Link key={obra.id} href={`/obras/${obra.id}`} style={obraCard}>
             <div>
               <p style={eyebrow}>{obra.estado}</p>
               <h2 style={obraTitle}>{obra.nombre}</h2>
