@@ -1,65 +1,159 @@
 import Link from "next/link";
-import { formatMoney, obras } from "@/data/mockData";
+import { formatDate, formatMoney } from "@/lib/format";
+import { createClient } from "@/lib/supabase/server";
+import { cerrarSesion } from "./login/actions";
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ archivadas?: string }>;
+}) {
+  const { archivadas } = await searchParams;
+  const viendoArchivadas = archivadas === "1";
+
+  const supabase = await createClient();
+
+  const consultaObras = supabase
+    .from("obras")
+    .select("id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada")
+    .order("nombre");
+
+  const [{ data: obras, error }, { data: resumenes }, { count: cantArchivadas }] =
+    await Promise.all([
+      viendoArchivadas
+        ? consultaObras.not("archivada_en", "is", null)
+        : consultaObras.is("archivada_en", null),
+      supabase.from("obra_resumen").select("obra_id, total_gastado, avance_fisico"),
+      supabase
+        .from("obras")
+        .select("*", { count: "exact", head: true })
+        .not("archivada_en", "is", null),
+    ]);
+
+  if (error) {
+    return (
+      <main style={page}>
+        <p style={eyebrow}>Error</p>
+        <h1 style={title}>No se pudieron cargar las obras</h1>
+        <p style={subtitle}>{error.message}</p>
+      </main>
+    );
+  }
+
+  const resumenPorObra = new Map(
+    (resumenes ?? []).map((item) => [item.obra_id, item])
+  );
+
   return (
     <main style={page}>
       <header style={header}>
         <div>
           <p style={eyebrow}>Gestión de desarrollo</p>
-          <h1 style={title}>Obras</h1>
+          <h1 style={title}>{viendoArchivadas ? "Obras archivadas" : "Obras"}</h1>
           <p style={subtitle}>
-            Seleccioná una obra para ingresar a su información.
+            {viendoArchivadas
+              ? "Estas obras no aparecen en el listado principal. Entrá a una para desarchivarla."
+              : "Seleccioná una obra para ingresar a su información."}
           </p>
         </div>
 
-        <button style={button}>Nueva obra</button>
+        <div style={headerActions}>
+          <Link href="/empresas" style={secondaryLink}>
+            Empresas
+          </Link>
+
+          <Link href="/usuarios" style={secondaryLink}>
+            Usuarios
+          </Link>
+
+          <Link href="/perfil" style={secondaryLink}>
+            Mi perfil
+          </Link>
+
+          <form action={cerrarSesion}>
+            <button type="submit" style={secondaryButton}>
+              Salir
+            </button>
+          </form>
+
+          {viendoArchivadas ? (
+            <Link href="/" style={buttonLink}>
+              Ver obras activas
+            </Link>
+          ) : (
+            <Link href="/obras/nueva" style={buttonLink}>
+              Nueva obra
+            </Link>
+          )}
+        </div>
       </header>
 
+      {obras?.length === 0 && (
+        <p style={subtitle}>
+          {viendoArchivadas
+            ? "No hay obras archivadas."
+            : "Todavía no hay obras cargadas."}
+        </p>
+      )}
+
       <section style={obraGrid}>
-        {obras.map((obra) => (
-          <Link key={obra.id} href={`/obras/${obra.id}`} style={obraCard}>
-            <div>
-              <p style={eyebrow}>{obra.estado}</p>
-              <h2 style={obraTitle}>{obra.nombre}</h2>
-              <p style={obraLocation}>{obra.ubicacion}</p>
-            </div>
+        {obras?.map((obra) => {
+          const resumen = resumenPorObra.get(obra.id);
+          const avance = resumen?.avance_fisico ?? 0;
 
-            <div style={progressBlock}>
-              <div style={progressTop}>
-                <span>Avance</span>
-                <strong>{obra.avance}%</strong>
+          return (
+            <Link key={obra.id} href={`/obras/${obra.slug}`} style={obraCard}>
+              <div>
+                <p style={eyebrow}>{obra.estado}</p>
+                <h2 style={obraTitle}>{obra.nombre}</h2>
+                <p style={obraLocation}>{obra.ubicacion}</p>
               </div>
 
-              <div style={progressBackground}>
-                <div
-                  style={{
-                    ...progressFill,
-                    width: `${obra.avance}%`,
-                  }}
-                />
-              </div>
-            </div>
+              <div style={progressBlock}>
+                <div style={progressTop}>
+                  <span>Avance</span>
+                  <strong>{avance}%</strong>
+                </div>
 
-            <div style={meta}>
-              <div style={metaRow}>
-                <span>Gasto total</span>
-                <strong>{formatMoney(obra.gastoTotal)}</strong>
-              </div>
-
-              <div style={metaRow}>
-                <span>Inicio</span>
-                <strong>{obra.fechaInicio}</strong>
+                <div style={progressBackground}>
+                  <div
+                    style={{
+                      ...progressFill,
+                      width: `${avance}%`,
+                    }}
+                  />
+                </div>
               </div>
 
-              <div style={metaRow}>
-                <span>Fin estimado</span>
-                <strong>{obra.fechaFin}</strong>
+              <div style={meta}>
+                <div style={metaRow}>
+                  <span>Total gastado</span>
+                  <strong>{formatMoney(resumen?.total_gastado)}</strong>
+                </div>
+
+                <div style={metaRow}>
+                  <span>Inicio</span>
+                  <strong>{formatDate(obra.fecha_inicio)}</strong>
+                </div>
+
+                <div style={metaRow}>
+                  <span>Fin estimado</span>
+                  <strong>{formatDate(obra.fecha_fin_estimada)}</strong>
+                </div>
               </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
       </section>
+
+      {!viendoArchivadas && (cantArchivadas ?? 0) > 0 && (
+        <p style={footerNota}>
+          <Link href="/?archivadas=1" style={footerLink}>
+            Ver {cantArchivadas} obra{cantArchivadas === 1 ? "" : "s"} archivada
+            {cantArchivadas === 1 ? "" : "s"}
+          </Link>
+        </p>
+      )}
     </main>
   );
 }
@@ -79,6 +173,12 @@ const header = {
   borderBottom: "1px solid #e5e5e5",
   paddingBottom: "32px",
   marginBottom: "40px",
+};
+
+const headerActions = {
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
 };
 
 const eyebrow = {
@@ -101,13 +201,39 @@ const subtitle = {
   fontSize: "16px",
 };
 
-const button = {
+const buttonLink = {
   background: "#111111",
   color: "#ffffff",
-  border: "none",
+  border: "1px solid #111111",
+  padding: "12px 20px",
+  fontSize: "14px",
+  textDecoration: "none",
+};
+
+const footerNota = {
+  marginTop: "40px",
+  paddingTop: "24px",
+  borderTop: "1px solid #eeeeee",
+};
+
+const footerLink = {
+  color: "#666666",
+  fontSize: "14px",
+};
+
+const secondaryButton = {
+  background: "#ffffff",
+  color: "#111111",
+  border: "1px solid #dcdcdc",
   padding: "12px 20px",
   fontSize: "14px",
   cursor: "pointer",
+};
+
+const secondaryLink = {
+  ...secondaryButton,
+  textDecoration: "none",
+  display: "inline-block",
 };
 
 const obraGrid = {

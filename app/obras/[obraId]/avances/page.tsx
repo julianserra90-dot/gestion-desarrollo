@@ -1,7 +1,10 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
-import { avances, obras } from "@/data/mockData";
+import * as ui from "@/components/ui";
+import { formatDate } from "@/lib/format";
+import { getObraPorSlug } from "@/lib/obras";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function AvancesPage({
   params,
@@ -9,469 +12,184 @@ export default async function AvancesPage({
   params: Promise<{ obraId: string }>;
 }) {
   const { obraId } = await params;
-  const obra = obras.find((item) => item.id === obraId);
-  const avancesObra = avances.filter((avance) => avance.obraId === obraId);
+  const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const avancePromedio = Math.round(
-    avancesObra.reduce((acc, item) => acc + item.avance, 0) / avancesObra.length
+  const supabase = await createClient();
+
+  const [{ data: avances }, { data: registros }] = await Promise.all([
+    supabase
+      .from("avances")
+      .select("id, porcentaje, estado, comentario, fecha, actualizado_por_nombre, rubro_id, rubros(nombre, orden)")
+      .eq("obra_id", obra.id),
+    supabase
+      .from("foto_registros")
+      .select("rubro_id, fotos(count)")
+      .eq("obra_id", obra.id),
+  ]);
+
+  const lista = (avances ?? []).sort(
+    (a, b) => (a.rubros?.orden ?? 0) - (b.rubros?.orden ?? 0)
   );
 
-  const rubrosFinalizados = avancesObra.filter(
-    (item) => item.estado === "Finalizado"
-  ).length;
+  // Las fotos asociadas a un rubro son las de todos sus registros fotográficos.
+  const fotosPorRubro = new Map<string, number>();
+  for (const registro of registros ?? []) {
+    if (!registro.rubro_id) continue;
+    const cantidad = registro.fotos?.[0]?.count ?? 0;
+    fotosPorRubro.set(
+      registro.rubro_id,
+      (fotosPorRubro.get(registro.rubro_id) ?? 0) + cantidad
+    );
+  }
 
-  const rubrosEnEjecucion = avancesObra.filter(
-    (item) => item.estado === "En ejecución" || item.estado === "Inicial"
-  ).length;
+  const avancePromedio =
+    lista.length > 0
+      ? Math.round(lista.reduce((acc, a) => acc + a.porcentaje, 0) / lista.length)
+      : 0;
 
-  const totalFotosAsociadas = avancesObra.reduce(
-    (acc, item) => acc + item.fotosAsociadas,
-    0
-  );
+  const finalizados = lista.filter((a) => a.estado === "Finalizado").length;
+  const activos = lista.filter(
+    (a) => a.estado === "En ejecución" || a.estado === "Inicial"
+  ).length;
+  const totalFotos = [...fotosPorRubro.values()].reduce((a, b) => a + b, 0);
 
   return (
     <AppShell>
       <ObraHeader obra={obra} activeSection="avances" />
 
-      <section style={sectionHeader}>
-        <div>
-          <p style={eyebrow}>Seguimiento de obra</p>
-          <h2 style={title}>Avances</h2>
-          <p style={subtitle}>
-            Seguimiento físico por rubro, con comentarios técnicos y fotos
-            asociadas.
+      <section style={ui.sectionHeader}>
+        <p style={ui.eyebrow}>Seguimiento de obra</p>
+        <h2 style={ui.pageTitle}>Avances</h2>
+        <p style={ui.subtitle}>
+          Seguimiento físico por rubro, con comentarios técnicos y fotos
+          asociadas.
+        </p>
+      </section>
+
+      <section style={ui.statsGrid}>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Avance general</p>
+          <h3 style={ui.statNumber}>{avancePromedio}%</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Rubros finalizados</p>
+          <h3 style={ui.statNumber}>{finalizados}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Rubros activos</p>
+          <h3 style={ui.statNumber}>{activos}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Fotos asociadas</p>
+          <h3 style={ui.statNumber}>{totalFotos}</h3>
+        </div>
+      </section>
+
+      <section style={ui.panelConMargen}>
+        <p style={ui.eyebrow}>Avance físico promedio</p>
+        <h3 style={{ ...ui.pageTitle, marginTop: "8px" }}>
+          {avancePromedio}% ejecutado
+        </h3>
+        <p style={ui.subtitle}>
+          Surge del promedio de avance de los rubros cargados.
+        </p>
+
+        <div style={{ ...ui.progressBackground, marginTop: "20px" }}>
+          <div style={{ ...ui.progressFill, width: `${avancePromedio}%` }} />
+        </div>
+      </section>
+
+      <div style={ui.toolbar}>
+        <h3 style={ui.sectionTitle}>Avance por rubro</h3>
+      </div>
+
+      {lista.length === 0 ? (
+        <section style={ui.panel}>
+          <p style={ui.vacio}>
+            Todavía no hay avances cargados en esta obra.
           </p>
-        </div>
-      </section>
-
-      <section style={statsGrid}>
-        <div style={statCard}>
-          <p style={label}>Avance general</p>
-          <h3 style={number}>{avancePromedio}%</h3>
-        </div>
-
-        <div style={statCard}>
-          <p style={label}>Rubros finalizados</p>
-          <h3 style={number}>{rubrosFinalizados}</h3>
-        </div>
-
-        <div style={statCard}>
-          <p style={label}>Rubros activos</p>
-          <h3 style={number}>{rubrosEnEjecucion}</h3>
-        </div>
-
-        <div style={statCard}>
-          <p style={label}>Fotos asociadas</p>
-          <h3 style={number}>{totalFotosAsociadas}</h3>
-        </div>
-      </section>
-
-      <section style={mainProgressPanel}>
-        <div>
-          <p style={eyebrow}>Avance físico promedio</p>
-          <h3 style={mainProgressTitle}>{avancePromedio}% ejecutado</h3>
-          <p style={subtitle}>
-            Este porcentaje surge del promedio de avance registrado en los
-            rubros cargados.
-          </p>
-        </div>
-
-        <div style={mainProgressBar}>
-          <div
-            style={{
-              ...mainProgressFill,
-              width: `${avancePromedio}%`,
-            }}
-          />
-        </div>
-      </section>
-
-      <section style={toolbar}>
-        <div style={searchBox}>
-          <span style={searchLabel}>Buscar</span>
-          <input
-            type="text"
-            placeholder="Buscar por rubro, estado o comentario"
-            style={searchInput}
-          />
-        </div>
-
-        <button style={button}>Actualizar avance</button>
-      </section>
-
-      <section style={contentLayout}>
-        <div>
-          <h3 style={sectionTitle}>Avance por rubro</h3>
-
-          <div style={advanceList}>
-            {avancesObra.map((item) => (
-              <article key={item.id} style={advanceCard}>
-                <div style={advanceHeader}>
-                  <div>
-                    <p style={eyebrow}>{item.estado}</p>
-                    <h3 style={advanceTitle}>{item.rubro}</h3>
-                  </div>
-
-                  <strong style={advanceNumber}>{item.avance}%</strong>
-                </div>
-
-                <div style={progressBackground}>
-                  <div
-                    style={{
-                      ...progressFill,
-                      width: `${item.avance}%`,
-                    }}
-                  />
-                </div>
-
-                <p style={comment}>{item.comentario}</p>
-
-                <div style={metaGrid}>
-                  <div style={metaItem}>
-                    <span>Última actualización</span>
-                    <strong>{item.fecha}</strong>
-                  </div>
-
-                  <div style={metaItem}>
-                    <span>Actualizado por</span>
-                    <strong>{item.actualizadoPor}</strong>
-                  </div>
-
-                  <div style={metaItem}>
-                    <span>Fotos asociadas</span>
-                    <strong>{item.fotosAsociadas}</strong>
-                  </div>
-                </div>
-
-                <div style={cardActions}>
-                  <Link href={`/obras/${obra.id}/fotos`} style={secondaryButton}>
-                    Ver fotos
-                  </Link>
-
-                  <Link
-                    href={`/obras/${obra.id}/avances/${item.id}/editar`}
-                    style={downloadButton}
-                  >
-                    Editar avance
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-
-        <aside style={sidePanel}>
-          <p style={eyebrow}>Lectura de obra</p>
-          <h3 style={sideTitle}>Estado general</h3>
-
-          <div style={sideProgressBox}>
-            <span>Avance físico</span>
-            <strong>{avancePromedio}%</strong>
-          </div>
-
-          <div style={sideProgressMini}>
-            <div
-              style={{
-                ...sideProgressMiniFill,
-                width: `${avancePromedio}%`,
-              }}
-            />
-          </div>
-
-          <div style={folderList}>
-            {avancesObra.map((item) => (
-              <div key={item.id} style={folderRow}>
+        </section>
+      ) : (
+        <section style={listaAvances}>
+          {lista.map((avance) => (
+            <article key={avance.id} style={ui.panel}>
+              <div style={cabeceraAvance}>
                 <div>
-                  <span>{item.rubro}</span>
-                  <p style={folderNote}>{item.estado}</p>
+                  <p style={ui.eyebrow}>{avance.estado}</p>
+                  <h3 style={tituloRubro}>{avance.rubros?.nombre ?? "Sin rubro"}</h3>
                 </div>
-                <strong>{item.avance}%</strong>
-              </div>
-            ))}
-          </div>
 
-          <p style={note}>
-            Más adelante esta sección puede comparar avance físico contra avance
-            financiero para detectar desvíos de costo o planificación.
-          </p>
-        </aside>
-      </section>
+                <strong style={porcentaje}>{avance.porcentaje}%</strong>
+              </div>
+
+              <div style={ui.progressBackground}>
+                <div
+                  style={{ ...ui.progressFill, width: `${avance.porcentaje}%` }}
+                />
+              </div>
+
+              {avance.comentario && (
+                <p style={{ ...ui.note, marginTop: "16px" }}>
+                  {avance.comentario}
+                </p>
+              )}
+
+              <div style={pieAvance}>
+                <span>
+                  {formatDate(avance.fecha)} · {avance.actualizado_por_nombre ?? "—"} ·{" "}
+                  {fotosPorRubro.get(avance.rubro_id) ?? 0} fotos
+                </span>
+
+                <Link
+                  href={`/obras/${obra.slug}/avances/${avance.id}/editar`}
+                  style={ui.secondaryButton}
+                >
+                  Editar
+                </Link>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
     </AppShell>
   );
 }
 
-const sectionHeader = {
-  borderBottom: "1px solid #e5e5e5",
-  paddingBottom: "24px",
-  marginBottom: "32px",
-};
-
-const eyebrow = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.1em",
-  color: "#777777",
-  margin: 0,
-};
-
-const title = {
-  fontSize: "36px",
-  fontWeight: 400,
-  margin: "8px 0",
-};
-
-const subtitle = {
-  color: "#666666",
-  margin: 0,
-  maxWidth: "640px",
-  lineHeight: 1.5,
-};
-
-const statsGrid = {
+const listaAvances = {
   display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr)",
   gap: "16px",
-  marginBottom: "24px",
 };
 
-const statCard = {
-  border: "1px solid #e5e5e5",
-  padding: "22px",
-};
-
-const label = {
-  fontSize: "13px",
-  color: "#777777",
-  margin: 0,
-};
-
-const number = {
-  fontSize: "24px",
-  fontWeight: 400,
-  margin: "10px 0 0",
-};
-
-const mainProgressPanel = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
-  marginBottom: "24px",
-};
-
-const mainProgressTitle = {
-  fontSize: "28px",
-  fontWeight: 400,
-  margin: "10px 0",
-};
-
-const mainProgressBar = {
-  height: "10px",
-  background: "#eeeeee",
-  marginTop: "24px",
-};
-
-const mainProgressFill = {
-  height: "10px",
-  background: "#111111",
-};
-
-const toolbar = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "16px",
-  border: "1px solid #e5e5e5",
-  padding: "16px",
-  marginBottom: "32px",
-};
-
-const searchBox = {
-  display: "grid",
-  gap: "8px",
-  flex: 1,
-};
-
-const searchLabel = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.08em",
-  color: "#777777",
-};
-
-const searchInput = {
-  border: "1px solid #dcdcdc",
-  padding: "12px",
-  fontFamily: "Arial, Helvetica, sans-serif",
-  fontSize: "14px",
-};
-
-const button = {
-  alignSelf: "end",
-  background: "#111111",
-  color: "#ffffff",
-  border: "none",
-  padding: "12px 18px",
-  fontSize: "14px",
-  cursor: "pointer",
-};
-
-const contentLayout = {
-  display: "grid",
-  gridTemplateColumns: "1fr 300px",
-  gap: "24px",
-  alignItems: "start",
-};
-
-const sectionTitle = {
-  fontSize: "18px",
-  fontWeight: 400,
-  marginTop: 0,
-  marginBottom: "16px",
-};
-
-const advanceList = {
-  display: "grid",
-  gap: "18px",
-};
-
-const advanceCard = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
-};
-
-const advanceHeader = {
+const cabeceraAvance = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: "20px",
+  marginBottom: "16px",
 };
 
-const advanceTitle = {
-  fontSize: "24px",
-  fontWeight: 400,
-  margin: "10px 0 0",
-};
-
-const advanceNumber = {
-  fontSize: "28px",
-  fontWeight: 400,
-};
-
-const progressBackground = {
-  height: "8px",
-  background: "#eeeeee",
-  marginTop: "22px",
-};
-
-const progressFill = {
-  height: "8px",
-  background: "#111111",
-};
-
-const comment = {
-  color: "#555555",
-  lineHeight: 1.5,
-  marginTop: "18px",
-};
-
-const metaGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
-  gap: "12px",
-  marginTop: "20px",
-};
-
-const metaItem = {
-  borderTop: "1px solid #eeeeee",
-  paddingTop: "10px",
-  display: "grid",
-  gap: "6px",
-  color: "#555555",
-  fontSize: "14px",
-};
-
-const cardActions = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "10px",
-  marginTop: "24px",
-};
-
-const secondaryButton = {
-  background: "#ffffff",
-  color: "#111111",
-  border: "1px solid #dcdcdc",
-  padding: "10px 16px",
-  cursor: "pointer",
-  textDecoration: "none",
-  fontSize: "14px",
-};
-
-const downloadButton = {
-  background: "#111111",
-  color: "#ffffff",
-  border: "1px solid #111111",
-  padding: "10px 16px",
-  cursor: "pointer",
-  textDecoration: "none",
-  fontSize: "14px",
-};
-
-const sidePanel = {
-  border: "1px solid #e5e5e5",
-  padding: "22px",
-  position: "sticky" as const,
-  top: "24px",
-};
-
-const sideTitle = {
+const tituloRubro = {
   fontSize: "22px",
   fontWeight: 400,
-  margin: "10px 0 22px",
+  margin: "8px 0 0",
 };
 
-const sideProgressBox = {
+const porcentaje = {
+  fontSize: "26px",
+  fontWeight: 400,
+};
+
+const pieAvance = {
   display: "flex",
   justifyContent: "space-between",
-  border: "1px solid #111111",
-  padding: "14px",
-  marginBottom: "12px",
-};
-
-const sideProgressMini = {
-  height: "8px",
-  background: "#eeeeee",
-  marginBottom: "24px",
-};
-
-const sideProgressMiniFill = {
-  height: "8px",
-  background: "#111111",
-};
-
-const folderList = {
-  display: "grid",
-  gap: "10px",
-};
-
-const folderRow = {
-  display: "flex",
-  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "16px",
+  marginTop: "20px",
+  paddingTop: "16px",
   borderTop: "1px solid #eeeeee",
-  paddingTop: "10px",
-};
-
-const folderNote = {
-  color: "#777777",
-  fontSize: "13px",
-  margin: "4px 0 0",
-};
-
-const note = {
   color: "#777777",
   fontSize: "14px",
-  lineHeight: 1.5,
-  marginTop: "24px",
 };

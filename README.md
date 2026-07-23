@@ -1,36 +1,108 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gestión de desarrollo
 
-## Getting Started
+App para seguir obras entre varias empresas socias: gastos, avances, fotos,
+documentos y el saldo que queda entre las socias.
 
-First, run the development server:
+## Cómo está armado
+
+- **Next.js 16** (App Router) + React 19 + TypeScript
+- **Supabase** para la base de datos y el login
+- **Google Drive** para los archivos (fotos, planos, comprobantes)
+- **Ámbito Financiero** para la cotización del dólar
+
+Los archivos no se guardan en la base: van a un Drive propio de la aplicación,
+ordenados en `Gestión de desarrollo / <obra> / <fotos|documentos|comprobantes>`.
+En la base sólo queda el id del archivo. Nadie entra al Drive directamente: la
+app verifica los permisos sobre la obra antes de servir cada archivo.
+
+## Levantarlo en otra computadora
+
+Los datos (base y archivos) están en la nube, así que no hay nada que migrar.
+Lo único que no viaja por git son las credenciales.
+
+```bash
+git clone https://github.com/julianserra90-dot/gestion-desarrollo.git
+cd gestion-desarrollo
+npm install
+```
+
+Después hay que crear el archivo **`.env.local`** en la raíz. No está en el
+repositorio a propósito: contiene claves. Copialo desde la máquina donde ya
+funciona (por un gestor de contraseñas o un pendrive, nunca por mail o chat).
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+
+GOOGLE_DRIVE_CLIENT_ID=
+GOOGLE_DRIVE_CLIENT_SECRET=
+GOOGLE_DRIVE_REFRESH_TOKEN=
+```
+
+De dónde sale cada una:
+
+| Variable | Dónde conseguirla |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API Keys (la *publishable*, no la secreta) |
+| `GOOGLE_DRIVE_CLIENT_ID` | Google Cloud → Plataforma de autenticación → Clientes |
+| `GOOGLE_DRIVE_CLIENT_SECRET` | El mismo cliente de Google Cloud |
+| `GOOGLE_DRIVE_REFRESH_TOKEN` | Lo genera `node scripts/autorizar-drive.mjs` |
+
+Con eso ya arranca:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Verificar que todo esté conectado
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+node --experimental-strip-types scripts/probar-drive.mjs
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Confirma que las credenciales de Drive funcionan y crea la carpeta raíz si
+falta. Para probar además que se puedan subir y bajar archivos:
 
-## Learn More
+```bash
+node --experimental-strip-types scripts/probar-subida.mjs
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Base de datos
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+El esquema está versionado en `supabase/migrations/`. Para aplicar cambios
+nuevos a la base:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx supabase db push
+```
 
-## Deploy on Vercel
+Si es una máquina nueva, primero hay que vincularla (pide la contraseña de la
+base, que está en el gestor de contraseñas):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npx supabase login
+npx supabase link --project-ref axhgdxvxukyueuqiomgt
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Después de tocar el esquema, hay que regenerar los tipos de TypeScript:
+
+```bash
+npx supabase gen types typescript --linked > lib/database.types.ts
+```
+
+## Usuarios
+
+El primero que se registra queda como administrador. Los demás se crean desde
+Supabase (Authentication → Users → Add user, con *Auto Confirm User*) y aparecen
+en la pantalla **Usuarios** de la app para asignarles nombre y empresa.
+
+Un usuario de empresa ve únicamente las obras donde su empresa es socia. Eso lo
+garantizan las reglas de la base (RLS), no la interfaz: aunque alguien consulte
+la API directamente, no obtiene datos de otras obras.
+
+## Antes de subir cambios
+
+```bash
+npx tsc --noEmit && npx eslint . && npm run build
+```

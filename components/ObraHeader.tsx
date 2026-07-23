@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 type Obra = {
-  id: string;
+  /** Identificador que va en la URL. */
+  slug: string;
   nombre: string;
-  ubicacion: string;
+  ubicacion: string | null;
   estado: string;
 };
 
@@ -15,12 +16,13 @@ export default function ObraHeader({
   activeSection: string;
 }) {
   const tabs = [
-    { label: "Resumen", href: `/obras/${obra.id}`, key: "resumen" },
-    { label: "Gastos", href: `/obras/${obra.id}/gastos`, key: "gastos" },
-    { label: "Documentos", href: `/obras/${obra.id}/documentos`, key: "documentos" },
-    { label: "Fotos", href: `/obras/${obra.id}/fotos`, key: "fotos" },
-    { label: "Avances", href: `/obras/${obra.id}/avances`, key: "avances" },
-    { label: "Reportes", href: `/obras/${obra.id}/reportes`, key: "reportes" },
+    { label: "Economía", href: `/obras/${obra.slug}`, key: "economia" },
+    { label: "Gastos", href: `/obras/${obra.slug}/gastos`, key: "gastos" },
+    { label: "Dólares", href: `/obras/${obra.slug}/dolares`, key: "dolares" },
+    { label: "Avances", href: `/obras/${obra.slug}/avances`, key: "avances" },
+    { label: "Fotos", href: `/obras/${obra.slug}/fotos`, key: "fotos" },
+    { label: "Documentos", href: `/obras/${obra.slug}/documentos`, key: "documentos" },
+    { label: "Rubros", href: `/obras/${obra.slug}/rubros`, key: "rubros" },
   ];
 
   return (
@@ -32,9 +34,15 @@ export default function ObraHeader({
           <p style={subtitle}>{obra.ubicacion}</p>
         </div>
 
-        <Link href="/" style={backLink}>
-          Volver a obras
-        </Link>
+        <div style={headerActions}>
+          <Link href={`/obras/${obra.slug}/editar`} style={editLink}>
+            Editar obra
+          </Link>
+
+          <Link href="/" style={backLink}>
+            Volver a obras
+          </Link>
+        </div>
       </header>
 
       <nav style={tabsContainer}>
@@ -78,6 +86,20 @@ const title = {
 const subtitle = {
   color: "#666666",
   margin: 0,
+};
+
+const headerActions = {
+  display: "flex",
+  gap: "16px",
+  alignItems: "center",
+};
+
+const editLink = {
+  color: "#111111",
+  textDecoration: "none",
+  border: "1px solid #dcdcdc",
+  padding: "10px 14px",
+  fontSize: "14px",
 };
 
 const backLink = {

@@ -1,6 +1,11 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import { formatMoney, gastos, obras } from "@/data/mockData";
+import BotonDescarga from "@/components/BotonDescarga";
+import ObraHeader from "@/components/ObraHeader";
+import * as ui from "@/components/ui";
+import { formatDate, formatMoney } from "@/lib/format";
+import { getObraPorSlug } from "@/lib/obras";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function GastosPage({
   params,
@@ -8,150 +13,257 @@ export default async function GastosPage({
   params: Promise<{ obraId: string }>;
 }) {
   const { obraId } = await params;
-  const obra = obras.find((item) => item.id === obraId);
-  const gastosObra = gastos.filter((gasto) => gasto.obraId === obraId);
+  const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
+  const supabase = await createClient();
+  const { data: gastos } = await supabase
+    .from("gastos")
+    .select(
+      "id, fecha, concepto, monto, tipo_gasto, tipo_pago, estado, comprobante_drive_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
+    )
+    .eq("obra_id", obra.id)
+    .order("fecha", { ascending: false });
+
+  const lista = gastos ?? [];
+
+  // Los ajustes de saldo no son gasto de obra: se muestran en el listado pero
+  // no suman a los totales.
+  const vigentes = lista.filter(
+    (g) => g.estado !== "Anulado" && g.tipo_gasto !== "Ajuste de saldo"
+  );
+
+  const total = vigentes.reduce((acc, g) => acc + Number(g.monto), 0);
+
+  const totalFacturado = vigentes
+    .filter((g) => g.tipo_pago === "Facturado")
+    .reduce((acc, g) => acc + Number(g.monto), 0);
+
+  const totalEfectivo = vigentes
+    .filter((g) => g.tipo_pago === "Efectivo")
+    .reduce((acc, g) => acc + Number(g.monto), 0);
+
   return (
     <AppShell>
-      <header style={header}>
-        <div>
-          <p style={eyebrow}>{obra.nombre}</p>
-          <h2 style={title}>Gastos</h2>
-          <p style={subtitle}>Carga y control de gastos de la obra.</p>
-        </div>
+      <ObraHeader obra={obra} activeSection="gastos" />
 
-        <Link href={`/obras/${obra.id}`} style={backLink}>
-          Volver al resumen
+      <section style={ui.sectionHeader}>
+        <p style={ui.eyebrow}>Control de obra</p>
+        <h2 style={ui.pageTitle}>Gastos</h2>
+        <p style={ui.subtitle}>
+          Cada gasto se carga por el total y se reparte entre las empresas
+          socias según su participación.
+        </p>
+      </section>
+
+      <section style={ui.statsGrid}>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Total gastado</p>
+          <h3 style={ui.statNumber}>{formatMoney(total)}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Facturado</p>
+          <h3 style={ui.statNumber}>{formatMoney(totalFacturado)}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>En efectivo</p>
+          <h3 style={ui.statNumber}>{formatMoney(totalEfectivo)}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Gastos cargados</p>
+          <h3 style={ui.statNumber}>{vigentes.length}</h3>
+        </div>
+      </section>
+
+      <div style={ui.toolbar}>
+        <h3 style={ui.sectionTitle}>Listado de gastos</h3>
+
+        <Link href={`/obras/${obra.slug}/gastos/nuevo`} style={ui.button}>
+          Nuevo gasto
         </Link>
-      </header>
+      </div>
 
-      <section style={panel}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: "20px",
-            alignItems: "center",
-          }}
-        >
-          <h3 style={sectionTitle}>Listado de gastos</h3>
-
-          <Link href={`/obras/${obra.id}/gastos/nuevo`} style={button}>
-            Nuevo gasto
-          </Link>
-        </div>
-
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Fecha</th>
-              <th style={th}>Rubro</th>
-              <th style={th}>Concepto</th>
-              <th style={th}>Proveedor</th>
-              <th style={th}>Pagó</th>
-              <th style={th}>Monto</th>
-              <th style={th}>50%</th>
-              <th style={th}>Estado</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {gastosObra.map((gasto) => (
-              <tr key={gasto.id}>
-                <td style={td}>{gasto.fecha}</td>
-                <td style={td}>{gasto.rubro}</td>
-                <td style={td}>{gasto.concepto}</td>
-                <td style={td}>{gasto.proveedor}</td>
-                <td style={td}>{gasto.empresaPagadora}</td>
-                <td style={td}>{formatMoney(gasto.monto)}</td>
-                <td style={td}>{formatMoney(gasto.monto / 2)}</td>
-                <td style={td}>{gasto.estado}</td>
+      <section style={ui.panel}>
+        {lista.length === 0 ? (
+          <p style={ui.vacio}>
+            Todavía no hay gastos cargados en esta obra.
+          </p>
+        ) : (
+          <table style={ui.table}>
+            <thead>
+              <tr>
+                <th style={ui.th}>Fecha</th>
+                <th style={ui.th}>Rubro</th>
+                <th style={ui.th}>Tipo</th>
+                <th style={ui.th}>Proveedor / Contratista</th>
+                <th style={ui.th}>Detalle</th>
+                <th style={ui.th}>Tipo de pago</th>
+                <th style={ui.th}>Pagó</th>
+                <th style={ui.th}>Comprob.</th>
+                <th style={ui.thRight}>Monto</th>
+                <th style={ui.th}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lista.map((gasto) => {
+                const anulado = gasto.estado === "Anulado";
+                const ajuste = gasto.tipo_gasto === "Ajuste de saldo";
+                const celda = anulado
+                  ? tdAnulado
+                  : ajuste
+                    ? tdAjuste
+                    : ui.td;
+
+                return (
+                <tr key={gasto.id} style={ajuste && !anulado ? filaAjuste : undefined}>
+                  <td style={celda}>{formatDate(gasto.fecha)}</td>
+                  <td style={celda}>{gasto.rubros?.nombre ?? "—"}</td>
+                  <td style={celda}>
+                    {ajuste ? (
+                      <span style={tagAjuste}>Ajuste de saldo</span>
+                    ) : (
+                      gasto.tipo_gasto
+                    )}
+                  </td>
+                  <td style={celda}>
+                    {ajuste
+                      ? `→ ${gasto.receptora?.nombre ?? "—"}`
+                      : (gasto.proveedores?.nombre ?? "—")}
+                  </td>
+                  <td style={celda}>
+                    {gasto.concepto}
+                    {anulado && <span style={tagAnulado}>Anulado</span>}
+                  </td>
+                  <td style={celda}>
+                    {ajuste ? (
+                      "—"
+                    ) : (
+                      <span
+                        style={
+                          gasto.tipo_pago === "Efectivo" ? tagEfectivo : tagFacturado
+                        }
+                      >
+                        {gasto.tipo_pago}
+                      </span>
+                    )}
+                  </td>
+                  <td style={celda}>{gasto.pagadora?.nombre ?? "—"}</td>
+                  <td style={celda}>
+                    {gasto.comprobante_drive_id ? (
+                      <div style={accionesArchivo}>
+                        <Link
+                          href={`/ver/${gasto.comprobante_drive_id}?volver=${encodeURIComponent(
+                            `/obras/${obra.slug}/gastos`
+                          )}`}
+                          style={comprobanteLink}
+                        >
+                          Ver
+                        </Link>
+                        <BotonDescarga
+                          fileId={gasto.comprobante_drive_id}
+                          variante="icono"
+                          etiqueta={`Descargar comprobante de ${gasto.concepto}`}
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ color: "#bbbbbb" }}>—</span>
+                    )}
+                  </td>
+                  <td style={anulado ? tdAnuladoRight : ui.tdRight}>
+                    <strong>{formatMoney(gasto.monto)}</strong>
+                  </td>
+                  <td style={celda}>
+                    <Link
+                      href={`/obras/${obra.slug}/gastos/${gasto.id}/editar`}
+                      style={editarLink}
+                    >
+                      Editar
+                    </Link>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </section>
     </AppShell>
   );
 }
 
-const header = {
+const accionesArchivo = {
   display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  borderBottom: "1px solid #e5e5e5",
-  paddingBottom: "24px",
-  marginBottom: "32px",
+  alignItems: "center",
+  gap: "10px",
 };
 
-const eyebrow = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.1em",
-  color: "#777777",
-  margin: 0,
+// El ajuste se distingue con un fondo apenas gris y un borde negro al costado:
+// se nota que es distinto sin gritar.
+const filaAjuste = {
+  background: "#fafafa",
 };
 
-const title = {
-  fontSize: "36px",
-  fontWeight: 400,
-  margin: "8px 0",
+const tdAjuste = {
+  ...ui.td,
+  borderBottom: "1px solid #e0e0e0",
 };
 
-const subtitle = {
-  color: "#666666",
-  margin: 0,
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
-};
-
-const panel = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
-};
-
-const sectionTitle = {
-  fontSize: "18px",
-  fontWeight: 400,
-  margin: 0,
-};
-
-const button = {
+const tagAjuste = {
+  border: "1px solid #111111",
   background: "#111111",
   color: "#ffffff",
-  border: "none",
-  padding: "10px 16px",
-  fontSize: "14px",
-  cursor: "pointer",
-  textDecoration: "none",
-};
-
-const table = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-};
-
-const th = {
-  textAlign: "left" as const,
+  padding: "3px 8px",
   fontSize: "12px",
-  color: "#777777",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.08em",
-  borderBottom: "1px solid #e5e5e5",
-  padding: "12px",
+  whiteSpace: "nowrap" as const,
 };
 
-const td = {
-  borderBottom: "1px solid #eeeeee",
-  padding: "14px 12px",
-  color: "#333333",
+const tdAnulado = {
+  ...ui.td,
+  color: "#aaaaaa",
+  textDecoration: "line-through" as const,
+};
+
+const tdAnuladoRight = {
+  ...tdAnulado,
+  textAlign: "right" as const,
+};
+
+const tagAnulado = {
+  marginLeft: "8px",
+  border: "1px solid #aaaaaa",
+  color: "#aaaaaa",
+  padding: "2px 6px",
+  fontSize: "11px",
+  textDecoration: "none" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+};
+
+const editarLink = {
+  color: "#111111",
+  fontSize: "14px",
+  textDecoration: "underline",
+};
+
+const tagFacturado = {
+  border: "1px solid #dcdcdc",
+  padding: "3px 8px",
+  fontSize: "12px",
+  whiteSpace: "nowrap" as const,
+};
+
+const tagEfectivo = {
+  ...tagFacturado,
+  border: "1px solid #111111",
+  background: "#111111",
+  color: "#ffffff",
+};
+
+const comprobanteLink = {
+  color: "#111111",
+  textDecoration: "underline",
+  fontSize: "14px",
 };

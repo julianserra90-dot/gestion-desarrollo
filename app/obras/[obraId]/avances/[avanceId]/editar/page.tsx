@@ -1,225 +1,151 @@
-"use client";
-
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useState } from "react";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
-import { avances, obras } from "@/data/mockData";
+import * as ui from "@/components/ui";
+import { getObraPorSlug } from "@/lib/obras";
+import { createClient } from "@/lib/supabase/server";
+import { actualizarAvance } from "../../actions";
 
-export default function EditarAvancePage() {
-  const params = useParams();
-  const obraId = params.obraId as string;
-  const avanceId = params.avanceId as string;
+const ESTADOS = [
+  "Sin iniciar",
+  "Replanteo",
+  "Inicial",
+  "En ejecución",
+  "Finalizado",
+];
 
-  const obra = obras.find((item) => item.id === obraId);
-  const avance = avances.find((item) => item.id === avanceId);
+export default async function EditarAvancePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ obraId: string; avanceId: string }>;
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { obraId, avanceId } = await params;
+  const { error } = await searchParams;
+  const obra = await getObraPorSlug(obraId);
 
-  const [porcentaje, setPorcentaje] = useState(avance?.avance ?? 0);
-  const [estado, setEstado] = useState(avance?.estado ?? "");
-  const [comentario, setComentario] = useState(avance?.comentario ?? "");
+  if (!obra) {
+    return <AppShell>Obra no encontrada</AppShell>;
+  }
 
-  if (!obra || !avance) {
+  const supabase = await createClient();
+
+  const { data: avance } = await supabase
+    .from("avances")
+    .select("id, porcentaje, estado, comentario, fecha, rubro_id, rubros(nombre)")
+    .eq("id", avanceId)
+    .eq("obra_id", obra.id)
+    .maybeSingle();
+
+  if (!avance) {
     return <AppShell>Avance no encontrado</AppShell>;
   }
+
+  // Las fotos asociadas salen de los registros fotográficos del mismo rubro.
+  const { data: registros } = await supabase
+    .from("foto_registros")
+    .select("fotos(count)")
+    .eq("obra_id", obra.id)
+    .eq("rubro_id", avance.rubro_id);
+
+  const fotosAsociadas = (registros ?? []).reduce(
+    (acc, r) => acc + (r.fotos?.[0]?.count ?? 0),
+    0
+  );
 
   return (
     <AppShell>
       <ObraHeader obra={obra} activeSection="avances" />
 
-      <section style={pageHeader}>
-        <div>
-          <p style={eyebrow}>Editar avance</p>
-          <h2 style={title}>{avance.rubro}</h2>
-          <p style={subtitle}>
-            Actualizar el porcentaje de avance, estado y comentario técnico del
-            rubro.
-          </p>
-        </div>
-
-        <Link href={`/obras/${obra.id}/avances`} style={backLink}>
-          Volver a avances
-        </Link>
+      <section style={ui.sectionHeader}>
+        <p style={ui.eyebrow}>Editar avance</p>
+        <h2 style={ui.pageTitle}>{avance.rubros?.nombre ?? "Sin rubro"}</h2>
+        <p style={ui.subtitle}>
+          Actualizá el porcentaje, el estado y el comentario técnico del rubro.
+        </p>
       </section>
 
-      <section style={layout}>
-        <form style={formPanel}>
-          <div style={rubroHeader}>
-            <p style={eyebrow}>Rubro</p>
-            <h3 style={rubroTitle}>{avance.rubro}</h3>
-          </div>
+      {error && <p style={errorBox}>{error}</p>}
 
-          <div style={formGrid}>
+      <form action={actualizarAvance}>
+        <input type="hidden" name="avance_id" value={avance.id} />
+        <input type="hidden" name="slug" value={obra.slug} />
+
+        <div style={ui.panel}>
+          <div style={grid}>
             <label style={field}>
-              <span style={label}>Porcentaje de avance</span>
+              <span style={labelCampo}>Porcentaje de avance</span>
               <input
                 type="number"
+                name="porcentaje"
                 min="0"
                 max="100"
-                value={porcentaje}
-                onChange={(event) => setPorcentaje(Number(event.target.value))}
-                style={input}
+                defaultValue={avance.porcentaje}
+                required
+                style={ui.input}
               />
             </label>
 
             <label style={field}>
-              <span style={label}>Estado</span>
+              <span style={labelCampo}>Estado</span>
               <select
-                value={estado}
-                onChange={(event) => setEstado(event.target.value)}
-                style={input}
+                name="estado"
+                defaultValue={avance.estado}
+                style={ui.input}
               >
-                <option value="Sin iniciar">Sin iniciar</option>
-                <option value="Replanteo">Replanteo</option>
-                <option value="Inicial">Inicial</option>
-                <option value="En ejecución">En ejecución</option>
-                <option value="Finalizado">Finalizado</option>
+                {ESTADOS.map((estado) => (
+                  <option key={estado} value={estado}>
+                    {estado}
+                  </option>
+                ))}
               </select>
             </label>
 
             <label style={field}>
-              <span style={label}>Fecha de actualización</span>
-              <input type="date" style={input} />
+              <span style={labelCampo}>Fecha de actualización</span>
+              <input
+                type="date"
+                name="fecha"
+                defaultValue={avance.fecha}
+                style={ui.input}
+              />
             </label>
 
-            <div style={readOnlyField}>
-              <span style={label}>Fotos asociadas</span>
-              <strong>{avance.fotosAsociadas}</strong>
-              <p style={readOnlyNote}>
-                Se calculan automáticamente según las fotos cargadas en este
-                rubro.
+            <div style={soloLectura}>
+              <span style={labelCampo}>Fotos asociadas</span>
+              <strong style={{ fontSize: "22px" }}>{fotosAsociadas}</strong>
+              <p style={{ ...ui.note, margin: "6px 0 0" }}>
+                Se cuentan solas según las fotos cargadas en este rubro.
               </p>
             </div>
 
-            <label style={fieldLarge}>
-              <span style={label}>Comentario técnico</span>
+            <label style={fieldAncho}>
+              <span style={labelCampo}>Comentario técnico</span>
               <textarea
-                value={comentario}
-                onChange={(event) => setComentario(event.target.value)}
+                name="comentario"
+                defaultValue={avance.comentario ?? ""}
                 style={textarea}
               />
             </label>
           </div>
+        </div>
 
-          <div style={actions}>
-            <Link href={`/obras/${obra.id}/avances`} style={secondaryButton}>
-              Cancelar
-            </Link>
+        <div style={acciones}>
+          <Link href={`/obras/${obra.slug}/avances`} style={ui.secondaryButton}>
+            Cancelar
+          </Link>
 
-            <button type="button" style={button}>
-              Guardar avance
-            </button>
-          </div>
-        </form>
-
-        <aside style={summaryPanel}>
-          <p style={eyebrow}>Vista previa</p>
-          <h3 style={summaryTitle}>{avance.rubro}</h3>
-
-          <div style={progressBox}>
-            <div style={progressHeader}>
-              <span>Avance actualizado</span>
-              <strong>{porcentaje}%</strong>
-            </div>
-
-            <div style={progressBackground}>
-              <div
-                style={{
-                  ...progressFill,
-                  width: `${porcentaje}%`,
-                }}
-              />
-            </div>
-          </div>
-
-          <div style={summaryRow}>
-            <span>Estado</span>
-            <strong>{estado}</strong>
-          </div>
-
-          <div style={summaryRow}>
-            <span>Fotos asociadas</span>
-            <strong>{avance.fotosAsociadas}</strong>
-          </div>
-
-          <div style={commentBox}>
-            <p style={eyebrow}>Comentario</p>
-            <p style={commentPreview}>{comentario}</p>
-          </div>
-
-          <p style={note}>
-            Las fotos asociadas se calculan automáticamente según las imágenes
-            cargadas en este rubro. Más adelante el botón Guardar avance enviará
-            estos datos a Google Sheets.
-          </p>
-        </aside>
-      </section>
+          <button type="submit" style={ui.button}>
+            Guardar avance
+          </button>
+        </div>
+      </form>
     </AppShell>
   );
 }
 
-const pageHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  borderBottom: "1px solid #e5e5e5",
-  paddingBottom: "24px",
-  marginBottom: "32px",
-};
-
-const eyebrow = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.1em",
-  color: "#777777",
-  margin: 0,
-};
-
-const title = {
-  fontSize: "32px",
-  fontWeight: 400,
-  margin: "8px 0",
-};
-
-const subtitle = {
-  color: "#666666",
-  margin: 0,
-  maxWidth: "620px",
-  lineHeight: 1.5,
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
-};
-
-const layout = {
-  display: "grid",
-  gridTemplateColumns: "1fr 340px",
-  gap: "24px",
-  alignItems: "start",
-};
-
-const formPanel = {
-  border: "1px solid #e5e5e5",
-  padding: "28px",
-};
-
-const rubroHeader = {
-  borderBottom: "1px solid #eeeeee",
-  paddingBottom: "20px",
-  marginBottom: "24px",
-};
-
-const rubroTitle = {
-  fontSize: "28px",
-  fontWeight: 400,
-  margin: "10px 0 0",
-};
-
-const formGrid = {
+const grid = {
   display: "grid",
   gridTemplateColumns: "repeat(2, 1fr)",
   gap: "20px",
@@ -230,138 +156,40 @@ const field = {
   gap: "8px",
 };
 
-const fieldLarge = {
-  display: "grid",
-  gap: "8px",
+const fieldAncho = {
+  ...field,
   gridColumn: "1 / -1",
 };
 
-const readOnlyField = {
-  display: "grid",
-  gap: "6px",
-  border: "1px solid #eeeeee",
-  padding: "12px",
-  background: "#fafafa",
-};
-
-const readOnlyNote = {
-  color: "#777777",
-  fontSize: "13px",
-  lineHeight: 1.4,
-  margin: 0,
-};
-
-const label = {
+const labelCampo = {
   fontSize: "13px",
   color: "#555555",
 };
 
-const input = {
-  width: "100%",
-  boxSizing: "border-box" as const,
-  border: "1px solid #dcdcdc",
-  background: "#ffffff",
+const soloLectura = {
+  border: "1px solid #eeeeee",
   padding: "12px",
-  fontSize: "14px",
-  fontFamily: "Arial, Helvetica, sans-serif",
-  color: "#111111",
+  display: "grid",
+  gap: "4px",
+  alignContent: "start" as const,
 };
 
 const textarea = {
-  width: "100%",
-  minHeight: "140px",
-  boxSizing: "border-box" as const,
-  border: "1px solid #dcdcdc",
-  background: "#ffffff",
-  padding: "12px",
-  fontSize: "14px",
-  fontFamily: "Arial, Helvetica, sans-serif",
-  color: "#111111",
+  ...ui.input,
+  minHeight: "120px",
   resize: "vertical" as const,
 };
 
-const actions = {
+const acciones = {
   display: "flex",
   justifyContent: "flex-end",
   gap: "12px",
-  borderTop: "1px solid #eeeeee",
-  paddingTop: "24px",
-  marginTop: "28px",
-};
-
-const button = {
-  background: "#111111",
-  color: "#ffffff",
-  border: "none",
-  padding: "12px 20px",
-  fontSize: "14px",
-  cursor: "pointer",
-};
-
-const secondaryButton = {
-  color: "#111111",
-  textDecoration: "none",
-  border: "1px solid #dcdcdc",
-  padding: "12px 20px",
-  fontSize: "14px",
-};
-
-const summaryPanel = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
-  position: "sticky" as const,
-  top: "24px",
-};
-
-const summaryTitle = {
-  fontSize: "22px",
-  fontWeight: 400,
-  margin: "12px 0 24px",
-};
-
-const progressBox = {
-  border: "1px solid #eeeeee",
-  padding: "16px",
-};
-
-const progressHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  marginBottom: "12px",
-};
-
-const progressBackground = {
-  height: "8px",
-  background: "#eeeeee",
-};
-
-const progressFill = {
-  height: "8px",
-  background: "#111111",
-};
-
-const summaryRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  borderTop: "1px solid #eeeeee",
-  paddingTop: "14px",
-  marginTop: "14px",
-};
-
-const commentBox = {
-  borderTop: "1px solid #eeeeee",
-  marginTop: "18px",
-  paddingTop: "18px",
-};
-
-const commentPreview = {
-  color: "#555555",
-  lineHeight: 1.5,
-};
-
-const note = {
-  color: "#777777",
-  fontSize: "14px",
-  lineHeight: 1.5,
   marginTop: "24px",
+};
+
+const errorBox = {
+  border: "1px solid #111111",
+  padding: "14px",
+  marginBottom: "20px",
+  fontSize: "14px",
 };
