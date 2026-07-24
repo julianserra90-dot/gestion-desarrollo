@@ -43,6 +43,29 @@ function aIso(fecha: string): string {
   return `${anio}-${mes}-${dia}`;
 }
 
+/** Mueve una fecha ISO tantos días (negativo = hacia atrás). */
+function correr(fechaIso: string, dias: number): string {
+  const [anio, mes, dia] = fechaIso.split("-").map(Number);
+  const fecha = new Date(Date.UTC(anio, mes - 1, dia));
+  fecha.setUTCDate(fecha.getUTCDate() + dias);
+
+  return fecha.toISOString().slice(0, 10);
+}
+
+// En el histórico de Ámbito la fecha de inicio entra y la de fin NO: pedir
+// 04/06 a 04/06 devuelve cero filas, y 20/05 a 04/06 termina en el 03/06. Por
+// eso el rango se pide con margen para los dos lados.
+//
+// Sin esto, la cotización de una fecha puntual nunca llegaba y todo caía al
+// dólar de hoy: un gasto de junio cargado en julio quedaba valuado al dólar de
+// julio, que es justo lo que este módulo quiere evitar.
+//
+// Adelante alcanza con un día. Atrás va más margen porque un movimiento de un
+// día no hábil se resuelve con la cotización del día hábil anterior, y esa
+// fila tiene que estar en el rango.
+const MARGEN_ATRAS = 15;
+const MARGEN_ADELANTE = 1;
+
 async function pedir(url: string) {
   const respuesta = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
@@ -143,7 +166,10 @@ export async function getConvertidor(fechas: string[]): Promise<Convertidor> {
     return { cotizacionDe: () => actual?.promedio ?? null, actual, usoFallback: false };
   }
 
-  const historico = await getHistorico(validas[0], validas[validas.length - 1]);
+  const historico = await getHistorico(
+    correr(validas[0], -MARGEN_ATRAS),
+    correr(validas[validas.length - 1], MARGEN_ADELANTE)
+  );
   const disponibles = [...historico.keys()].sort();
   let usoFallback = false;
 
@@ -182,12 +208,57 @@ export async function getCotizacionDeFecha(
   return convertidor.cotizacionDe(fechaIso);
 }
 
-export function formatUSD(valor: number | null | undefined) {
-  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+export type MontoConvertido =
+  | { ok: true; ars: number; usd: number | null; cotizacion: number | null }
+  | { ok: false; error: string };
 
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(valor);
+/**
+ * Deja un monto expresado en las dos monedas.
+ *
+ * Lo usan los gastos y los ingresos de fondos: en los dos casos se guarda el
+ * valor en pesos (es lo que suman los totales) más el equivalente en dólares y
+ * la cotización usada. La conversión va al dólar oficial de la fecha del
+ * movimiento, no al del día en que se carga.
+ *
+ * `cotizacionManual` la pisa. Sirve para cuando el cambio del día fue otro: si
+ * vendiste los dólares a mejor precio que el oficial, el gasto tiene que quedar
+ * valuado a lo que realmente pagaste, no a lo que decía Ámbito.
+ */
+export async function convertirMonto(
+  montoIngresado: number,
+  moneda: string,
+  fecha: string,
+  cotizacionManual?: number | null
+): Promise<MontoConvertido> {
+  const cotizacion =
+    cotizacionManual && cotizacionManual > 0
+      ? cotizacionManual
+      : await getCotizacionDeFecha(fecha);
+
+  if (moneda === "USD") {
+    // Sin cotización no hay forma de saber cuántos pesos son: mejor frenar que
+    // guardar un movimiento que rompería los totales.
+    if (!cotizacion) {
+      return {
+        ok: false,
+        error:
+          "No se pudo obtener la cotización del dólar para convertirlo a pesos. Probá de nuevo en un rato o cargalo en pesos.",
+      };
+    }
+
+    return {
+      ok: true,
+      ars: Math.round(montoIngresado * cotizacion * 100) / 100,
+      usd: montoIngresado,
+      cotizacion,
+    };
+  }
+
+  return {
+    ok: true,
+    ars: montoIngresado,
+    usd: cotizacion ? Math.round((montoIngresado / cotizacion) * 100) / 100 : null,
+    cotizacion,
+  };
 }
+
