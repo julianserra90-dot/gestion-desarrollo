@@ -13,6 +13,11 @@ type Obra = {
   fecha_inicio: string | null;
   fecha_fin_estimada: string | null;
   presupuesto: number | null;
+  superficie_m2: number | null;
+  valor_m2_usd: number | null;
+  domicilio: string | null;
+  unidades_funcionales: number | null;
+  pisos: number | null;
 };
 
 const ESTADOS = ["Proyecto", "En ejecución", "Pausada", "Finalizada"];
@@ -70,6 +75,23 @@ export default function ObraForm({
               placeholder="Ej: San Isidro, Buenos Aires"
               style={input}
             />
+            <span style={ayudaCampo}>
+              La localidad, que es lo que se lee en el listado de obras.
+            </span>
+          </label>
+
+          <label style={field}>
+            <span style={label}>Domicilio</span>
+            <input
+              type="text"
+              name="domicilio"
+              defaultValue={obra?.domicilio ?? ""}
+              placeholder="Ej: Av. Mitre 1240"
+              style={input}
+            />
+            <span style={ayudaCampo}>
+              Calle y altura, para avisos de obra y planos municipales.
+            </span>
           </label>
 
           <label style={field}>
@@ -119,6 +141,65 @@ export default function ObraForm({
               style={input}
             />
           </label>
+
+          <label style={field}>
+            <span style={label}>Superficie (m²)</span>
+            <input
+              type="number"
+              name="superficie_m2"
+              min="0"
+              step="0.01"
+              defaultValue={obra?.superficie_m2 ?? ""}
+              placeholder="0"
+              style={input}
+            />
+          </label>
+
+          <label style={field}>
+            <span style={label}>Unidades funcionales</span>
+            <input
+              type="number"
+              name="unidades_funcionales"
+              min="1"
+              step="1"
+              defaultValue={obra?.unidades_funcionales ?? ""}
+              placeholder="0"
+              style={input}
+            />
+          </label>
+
+          <label style={field}>
+            <span style={label}>Pisos sobre PB</span>
+            <input
+              type="number"
+              name="pisos"
+              min="0"
+              step="1"
+              defaultValue={obra?.pisos ?? ""}
+              placeholder="0"
+              style={input}
+            />
+            <span style={ayudaCampo}>
+              Un PB + 5 son 5. La planta baja se cuenta aparte.
+            </span>
+          </label>
+
+          <label style={field}>
+            <span style={label}>Objetivo por m² (USD)</span>
+            <input
+              type="number"
+              name="valor_m2_usd"
+              min="0"
+              step="1"
+              defaultValue={obra?.valor_m2_usd ?? ""}
+              placeholder="Ej: 800"
+              style={input}
+            />
+            <span style={ayudaCampo}>
+              A cuántos dólares el metro se arrancó la obra. Con esto y la
+              superficie, Estado compara contra lo que va dando de verdad.
+            </span>
+          </label>
         </div>
       </div>
 
@@ -163,6 +244,11 @@ const fieldLarge = {
   display: "grid",
   gap: "8px",
   gridColumn: "1 / -1",
+};
+
+const ayudaCampo = {
+  fontSize: "13px",
+  color: "#999999",
 };
 
 const label = {

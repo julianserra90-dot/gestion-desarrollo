@@ -7,9 +7,11 @@ import {
   getAvancePorRubro,
   getUltimaActividad,
 } from "@/lib/avances";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatUSD } from "@/lib/format";
+import { calcularValorM2, leerDesvioM2 } from "@/lib/metro-cuadrado";
 import { getObraPorSlug } from "@/lib/obras";
 import { calcularPlazo, leerDesvio } from "@/lib/plazo";
+import { getTotalesUsd } from "@/lib/totales-usd";
 
 export default async function EstadoDeObraPage({
   params,
@@ -23,12 +25,21 @@ export default async function EstadoDeObraPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [rubros, ultima] = await Promise.all([
+  const [rubros, ultima, totales] = await Promise.all([
     getAvancePorRubro(obra.id),
     getUltimaActividad(obra.id),
+    getTotalesUsd(obra.id),
   ]);
 
   const avance = avanceGeneral(rubros);
+
+  const m2 = calcularValorM2({
+    superficie: obra.superficie_m2,
+    objetivoUsd: obra.valor_m2_usd,
+    aprobadoUsd: totales.aprobadoUsd,
+    gastadoUsd: totales.gastadoUsd,
+    avance,
+  });
 
   const hoy = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Argentina/Buenos_Aires",
@@ -42,6 +53,35 @@ export default async function EstadoDeObraPage({
   );
 
   const desvio = leerDesvio(plazo.desvio);
+  const lecturaM2 = leerDesvioM2(m2);
+
+  // La ficha muestra sólo lo que está cargado: una tarjeta con "—" ocupa el
+  // mismo lugar que un dato y no dice nada.
+  const fichaProyecto = [
+    { etiqueta: "Domicilio", valor: obra.domicilio },
+    {
+      etiqueta: "Superficie",
+      valor: obra.superficie_m2 ? `${obra.superficie_m2} m²` : null,
+    },
+    {
+      etiqueta: "Unidades funcionales",
+      valor: obra.unidades_funcionales
+        ? String(obra.unidades_funcionales)
+        : null,
+    },
+    {
+      etiqueta: "Pisos",
+      valor:
+        obra.pisos === null ? null : obra.pisos === 0 ? "Sólo PB" : `PB + ${obra.pisos}`,
+    },
+    {
+      etiqueta: "Promedio por unidad",
+      valor:
+        obra.superficie_m2 && obra.unidades_funcionales
+          ? `${Math.round(obra.superficie_m2 / obra.unidades_funcionales)} m²`
+          : null,
+    },
+  ].filter((d): d is { etiqueta: string; valor: string } => Boolean(d.valor));
   const enEjecucion = rubros.filter((r) => r.estado === "En ejecución").length;
   const finalizados = rubros.filter((r) => r.estado === "Finalizado").length;
   const sinIniciar = rubros.filter((r) => r.estado === "Sin iniciar").length;
@@ -59,6 +99,21 @@ export default async function EstadoDeObraPage({
           va bien o va tarde.
         </p>
       </section>
+
+      {/* --- La ficha del proyecto ----------------------------------------- */}
+
+      {fichaProyecto.length > 0 && (
+        <section style={{ ...ui.panel, marginBottom: "16px" }}>
+          <div style={ficha}>
+            {fichaProyecto.map((dato) => (
+              <div key={dato.etiqueta}>
+                <p style={ui.label}>{dato.etiqueta}</p>
+                <strong style={fichaValor}>{dato.valor}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* --- Avance contra tiempo, que es la lectura que importa ----------- */}
 
@@ -149,6 +204,139 @@ export default async function EstadoDeObraPage({
               : `${Math.abs(plazo.restantes)} días`}
           </h3>
         </div>
+      </section>
+
+      {/* --- El valor del metro cuadrado ------------------------------------ */}
+
+      <div style={ui.toolbar}>
+        <h3 style={ui.sectionTitle}>Valor del m² en dólares</h3>
+        {obra.superficie_m2 && (
+          <span style={superficieTexto}>{obra.superficie_m2} m²</span>
+        )}
+      </div>
+
+      <section style={ui.panel}>
+        {!obra.superficie_m2 ? (
+          <p style={ui.vacio}>
+            Cargá la superficie en{" "}
+            <Link href={`/obras/${obra.slug}/editar`} style={enlace}>
+              Editar obra
+            </Link>{" "}
+            y el valor del m² se calcula solo.
+          </p>
+        ) : (
+          <>
+            <table style={ui.table}>
+              <tbody>
+                <tr>
+                  <td style={ui.td}>
+                    Objetivo al arrancar
+                    <span style={aclaracion}>
+                      {m2.objetivo === null
+                        ? "Cargalo en Editar obra para poder comparar."
+                        : "Lo que se planeó pagar por metro. Es el número contra el que se mide todo lo demás."}
+                    </span>
+                  </td>
+                  <td style={{ ...ui.td, ...celdaNumero }}>
+                    {m2.objetivo === null
+                      ? "—"
+                      : `${formatUSD(m2.objetivo)} /m²`}
+                  </td>
+                </tr>
+
+                {m2.aprobado !== null && (
+                  <tr>
+                    <td style={ui.td}>Según cotizaciones aprobadas</td>
+                    <td style={{ ...ui.td, ...celdaNumero }}>
+                      {formatUSD(m2.aprobado)} /m²
+                    </td>
+                  </tr>
+                )}
+
+                <tr>
+                  <td style={ui.td}>
+                    Llevás gastado
+                    <span style={aclaracion}>
+                      {formatUSD(totales.gastadoUsd)} repartidos en los{" "}
+                      {obra.superficie_m2} m².{" "}
+                      {avance > 0 && avance < 100
+                        ? `Va a subir: falta el ${100 - avance}% de la obra.`
+                        : "Es plata ya pagada, no una estimación."}
+                    </span>
+                  </td>
+                  <td style={{ ...ui.td, ...celdaNumero }}>
+                    {formatUSD(m2.gastado ?? 0)} /m²
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style={ui.td}>
+                    Si sigue a este ritmo, termina en
+                    <span style={aclaracion}>
+                      {m2.proyectado === null
+                        ? "Hace falta algún avance cargado para poder proyectar."
+                        : `Con ${formatUSD(totales.gastadoUsd)} se hizo el ${avance}%, así que la obra entera saldría ${formatUSD(
+                            totales.gastadoUsd / (avance / 100)
+                          )}.`}
+                    </span>
+                  </td>
+                  <td style={{ ...ui.td, ...celdaNumero }}>
+                    {m2.proyectado === null ? (
+                      "—"
+                    ) : (
+                      <>
+                        <strong style={numeroProyectado}>
+                          {formatUSD(m2.proyectado)} /m²
+                        </strong>
+                        {m2.desvioUsd !== null && (
+                          <span
+                            style={
+                              m2.desvioUsd > 0
+                                ? { ...desvioTexto, ...textoAlerta }
+                                : desvioTexto
+                            }
+                          >
+                            {m2.desvioUsd > 0 ? "+" : "−"}
+                            {formatUSD(Math.abs(m2.desvioUsd))} /m² contra el
+                            objetivo
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {lecturaM2 && (
+              <p
+                style={
+                  lecturaM2.caro
+                    ? { ...lecturaDesvio, ...lecturaMala }
+                    : lecturaDesvio
+                }
+              >
+                {lecturaM2.texto}
+                {m2.desvioTotal !== null && Math.abs(m2.desvioTotal) >= 1 && (
+                  <span style={desvioTotalTexto}>
+                    {formatUSD(Math.abs(m2.desvioTotal))} en toda la obra
+                    {m2.desvioPorcentaje !== null &&
+                      ` · ${m2.desvioPorcentaje > 0 ? "+" : ""}${m2.desvioPorcentaje}%`}
+                  </span>
+                )}
+              </p>
+            )}
+
+            <p style={aclaracionPie}>
+              Cada gasto se valúa al dólar de su fecha, así que el total sale al
+              dólar promedio real de la obra y no a una cotización única.
+              {totales.sinCotizar > 0 &&
+                ` ${totales.sinCotizar} movimiento${
+                  totales.sinCotizar === 1 ? "" : "s"
+                } sin cotización quedan afuera del cálculo.`}
+            </p>
+          </>
+        )}
       </section>
 
       {/* --- Los rubros ---------------------------------------------------- */}
@@ -304,4 +492,58 @@ const tituloActividad = {
 const enlace = {
   color: "#111111",
   textDecoration: "underline",
+};
+
+const ficha = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "40px",
+};
+
+const fichaValor = {
+  fontSize: "18px",
+  fontWeight: 400,
+  display: "block",
+  marginTop: "6px",
+};
+
+const superficieTexto = {
+  fontSize: "14px",
+  color: "#777777",
+};
+
+const celdaNumero = {
+  textAlign: "right" as const,
+};
+
+const numeroProyectado = {
+  fontSize: "18px",
+  fontWeight: 400,
+};
+
+const aclaracion = {
+  display: "block",
+  fontSize: "13px",
+  color: "#999999",
+  marginTop: "4px",
+};
+
+const desvioTotalTexto = {
+  display: "block",
+  fontSize: "14px",
+  color: "#777777",
+  marginTop: "6px",
+};
+
+const aclaracionPie = {
+  fontSize: "13px",
+  color: "#999999",
+  marginTop: "16px",
+};
+
+const desvioTexto = {
+  display: "block",
+  fontSize: "13px",
+  color: "#777777",
+  marginTop: "4px",
 };

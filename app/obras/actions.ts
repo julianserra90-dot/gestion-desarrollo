@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { normalizar } from "@/lib/ambitos";
+import { eliminarArchivo } from "@/lib/drive";
 import { createClient } from "@/lib/supabase/server";
 
 type Socio = { empresa_id: string; porcentaje: number };
@@ -135,6 +137,137 @@ export async function eliminarObra(formData: FormData) {
   redirect("/");
 }
 
+/**
+ * Borra una obra archivada con todo lo que cuelga de ella: gastos, ingresos,
+ * presupuestos, avances, fotos, documentos y los archivos en Drive.
+ *
+ * Dos candados a propósito, porque esto no se deshace:
+ *
+ *   1. Sólo obras archivadas. Archivar es la decisión reversible; obligar a
+ *      pasar por ahí primero evita que un clic se lleve una obra viva.
+ *   2. Hay que escribir el nombre de la obra. Un botón rojo se aprieta sin
+ *      leer; el nombre no se tipea por accidente.
+ *
+ * Recién con la obra vacía se libera lo que quedaba enganchado a ella: las
+ * empresas que sólo participaban acá pasan a poder borrarse.
+ */
+export async function eliminarObraConTodo(formData: FormData) {
+  const obraId = String(formData.get("obra_id") ?? "");
+  const slug = String(formData.get("slug") ?? "");
+  const confirmacion = String(formData.get("confirmacion") ?? "").trim();
+
+  const volverAEditar = (mensaje: string): never =>
+    volverCon(`/obras/${slug}/editar`, mensaje);
+
+  const supabase = await createClient();
+
+  const { data: obra } = await supabase
+    .from("obras")
+    .select("nombre, archivada_en")
+    .eq("id", obraId)
+    .maybeSingle();
+
+  if (!obra) {
+    volverCon("/", "La obra no existe o no tenés permiso para verla.");
+    return;
+  }
+
+  if (!obra.archivada_en) {
+    volverAEditar(
+      "Archivá la obra antes de borrarla definitivamente. Es la única forma de que un borrado así sea deliberado."
+    );
+    return;
+  }
+
+  if (normalizar(confirmacion) !== normalizar(obra.nombre)) {
+    volverAEditar(
+      `Para borrarla hay que escribir el nombre exacto de la obra: ${obra.nombre}`
+    );
+    return;
+  }
+
+  // ---- Los archivos de Drive, antes de perder las filas que los referencian --
+
+  const [{ data: registros }, { data: documentos }] = await Promise.all([
+    supabase.from("foto_registros").select("id").eq("obra_id", obraId),
+    supabase.from("documentos").select("id").eq("obra_id", obraId),
+  ]);
+
+  const registroIds = (registros ?? []).map((r) => r.id);
+  const documentoIds = (documentos ?? []).map((d) => d.id);
+
+  const [
+    { data: fotos },
+    { data: adjuntos },
+    { data: gastos },
+    { data: ingresos },
+    { data: presupuestos },
+  ] = await Promise.all([
+    registroIds.length > 0
+      ? supabase.from("fotos").select("drive_file_id").in("registro_id", registroIds)
+      : Promise.resolve({ data: [] }),
+    documentoIds.length > 0
+      ? supabase
+          .from("documento_archivos")
+          .select("drive_file_id")
+          .in("documento_id", documentoIds)
+      : Promise.resolve({ data: [] }),
+    supabase.from("gastos").select("comprobante_drive_id").eq("obra_id", obraId),
+    supabase.from("ingresos").select("comprobante_drive_id").eq("obra_id", obraId),
+    supabase
+      .from("presupuestos")
+      .select("comprobante_drive_id")
+      .eq("obra_id", obraId),
+  ]);
+
+  const enDrive = [
+    ...(fotos ?? []).map((f) => f.drive_file_id),
+    ...(adjuntos ?? []).map((a) => a.drive_file_id),
+    ...(gastos ?? []).map((g) => g.comprobante_drive_id),
+    ...(ingresos ?? []).map((i) => i.comprobante_drive_id),
+    ...(presupuestos ?? []).map((p) => p.comprobante_drive_id),
+  ].filter((id): id is string => Boolean(id));
+
+  // ---- Las filas ------------------------------------------------------------
+  //
+  // El orden importa: gastos, presupuestos y avances apuntan a rubros con
+  // `on delete restrict`, así que tienen que irse antes de que el borrado de la
+  // obra se lleve los rubros por cascada.
+
+  const enOrden = [
+    "gastos",
+    "presupuestos",
+    "avances",
+    "documentos",
+    "foto_registros",
+    "ingresos",
+    "obra_socios",
+  ] as const;
+
+  for (const tabla of enOrden) {
+    const { error } = await supabase.from(tabla).delete().eq("obra_id", obraId);
+
+    if (error) {
+      volverAEditar(`No se pudo borrar ${tabla}: ${error.message}`);
+      return;
+    }
+  }
+
+  const { error } = await supabase.from("obras").delete().eq("id", obraId);
+
+  if (error) {
+    volverAEditar(error.message);
+    return;
+  }
+
+  // Recién ahora Drive: si algo de arriba falla, los archivos siguen ahí y la
+  // obra se puede volver a intentar. Al revés quedarían huérfanos.
+  await Promise.all(enDrive.map((id) => eliminarArchivo(id).catch(() => {})));
+
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
 // ============================== helpers =====================================
 
 function leerDatosObra(formData: FormData) {
@@ -144,6 +277,10 @@ function leerDatosObra(formData: FormData) {
   };
 
   const presupuesto = String(formData.get("presupuesto") ?? "").trim();
+  const superficie = String(formData.get("superficie_m2") ?? "").trim();
+  const valorM2 = String(formData.get("valor_m2_usd") ?? "").trim();
+  const unidades = String(formData.get("unidades_funcionales") ?? "").trim();
+  const pisos = String(formData.get("pisos") ?? "").trim();
 
   return {
     nombre: String(formData.get("nombre") ?? "").trim(),
@@ -152,6 +289,11 @@ function leerDatosObra(formData: FormData) {
     fecha_inicio: texto("fecha_inicio"),
     fecha_fin_estimada: texto("fecha_fin_estimada"),
     presupuesto: presupuesto === "" ? null : Number(presupuesto),
+    superficie_m2: superficie === "" ? null : Number(superficie),
+    valor_m2_usd: valorM2 === "" ? null : Number(valorM2),
+    domicilio: texto("domicilio"),
+    unidades_funcionales: unidades === "" ? null : Number(unidades),
+    pisos: pisos === "" ? null : Number(pisos),
   };
 }
 

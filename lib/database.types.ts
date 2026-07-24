@@ -708,38 +708,53 @@ export type Database = {
         Row: {
           archivada_en: string | null
           creado_en: string
+          domicilio: string | null
           estado: string
           fecha_fin_estimada: string | null
           fecha_inicio: string | null
           id: string
           nombre: string
+          pisos: number | null
           presupuesto: number | null
           slug: string
+          superficie_m2: number | null
           ubicacion: string | null
+          unidades_funcionales: number | null
+          valor_m2_usd: number | null
         }
         Insert: {
           archivada_en?: string | null
           creado_en?: string
+          domicilio?: string | null
           estado?: string
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
           nombre: string
+          pisos?: number | null
           presupuesto?: number | null
           slug: string
+          superficie_m2?: number | null
           ubicacion?: string | null
+          unidades_funcionales?: number | null
+          valor_m2_usd?: number | null
         }
         Update: {
           archivada_en?: string | null
           creado_en?: string
+          domicilio?: string | null
           estado?: string
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
           nombre?: string
+          pisos?: number | null
           presupuesto?: number | null
           slug?: string
+          superficie_m2?: number | null
           ubicacion?: string | null
+          unidades_funcionales?: number | null
+          valor_m2_usd?: number | null
         }
         Relationships: []
       }

@@ -8,6 +8,7 @@ import {
   archivarObra,
   desarchivarObra,
   eliminarObra,
+  eliminarObraConTodo,
 } from "../../actions";
 
 export default async function EditarObraPage({
@@ -24,7 +25,7 @@ export default async function EditarObraPage({
   const { data: obra } = await supabase
     .from("obras")
     .select(
-      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada, presupuesto, archivada_en"
+      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada, presupuesto, superficie_m2, valor_m2_usd, domicilio, unidades_funcionales, pisos, archivada_en"
     )
     .eq("slug", obraId)
     .maybeSingle();
@@ -161,7 +162,7 @@ export default async function EditarObraPage({
             </form>
           )}
 
-          {sePuedeBorrar ? (
+          {sePuedeBorrar && (
             <form action={eliminarObra}>
               <input type="hidden" name="obra_id" value={obra.id} />
               <input type="hidden" name="slug" value={obra.slug} />
@@ -169,14 +170,58 @@ export default async function EditarObraPage({
                 Eliminar definitivamente
               </button>
             </form>
-          ) : (
+          )}
+
+          {!sePuedeBorrar && !obra.archivada_en && (
             <p style={notaBloqueo}>
               El borrado definitivo está bloqueado porque la obra tiene datos
-              cargados. Archivala: sale del listado y no se pierde nada.
+              cargados. Archivala: sale del listado y no se pierde nada. Si
+              después querés borrarla de verdad, se puede desde ahí.
             </p>
           )}
         </div>
       </section>
+
+      {!sePuedeBorrar && obra.archivada_en && (
+        <section style={panelRiesgo}>
+          <h3 style={sectionTitle}>Borrar la obra con todo adentro</h3>
+
+          <p style={text}>
+            Esta obra está archivada. Borrarla se lleva{" "}
+            {registros
+              .filter((r) => r.cantidad > 0)
+              .map((r) => `${r.cantidad} ${r.etiqueta}`)
+              .join(", ")}
+            , los ingresos, los presupuestos y los archivos en Drive.{" "}
+            <strong>No se puede deshacer.</strong>
+          </p>
+
+          <p style={text}>
+            Sirve para descartar una obra de prueba, y libera lo que quedaba
+            enganchado a ella: las empresas que sólo participaban acá pasan a
+            poder eliminarse desde{" "}
+            <Link href="/empresas" style={enlaceEmpresas}>
+              Empresas
+            </Link>
+            .
+          </p>
+
+          <form action={eliminarObraConTodo} style={inlineForm}>
+            <input type="hidden" name="obra_id" value={obra.id} />
+            <input type="hidden" name="slug" value={obra.slug} />
+            <input
+              type="text"
+              name="confirmacion"
+              placeholder={`Escribí: ${obra.nombre}`}
+              required
+              style={input}
+            />
+            <button type="submit" style={botonPeligro}>
+              Borrar con todo
+            </button>
+          </form>
+        </section>
+      )}
     </AppShell>
   );
 }
@@ -263,6 +308,11 @@ const notaBloqueo = {
   fontSize: "14px",
   margin: 0,
   maxWidth: "520px",
+};
+
+const enlaceEmpresas = {
+  color: "#111111",
+  textDecoration: "underline",
 };
 
 const inlineForm = {
