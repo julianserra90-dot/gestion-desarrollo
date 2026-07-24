@@ -1,7 +1,8 @@
 # Gestión de desarrollo
 
-App para seguir obras entre varias empresas socias: gastos, avances, fotos,
-documentos y el saldo que queda entre las socias.
+App para seguir obras entre varias empresas socias: presupuestos, gastos,
+ingresos de fondos, avances, fotos, documentos y el saldo que queda entre las
+socias.
 
 ## Cómo está armado
 
@@ -14,6 +15,68 @@ Los archivos no se guardan en la base: van a un Drive propio de la aplicación,
 ordenados en `Gestión de desarrollo / <obra> / <fotos|documentos|comprobantes>`.
 En la base sólo queda el id del archivo. Nadie entra al Drive directamente: la
 app verifica los permisos sobre la obra antes de servir cada archivo.
+
+## Qué hace cada solapa de una obra
+
+| Solapa | Para qué |
+| --- | --- |
+| **Economía** | Balance entre socias, liquidación sugerida, en qué se gastó |
+| **Presupuestos** | Cotizaciones por rubro; se aprueba la elegida |
+| **Gastos** | Cada gasto por el 100%, repartido según participación |
+| **Ingresos** | Plata que entra: aportes de socias, inversores, compradores |
+| **Dinero en cuenta** | Lo disponible para gastar, en pesos y en dólares |
+| **Dólares** | Todo valuado al dólar de la fecha de cada movimiento |
+| **Avances** | Seguimiento físico por rubro, con fotos asociadas |
+| **Fotos** / **Documentos** | Archivos de obra, en Drive |
+| **Rubros** | Qué rubros usa esta obra |
+
+### Rubros
+
+Cada obra tiene el catálogo entero disponible y **marca cuáles usa**. Los
+desplegables de gastos, avances y fotos ofrecen sólo los marcados. Desmarcar no
+borra nada: un rubro con gastos cargados sigue mostrándolos, sólo deja de
+ofrecerse para cargar cosas nuevas.
+
+Al lado de cada rubro, en **Presupuestos**, se marca si lleva materiales, mano
+de obra o las dos. No todo rubro lleva ambas: el terreno se compra y listo, una
+demolición es puro trabajo, y los revestimientos se compran aparte de quien los
+coloca.
+
+### Presupuestos
+
+Cada rubro se cotiza por separado para materiales y para mano de obra: pueden
+entrar varias cotizaciones por bloque y se aprueba una, la elegida. A partir de
+ahí los gastos de ese rubro se comparan contra lo cotizado, y el formulario
+avisa cuando se pasa —**avisa, no frena**: siempre puede aparecer una compra de
+urgencia que nadie cotizó.
+
+Conviven dos números: el **presupuesto estimado** (el que se carga a mano en
+Editar obra, calculado antes de arrancar) y el **presupuesto real** (la suma de
+las cotizaciones aprobadas, que se arma a medida que la obra avanza).
+
+### Dinero en cuenta
+
+La cuenta de la obra tiene **dos lados que no se mezclan**: los pesos que entran
+quedan como pesos y los dólares como dólares, hasta que se usen. Recién al pagar
+un gasto se define a cuánto se vendieron esos dólares, que rara vez es el
+oficial —por eso hay cotización personalizada.
+
+Al pagar un gasto se elige cuánto sale de cada lado. Si el saldo no llega, la
+cuenta pone lo que tiene y la diferencia queda a cargo de una socia, calculada
+sola.
+
+Reglas contables, que conviene tener presentes:
+
+- El aporte de una socia **cuenta como aporte suyo**, igual que si hubiera
+  pagado gastos por ese monto. Por eso lo que se paga con la cuenta no se le
+  atribuye a nadie: contarlo dos veces inflaría lo que puso.
+- Lo que ponen inversores y compradores **baja el gasto que se reparten** las
+  socias.
+- Si los dólares se venden mejor que el día que entraron, esa diferencia le
+  rinde a la obra y beneficia a todas según su porcentaje.
+
+Consecuencia: **la suma de los saldos ya no da cero**, da la plata de las socias
+que todavía está en la cuenta. Cuando la cuenta se vacía, vuelve a dar cero.
 
 ## Levantarlo en otra computadora
 
@@ -55,23 +118,52 @@ Con eso ya arranca:
 npm run dev
 ```
 
-## Verificar que todo esté conectado
+## Trabajar en dos computadoras
+
+La base y los archivos son los mismos para las dos: viven en Supabase y en
+Drive. Lo único que hay que sincronizar es el código.
+
+**Al sentarse a trabajar**, antes que nada:
 
 ```bash
-node --experimental-strip-types scripts/probar-drive.mjs
+git pull
 ```
 
-Confirma que las credenciales de Drive funcionan y crea la carpeta raíz si
-falta. Para probar además que se puedan subir y bajar archivos:
+**Al terminar**, para que la otra máquina lo tenga:
 
 ```bash
-node --experimental-strip-types scripts/probar-subida.mjs
+git add -A
+git commit -m "qué se hizo"
+git push
 ```
+
+Si `npm install` hace falta lo va a decir el propio arranque (o si cambió
+`package.json` en el pull).
+
+### Cuando cambia el esquema de la base
+
+La base es una sola y está en la nube, así que **una migración se aplica una vez
+y desde cualquiera de las dos máquinas**. La otra sólo necesita el `git pull`
+para tener el archivo `.sql` y los tipos actualizados.
+
+El orden importa:
+
+1. Se escribe la migración en `supabase/migrations/`
+2. Se aplica: `npx supabase db push`
+3. Se regeneran los tipos: `npx supabase gen types typescript --linked > lib/database.types.ts`
+4. Se commitea todo junto: el `.sql` y `lib/database.types.ts`
+
+Si se commitea la migración sin aplicarla, la otra máquina va a tener código que
+pide columnas que no existen. Si se aplica sin commitear los tipos, la otra
+máquina no compila.
+
+Cuando el `git pull` trae migraciones nuevas **ya aplicadas** por la otra
+máquina, no hay que hacer nada: la base ya las tiene.
 
 ## Base de datos
 
 El esquema está versionado en `supabase/migrations/`. Para aplicar cambios
-nuevos a la base:
+nuevos:
 
 ```bash
 npx supabase db push
@@ -89,6 +181,26 @@ Después de tocar el esquema, hay que regenerar los tipos de TypeScript:
 
 ```bash
 npx supabase gen types typescript --linked > lib/database.types.ts
+```
+
+Dos cosas que hicieron fallar migraciones y conviene recordar:
+
+- `create or replace view` **sólo deja agregar columnas al final**. Meter una en
+  el medio Postgres lo lee como un renombre y lo rechaza.
+- Antes de borrar una columna hay que borrar **todo lo que dependa de ella**:
+  vistas, y también los triggers declarados con `update of <columna>`.
+
+## Verificar que todo esté conectado
+
+```bash
+node --experimental-strip-types scripts/probar-drive.mjs
+```
+
+Confirma que las credenciales de Drive funcionan y crea la carpeta raíz si
+falta. Para probar además que se puedan subir y bajar archivos:
+
+```bash
+node --experimental-strip-types scripts/probar-subida.mjs
 ```
 
 ## Usuarios
