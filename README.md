@@ -27,7 +27,8 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 | **Dinero en cuenta** | Lo disponible para gastar, en pesos y en dólares |
 | **Dólares** | Todo valuado al dólar de la fecha de cada movimiento |
 | **Avances** | Seguimiento físico por rubro, con fotos asociadas |
-| **Fotos** / **Documentos** | Archivos de obra, en Drive |
+| **Documentos** | Planos y papeles, por ámbito y rubro, versionados |
+| **Fotos** | Archivos de obra, en Drive |
 | **Rubros** | Qué rubros usa esta obra |
 
 ### Rubros
@@ -53,6 +54,36 @@ urgencia que nadie cotizó.
 Conviven dos números: el **presupuesto estimado** (el que se carga a mano en
 Editar obra, calculado antes de arrancar) y el **presupuesto real** (la suma de
 las cotizaciones aprobadas, que se arma a medida que la obra avanza).
+
+### Documentos
+
+Un documento se clasifica por **dos ejes que no se mezclan**. El **ámbito** dice
+para qué sirve el papel; el **rubro**, de qué parte de la obra habla.
+
+| Ámbito | Qué va | Cómo se archiva |
+| --- | --- | --- |
+| **De obra** | Lo que se usa para construir: planos de obra, detalles, planillas | por rubro |
+| **De proyecto** | Lo que define el proyecto: anteproyecto, plantas, cortes, vistas | por rubro |
+| **Administrativa** | Avisos de obra, planos municipales, seguros, contratos | por título |
+
+Lo administrativo no lleva rubro a propósito: un seguro no es de albañilería. En
+su lugar lleva un título que se escribe la primera vez y después se ofrece solo,
+armado de lo ya cargado en vez de un catálogo que alguien tenga que mantener.
+
+Así, *el último plano de albañilería* se navega **De obra → Albañilería → V03**.
+
+Un documento puede tener **varios archivos**: el mismo plano en PDF y en DWG es
+un documento con dos adjuntos, no dos documentos sueltos.
+
+#### Versiones
+
+Al subir una versión se aprieta **Nueva versión** sobre el documento viejo, y
+ese queda **Obsoleto** solo. No es cosmético: dos versiones "Vigentes" del mismo
+plano conviviendo es justo lo que hace que alguien termine construyendo con el
+plano viejo. Lo obsoleto no se borra —se esconde de la lista y está a un clic.
+
+El encadenado es explícito (cada documento guarda de cuál es continuación), no
+adivinado por nombre, así que un plano renombrado no rompe la cadena.
 
 ### Dinero en cuenta
 

@@ -19,15 +19,15 @@ export async function buscarArchivoVisible(
 ): Promise<ArchivoVisible | null> {
   const supabase = await createClient();
 
-  const [foto, documento, gasto] = await Promise.all([
+  const [foto, adjunto, gasto] = await Promise.all([
     supabase
       .from("fotos")
       .select("nombre, mime_type")
       .eq("drive_file_id", fileId)
       .maybeSingle(),
     supabase
-      .from("documentos")
-      .select("nombre, tipo, mime_type")
+      .from("documento_archivos")
+      .select("nombre, mime_type")
       .eq("drive_file_id", fileId)
       .maybeSingle(),
     supabase
@@ -44,16 +44,12 @@ export async function buscarArchivoVisible(
     };
   }
 
-  if (documento.data) {
-    // El nombre visible del documento no trae extensión; se la agrega desde el
-    // tipo para que el archivo descargado abra con el programa correcto.
-    const base = documento.data.nombre ?? "documento";
-    const ext = documento.data.tipo?.toLowerCase();
-    const yaTiene = ext && base.toLowerCase().endsWith(`.${ext}`);
-
+  if (adjunto.data) {
+    // Los adjuntos guardan el nombre con extensión, tal como se subieron, así
+    // que el archivo baja listo para abrir con el programa correcto.
     return {
-      nombre: ext && !yaTiene ? `${base}.${ext}` : base,
-      mimeType: documento.data.mime_type,
+      nombre: adjunto.data.nombre ?? "documento",
+      mimeType: adjunto.data.mime_type,
     };
   }
 

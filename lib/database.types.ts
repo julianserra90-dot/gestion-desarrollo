@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -121,56 +121,94 @@ export type Database = {
           },
         ]
       }
-      documentos: {
+      documento_archivos: {
         Row: {
-          categoria: string | null
           creado_en: string
-          drive_file_id: string | null
-          estado: string
-          fecha: string
+          documento_id: string
+          drive_file_id: string
           id: string
           mime_type: string | null
           nombre: string
-          obra_id: string
-          storage_path: string | null
-          subido_por: string | null
-          subido_por_nombre: string | null
           tamano: number | null
           tipo: string | null
-          version: string | null
         }
         Insert: {
-          categoria?: string | null
           creado_en?: string
-          drive_file_id?: string | null
-          estado?: string
-          fecha?: string
+          documento_id: string
+          drive_file_id: string
           id?: string
           mime_type?: string | null
           nombre: string
-          obra_id: string
-          storage_path?: string | null
-          subido_por?: string | null
-          subido_por_nombre?: string | null
           tamano?: number | null
           tipo?: string | null
-          version?: string | null
         }
         Update: {
-          categoria?: string | null
           creado_en?: string
-          drive_file_id?: string | null
-          estado?: string
-          fecha?: string
+          documento_id?: string
+          drive_file_id?: string
           id?: string
           mime_type?: string | null
           nombre?: string
-          obra_id?: string
+          tamano?: number | null
+          tipo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documento_archivos_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documentos: {
+        Row: {
+          ambito: string
+          creado_en: string
+          estado: string
+          fecha: string
+          id: string
+          nombre: string
+          obra_id: string
+          reemplaza_a: string | null
+          rubro_id: string | null
+          storage_path: string | null
+          subido_por: string | null
+          subido_por_nombre: string | null
+          titulo: string | null
+          version: string | null
+        }
+        Insert: {
+          ambito: string
+          creado_en?: string
+          estado?: string
+          fecha?: string
+          id?: string
+          nombre: string
+          obra_id: string
+          reemplaza_a?: string | null
+          rubro_id?: string | null
           storage_path?: string | null
           subido_por?: string | null
           subido_por_nombre?: string | null
-          tamano?: number | null
-          tipo?: string | null
+          titulo?: string | null
+          version?: string | null
+        }
+        Update: {
+          ambito?: string
+          creado_en?: string
+          estado?: string
+          fecha?: string
+          id?: string
+          nombre?: string
+          obra_id?: string
+          reemplaza_a?: string | null
+          rubro_id?: string | null
+          storage_path?: string | null
+          subido_por?: string | null
+          subido_por_nombre?: string | null
+          titulo?: string | null
           version?: string | null
         }
         Relationships: [
@@ -193,6 +231,27 @@ export type Database = {
             columns: ["obra_id"]
             isOneToOne: false
             referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_reemplaza_a_fkey"
+            columns: ["reemplaza_a"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
+          },
+          {
+            foreignKeyName: "documentos_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "rubros"
             referencedColumns: ["id"]
           },
           {
