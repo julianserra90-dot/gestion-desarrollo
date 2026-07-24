@@ -45,8 +45,8 @@ export type Database = {
           actualizado_por: string | null
           actualizado_por_nombre: string | null
           comentario: string | null
-          estado: string
-          fecha: string
+          fecha_desde: string
+          fecha_hasta: string
           id: string
           obra_id: string
           porcentaje: number
@@ -57,8 +57,8 @@ export type Database = {
           actualizado_por?: string | null
           actualizado_por_nombre?: string | null
           comentario?: string | null
-          estado?: string
-          fecha?: string
+          fecha_desde?: string
+          fecha_hasta?: string
           id?: string
           obra_id: string
           porcentaje?: number
@@ -69,8 +69,8 @@ export type Database = {
           actualizado_por?: string | null
           actualizado_por_nombre?: string | null
           comentario?: string | null
-          estado?: string
-          fecha?: string
+          fecha_desde?: string
+          fecha_hasta?: string
           id?: string
           obra_id?: string
           porcentaje?: number

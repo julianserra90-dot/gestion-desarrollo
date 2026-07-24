@@ -26,7 +26,7 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 | **Ingresos** | Plata que entra: aportes de socias, inversores, compradores |
 | **Dinero en cuenta** | Lo disponible para gastar, en pesos y en dólares |
 | **Dólares** | Todo valuado al dólar de la fecha de cada movimiento |
-| **Avances** | Seguimiento físico por rubro, con fotos asociadas |
+| **Avances** | Historial de avance por rubro, período a período |
 | **Documentos** | Planos y papeles, por ámbito y rubro, versionados |
 | **Fotos** | Archivos de obra, en Drive |
 | **Rubros** | Qué rubros usa esta obra |
@@ -54,6 +54,29 @@ urgencia que nadie cotizó.
 Conviven dos números: el **presupuesto estimado** (el que se carga a mano en
 Editar obra, calculado antes de arrancar) y el **presupuesto real** (la suma de
 las cotizaciones aprobadas, que se arma a medida que la obra avanza).
+
+### Avances
+
+Se entra a un rubro y se carga **cuánto se avanzó en esos días**, no el total.
+El acumulado lo arma la suma:
+
+```
+Albañilería   22/07 - 24/07   +20%   acumulado 20%   replanteo y mampostería PB
+              29/07 - 31/07   +15%   acumulado 35%   mampostería PA y dinteles
+```
+
+Cargar el incremento y no el total hace que cada fila responda **qué se hizo esa
+semana**, que es la pregunta que se hace en obra. Queda el historial completo:
+antes había una sola fila por rubro y actualizarla borraba lo anterior.
+
+El **estado no se elige**: sale del acumulado —0% sin iniciar, 100% finalizado,
+en el medio en ejecución—. Guardarlo aparte dejaba rubros diciendo "Sin iniciar"
+con 40% cargado.
+
+El **avance general pondera cada rubro por lo que cuesta**, según las
+cotizaciones aprobadas en Presupuestos: demoler al 100% mueve mucho menos que
+albañilería al 50%. Sin cotizaciones aprobadas cae al promedio simple, para que
+una obra recién arrancada muestre algo.
 
 ### Documentos
 

@@ -2,9 +2,9 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
+import { avanceGeneral, getAvancePorRubro } from "@/lib/avances";
 import { formatDate } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
-import { createClient } from "@/lib/supabase/server";
 
 export default async function AvancesPage({
   params,
@@ -18,48 +18,13 @@ export default async function AvancesPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const supabase = await createClient();
+  const rubros = await getAvancePorRubro(obra.id);
+  const general = avanceGeneral(rubros);
 
-  const [{ data: avances }, { data: registros }] = await Promise.all([
-    supabase
-      .from("avances")
-      .select(
-        "id, porcentaje, estado, comentario, fecha, actualizado_por_nombre, rubro_id, rubros(nombre, orden, activo)"
-      )
-      .eq("obra_id", obra.id),
-    supabase
-      .from("foto_registros")
-      .select("rubro_id, fotos(count)")
-      .eq("obra_id", obra.id),
-  ]);
-
-  // Sólo los rubros que la obra usa. Los desmarcados conservan su avance por
-  // si se vuelven a marcar, pero no ensucian el seguimiento.
-  const lista = (avances ?? [])
-    .filter((a) => a.rubros?.activo)
-    .sort((a, b) => (a.rubros?.orden ?? 0) - (b.rubros?.orden ?? 0));
-
-  // Las fotos asociadas a un rubro son las de todos sus registros fotográficos.
-  const fotosPorRubro = new Map<string, number>();
-  for (const registro of registros ?? []) {
-    if (!registro.rubro_id) continue;
-    const cantidad = registro.fotos?.[0]?.count ?? 0;
-    fotosPorRubro.set(
-      registro.rubro_id,
-      (fotosPorRubro.get(registro.rubro_id) ?? 0) + cantidad
-    );
-  }
-
-  const avancePromedio =
-    lista.length > 0
-      ? Math.round(lista.reduce((acc, a) => acc + a.porcentaje, 0) / lista.length)
-      : 0;
-
-  const finalizados = lista.filter((a) => a.estado === "Finalizado").length;
-  const activos = lista.filter(
-    (a) => a.estado === "En ejecución" || a.estado === "Inicial"
-  ).length;
-  const totalFotos = [...fotosPorRubro.values()].reduce((a, b) => a + b, 0);
+  const enEjecucion = rubros.filter((r) => r.estado === "En ejecución").length;
+  const finalizados = rubros.filter((r) => r.estado === "Finalizado").length;
+  const sinIniciar = rubros.filter((r) => r.estado === "Sin iniciar").length;
+  const ponderado = rubros.some((r) => r.peso > 0);
 
   return (
     <AppShell>
@@ -69,41 +34,43 @@ export default async function AvancesPage({
         <p style={ui.eyebrow}>Seguimiento de obra</p>
         <h2 style={ui.pageTitle}>Avances</h2>
         <p style={ui.subtitle}>
-          Seguimiento físico por rubro, con comentarios técnicos y fotos
-          asociadas.
+          Entrá a un rubro para cargar lo que se avanzó y ver su historial
+          semana a semana.
         </p>
       </section>
 
       <section style={ui.statsGrid}>
         <div style={ui.statCard}>
           <p style={ui.label}>Avance general</p>
-          <h3 style={ui.statNumber}>{avancePromedio}%</h3>
+          <h3 style={ui.statNumber}>{general}%</h3>
         </div>
         <div style={ui.statCard}>
-          <p style={ui.label}>Rubros finalizados</p>
+          <p style={ui.label}>En ejecución</p>
+          <h3 style={ui.statNumber}>{enEjecucion}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Finalizados</p>
           <h3 style={ui.statNumber}>{finalizados}</h3>
         </div>
         <div style={ui.statCard}>
-          <p style={ui.label}>Rubros activos</p>
-          <h3 style={ui.statNumber}>{activos}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Fotos asociadas</p>
-          <h3 style={ui.statNumber}>{totalFotos}</h3>
+          <p style={ui.label}>Sin iniciar</p>
+          <h3 style={ui.statNumber}>{sinIniciar}</h3>
         </div>
       </section>
 
       <section style={ui.panelConMargen}>
-        <p style={ui.eyebrow}>Avance físico promedio</p>
+        <p style={ui.eyebrow}>Avance físico</p>
         <h3 style={{ ...ui.pageTitle, marginTop: "8px" }}>
-          {avancePromedio}% ejecutado
+          {general}% ejecutado
         </h3>
         <p style={ui.subtitle}>
-          Surge del promedio de avance de los rubros cargados.
+          {ponderado
+            ? "Cada rubro pesa lo que cuesta, según las cotizaciones aprobadas en Presupuestos."
+            : "Promedio simple de los rubros: todavía no hay cotizaciones aprobadas con qué ponderar."}
         </p>
 
         <div style={{ ...ui.progressBackground, marginTop: "20px" }}>
-          <div style={{ ...ui.progressFill, width: `${avancePromedio}%` }} />
+          <div style={{ ...ui.progressFill, width: `${Math.min(general, 100)}%` }} />
         </div>
       </section>
 
@@ -111,7 +78,7 @@ export default async function AvancesPage({
         <h3 style={ui.sectionTitle}>Avance por rubro</h3>
       </div>
 
-      {lista.length === 0 ? (
+      {rubros.length === 0 ? (
         <section style={ui.panel}>
           <p style={ui.vacio}>
             Esta obra no tiene rubros elegidos, así que no hay nada que seguir.
@@ -124,43 +91,42 @@ export default async function AvancesPage({
         </section>
       ) : (
         <section style={listaAvances}>
-          {lista.map((avance) => (
-            <article key={avance.id} style={ui.panel}>
+          {rubros.map((rubro) => (
+            <Link
+              key={rubro.rubroId}
+              href={`/obras/${obra.slug}/avances/${rubro.rubroId}`}
+              style={tarjetaRubro}
+            >
               <div style={cabeceraAvance}>
                 <div>
-                  <p style={ui.eyebrow}>{avance.estado}</p>
-                  <h3 style={tituloRubro}>{avance.rubros?.nombre ?? "Sin rubro"}</h3>
+                  <p style={ui.eyebrow}>{rubro.estado}</p>
+                  <h3 style={tituloRubro}>{rubro.nombre}</h3>
                 </div>
 
-                <strong style={porcentaje}>{avance.porcentaje}%</strong>
+                <strong style={porcentaje}>{rubro.acumulado}%</strong>
               </div>
 
               <div style={ui.progressBackground}>
                 <div
-                  style={{ ...ui.progressFill, width: `${avance.porcentaje}%` }}
+                  style={{
+                    ...ui.progressFill,
+                    width: `${Math.min(rubro.acumulado, 100)}%`,
+                  }}
                 />
               </div>
 
-              {avance.comentario && (
-                <p style={{ ...ui.note, marginTop: "16px" }}>
-                  {avance.comentario}
-                </p>
-              )}
-
               <div style={pieAvance}>
                 <span>
-                  {formatDate(avance.fecha)} · {avance.actualizado_por_nombre ?? "—"} ·{" "}
-                  {fotosPorRubro.get(avance.rubro_id) ?? 0} fotos
+                  {rubro.cantCargas === 0
+                    ? "Sin cargas todavía"
+                    : `${rubro.cantCargas} ${
+                        rubro.cantCargas === 1 ? "carga" : "cargas"
+                      } · última al ${formatDate(rubro.ultimaFecha!)}`}
                 </span>
 
-                <Link
-                  href={`/obras/${obra.slug}/avances/${avance.id}/editar`}
-                  style={ui.secondaryButton}
-                >
-                  Editar
-                </Link>
+                <span style={verHistorial}>Ver historial</span>
               </div>
-            </article>
+            </Link>
           ))}
         </section>
       )}
@@ -171,6 +137,13 @@ export default async function AvancesPage({
 const listaAvances = {
   display: "grid",
   gap: "16px",
+};
+
+const tarjetaRubro = {
+  ...ui.panel,
+  display: "block",
+  color: "inherit",
+  textDecoration: "none",
 };
 
 const cabeceraAvance = {
@@ -192,6 +165,11 @@ const porcentaje = {
 };
 
 const enlaceRubros = {
+  color: "#111111",
+  textDecoration: "underline",
+};
+
+const verHistorial = {
   color: "#111111",
   textDecoration: "underline",
 };
