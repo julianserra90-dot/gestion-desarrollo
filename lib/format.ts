@@ -6,6 +6,16 @@ export function formatMoney(value: number | null | undefined) {
   }).format(value ?? 0);
 }
 
+export function formatUSD(valor: number | null | undefined) {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(valor);
+}
+
 /**
  * Pasa una fecha de Postgres ("2026-06-01") a formato local ("01/06/2026").
  *
