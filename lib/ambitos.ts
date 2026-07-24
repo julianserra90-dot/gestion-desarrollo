@@ -22,15 +22,46 @@ export function usaRubro(ambito: Ambito): boolean {
 }
 
 /**
- * La versión que sigue a la dada: V02 → V03. Si no tiene forma reconocible se
- * devuelve vacío y la escribe el usuario.
+ * Lo que identifica a un documento dentro de una obra: dónde está archivado y
+ * con qué nombre. Dos cargas con la misma identidad no son dos documentos, son
+ * dos versiones del mismo.
  */
-export function proximaVersion(version: string | null): string {
-  const match = version?.match(/^([A-Za-z]*)(\d+)$/);
-  if (!match) return "";
+export type LineaDocumento = {
+  ambito: Ambito;
+  rubroId: string | null;
+  titulo: string | null;
+  nombre: string;
+};
 
-  const [, prefijo, numero] = match;
-  const siguiente = String(Number(numero) + 1).padStart(numero.length, "0");
+/** Para comparar nombres sin que un espacio o una mayúscula abran una línea nueva. */
+export function normalizar(texto: string): string {
+  return texto.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
-  return `${prefijo}${siguiente}`;
+export function mismaLinea(a: LineaDocumento, b: LineaDocumento): boolean {
+  return (
+    a.ambito === b.ambito &&
+    a.rubroId === b.rubroId &&
+    normalizar(a.titulo ?? "") === normalizar(b.titulo ?? "") &&
+    normalizar(a.nombre) === normalizar(b.nombre)
+  );
+}
+
+/**
+ * La versión que le toca a una carga nueva, a partir de las que ya tiene esa
+ * línea: la primera es V01 y de ahí en más sigue el número más alto.
+ *
+ * No tiene nada que ver con la versión que el archivo traiga en su nombre. El
+ * DWG puede llamarse "Banquinas - V10" porque así lo numera quien lo dibuja;
+ * acá se cuenta cuántas veces ese documento se mandó a la obra.
+ */
+export function versionSiguiente(existentes: (string | null)[]): string {
+  const numeros = existentes
+    .map((v) => v?.match(/(\d+)/)?.[1])
+    .filter((n): n is string => Boolean(n))
+    .map(Number);
+
+  const proxima = numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
+
+  return `V${String(proxima).padStart(2, "0")}`;
 }

@@ -198,14 +198,22 @@ export default async function DocumentosPage({
                       )}
                     </td>
                     <td style={ui.td}>
-                      {doc.estado !== "Obsoleto" && (
+                      <div style={accionesFila}>
+                        {doc.estado !== "Obsoleto" && (
+                          <Link
+                            href={`/obras/${obra.slug}/documentos/nuevo?reemplaza=${doc.id}`}
+                            style={verLink}
+                          >
+                            Nueva versión
+                          </Link>
+                        )}
                         <Link
-                          href={`/obras/${obra.slug}/documentos/nuevo?reemplaza=${doc.id}`}
+                          href={`/obras/${obra.slug}/documentos/${doc.id}/editar`}
                           style={verLink}
                         >
-                          Nueva versión
+                          Editar
                         </Link>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -263,6 +271,13 @@ const tituloCarpeta = {
 const contadorCarpeta = {
   fontSize: "13px",
   color: "#999999",
+};
+
+const accionesFila = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "4px",
+  whiteSpace: "nowrap" as const,
 };
 
 const listaArchivos = {

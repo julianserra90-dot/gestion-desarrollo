@@ -3,9 +3,17 @@
 import Link from "next/link";
 import { useState } from "react";
 import * as ui from "@/components/ui";
-import { AMBITOS, type Ambito } from "@/lib/ambitos";
+import {
+  AMBITOS,
+  type Ambito,
+  mismaLinea,
+  versionSiguiente,
+} from "@/lib/ambitos";
 
-const ESTADOS = ["Vigente", "En revisión", "Obsoleto"];
+// Al cargar, Obsoleto no se elige: lo pone el sistema cuando llega la versión
+// que lo reemplaza. Al editar sí, que es la pantalla para arreglar errores.
+const ESTADOS = ["Vigente", "En revisión"];
+const ESTADOS_EDICION = ["Vigente", "En revisión", "Obsoleto"];
 
 const AYUDA: Record<Ambito, string> = {
   Obra: "Lo que se usa para construir: planos de obra, detalles constructivos, planillas.",
@@ -15,14 +23,30 @@ const AYUDA: Record<Ambito, string> = {
 
 export type RubroOpcionForm = { id: string; nombre: string };
 
-/** El documento del que esta carga es continuación, si es una versión nueva. */
-export type VersionAnterior = {
-  id: string;
+/** Lo ya cargado en la obra, para saber qué versión le toca a esta carga. */
+export type DocumentoCargado = {
   nombre: string;
   ambito: Ambito;
   rubroId: string | null;
   titulo: string | null;
   version: string | null;
+  estado: string;
+};
+
+/** De qué documento se precargó el formulario, si se vino desde uno. */
+export type Precarga = {
+  id: string;
+  nombre: string;
+  ambito: Ambito;
+  rubroId: string | null;
+  titulo: string | null;
+};
+
+/** El documento que se está corrigiendo, si esto es una edición. */
+export type DocumentoEnEdicion = Precarga & {
+  version: string | null;
+  estado: string;
+  fecha: string;
 };
 
 export default function SubirDocumentoForm({
@@ -31,42 +55,65 @@ export default function SubirDocumentoForm({
   slug,
   rubros,
   titulosUsados,
+  documentos,
   error,
-  reemplaza,
-  versionSugerida,
+  precarga,
+  documento,
+  textoBoton,
 }: {
   action: (formData: FormData) => void;
   obraId: string;
   slug: string;
   rubros: RubroOpcionForm[];
   titulosUsados: string[];
+  documentos: DocumentoCargado[];
   error?: string;
-  reemplaza?: VersionAnterior;
-  versionSugerida?: string;
+  precarga?: Precarga;
+  documento?: DocumentoEnEdicion;
+  textoBoton?: string;
 }) {
+  const inicial = documento ?? precarga;
+  const editando = Boolean(documento);
+
   const [subiendo, setSubiendo] = useState(false);
   const [archivos, setArchivos] = useState<string[]>([]);
-  const [ambito, setAmbito] = useState<Ambito>(reemplaza?.ambito ?? "Obra");
+  const [ambito, setAmbito] = useState<Ambito>(inicial?.ambito ?? "Obra");
+  const [rubroId, setRubroId] = useState(inicial?.rubroId ?? "");
+  const [titulo, setTitulo] = useState(inicial?.titulo ?? "");
+  const [nombre, setNombre] = useState(inicial?.nombre ?? "");
+  const [estado, setEstado] = useState(documento?.estado ?? "Vigente");
 
   const llevaRubro = ambito !== "Administrativa";
+
+  // La versión sale de lo que ya hay con ese nombre en ese lugar, igual que la
+  // calcula el servidor al guardar. Acá sólo se muestra para que no sorprenda.
+  const linea = {
+    ambito,
+    rubroId: llevaRubro ? rubroId || null : null,
+    titulo: llevaRubro ? null : titulo,
+    nombre,
+  };
+
+  const previos = nombre.trim()
+    ? documentos.filter((d) => mismaLinea(linea, d))
+    : [];
+
+  const version = versionSiguiente(previos.map((d) => d.version));
+  const vigente = previos.find((d) => d.estado === "Vigente");
+  const desplaza = estado === "Vigente" && Boolean(vigente);
 
   return (
     <form action={action} onSubmit={() => setSubiendo(true)}>
       <input type="hidden" name="obra_id" value={obraId} />
       <input type="hidden" name="slug" value={slug} />
-      {reemplaza && (
-        <input type="hidden" name="reemplaza_a" value={reemplaza.id} />
+      {documento && (
+        <input type="hidden" name="documento_id" value={documento.id} />
+      )}
+      {!editando && precarga && (
+        <input type="hidden" name="origen" value={precarga.id} />
       )}
 
       {error && <p style={errorBox}>{error}</p>}
-
-      {reemplaza && (
-        <p style={avisoVersion}>
-          Es una versión nueva de <strong>{reemplaza.nombre}</strong>
-          {reemplaza.version ? ` (${reemplaza.version})` : ""}. Al guardar, esa
-          queda marcada como <strong>Obsoleta</strong>.
-        </p>
-      )}
 
       <div style={ui.panel}>
         <div style={grid}>
@@ -92,7 +139,8 @@ export default function SubirDocumentoForm({
               <span style={labelCampo}>Rubro</span>
               <select
                 name="rubro_id"
-                defaultValue={reemplaza?.rubroId ?? ""}
+                value={rubroId}
+                onChange={(e) => setRubroId(e.target.value)}
                 required
                 style={ui.input}
               >
@@ -116,7 +164,8 @@ export default function SubirDocumentoForm({
                 type="text"
                 name="titulo"
                 list="titulos-doc"
-                defaultValue={reemplaza?.titulo ?? ""}
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
                 required
                 placeholder="Ej: Aviso de obra"
                 style={ui.input}
@@ -135,24 +184,56 @@ export default function SubirDocumentoForm({
 
           <label style={field}>
             <span style={labelCampo}>Fecha</span>
-            <input type="date" name="fecha" style={ui.input} />
+            <input
+              type="date"
+              name="fecha"
+              defaultValue={documento?.fecha ?? ""}
+              style={ui.input}
+            />
           </label>
 
           <label style={fieldAncho}>
-            <span style={labelCampo}>Archivos</span>
+            <span style={labelCampo}>Nombre del documento</span>
+            <input
+              type="text"
+              name="nombre"
+              list="nombres-doc"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              required
+              placeholder="Ej: Banquinas"
+              style={ui.input}
+            />
+            <datalist id="nombres-doc">
+              {nombresDisponibles(documentos, linea, llevaRubro).map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+            <span style={ayuda}>
+              Es lo que distingue un documento de otro dentro del rubro:
+              Banquinas y Replanteo son dos documentos, no dos versiones. Poné el
+              mismo nombre para subir una versión nueva.
+            </span>
+          </label>
+
+          <label style={fieldAncho}>
+            <span style={labelCampo}>
+              {editando ? "Agregar archivos" : "Archivos"}
+            </span>
             <input
               type="file"
               name="archivos"
               multiple
-              required
+              required={!editando}
               onChange={(e) =>
                 setArchivos(Array.from(e.target.files ?? []).map((f) => f.name))
               }
               style={ui.input}
             />
             <span style={ayuda}>
-              El mismo plano en PDF y en DWG va acá junto, como un solo
-              documento. Se suben tal cual, sin comprimir.
+              {editando
+                ? "Se suman a los que ya tiene. Para sacar alguno, más abajo."
+                : "El mismo plano en PDF y en DWG va acá junto, como un solo documento. Cómo se llame el archivo no importa: el nombre del documento es el de arriba."}
             </span>
             {archivos.length > 1 && (
               <span style={ayuda}>
@@ -161,41 +242,52 @@ export default function SubirDocumentoForm({
             )}
           </label>
 
-          <label style={fieldAncho}>
-            <span style={labelCampo}>Nombre del documento</span>
-            <input
-              type="text"
-              name="nombre"
-              defaultValue={reemplaza?.nombre ?? ""}
-              placeholder={
-                archivos[0]
-                  ? `Por defecto: ${archivos[0].replace(/\.[^.]+$/, "")}`
-                  : "Ej: Planta albañilería PB"
-              }
-              style={ui.input}
-            />
-          </label>
-
-          <label style={field}>
-            <span style={labelCampo}>Versión</span>
-            <input
-              type="text"
-              name="version"
-              defaultValue={versionSugerida || "V01"}
-              style={ui.input}
-            />
-          </label>
-
           <label style={field}>
             <span style={labelCampo}>Estado</span>
-            <select name="estado" defaultValue="Vigente" style={ui.input}>
-              {ESTADOS.map((e) => (
+            <select
+              name="estado"
+              value={estado}
+              onChange={(e) => setEstado(e.target.value)}
+              style={ui.input}
+            >
+              {(editando ? ESTADOS_EDICION : ESTADOS).map((e) => (
                 <option key={e} value={e}>
                   {e}
                 </option>
               ))}
             </select>
+            {editando && estado === "Vigente" && (
+              <span style={ayuda}>
+                Si hay otra versión vigente con este nombre, pasa a obsoleta.
+              </span>
+            )}
           </label>
+
+          {editando ? (
+            <label style={fieldVersion}>
+              <span style={labelCampo}>Versión</span>
+              <input
+                type="text"
+                name="version"
+                defaultValue={documento?.version ?? ""}
+                style={ui.input}
+              />
+              <span style={ayuda}>
+                Acá se escribe a mano: es la pantalla para arreglar errores,
+                incluido un número mal puesto.
+              </span>
+            </label>
+          ) : (
+            <div style={fieldVersion}>
+              <span style={labelCampo}>Versión</span>
+              <strong style={numeroVersion}>
+                {nombre.trim() ? version : "—"}
+              </strong>
+              <span style={ayuda}>
+                {explicacion(nombre, version, vigente, desplaza)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -209,11 +301,51 @@ export default function SubirDocumentoForm({
           disabled={subiendo}
           style={subiendo ? botonInactivo : ui.button}
         >
-          {subiendo ? "Subiendo..." : "Subir documento"}
+          {subiendo ? "Guardando..." : textoBoton ?? "Subir documento"}
         </button>
       </div>
     </form>
   );
+}
+
+/** Los nombres ya usados en el mismo lugar, para continuar una línea sin tipear. */
+function nombresDisponibles(
+  documentos: DocumentoCargado[],
+  linea: { ambito: Ambito; rubroId: string | null; titulo: string | null },
+  llevaRubro: boolean
+): string[] {
+  const mismos = documentos.filter(
+    (d) =>
+      d.ambito === linea.ambito &&
+      (llevaRubro
+        ? d.rubroId === linea.rubroId
+        : (d.titulo ?? "") === (linea.titulo ?? ""))
+  );
+
+  return Array.from(new Set(mismos.map((d) => d.nombre))).sort((a, b) =>
+    a.localeCompare(b, "es")
+  );
+}
+
+function explicacion(
+  nombre: string,
+  version: string,
+  vigente: DocumentoCargado | undefined,
+  desplaza: boolean
+): string {
+  if (!nombre.trim()) return "Se calcula sola cuando pongas el nombre.";
+
+  if (!vigente) {
+    return version === "V01"
+      ? "Es el primero con ese nombre acá, así que arranca en V01."
+      : `Sigue la numeración de lo que ya hay con ese nombre.`;
+  }
+
+  if (desplaza) {
+    return `Reemplaza a la ${vigente.version ?? "anterior"}, que pasa a Obsoleta.`;
+  }
+
+  return `Queda en revisión: la ${vigente.version ?? "anterior"} sigue siendo la vigente hasta que la apruebes.`;
 }
 
 const grid = {
@@ -231,6 +363,15 @@ const field = {
 const fieldAncho = {
   ...field,
   gridColumn: "1 / -1",
+};
+
+const fieldVersion = {
+  ...field,
+  gridColumn: "span 2",
+};
+
+const numeroVersion = {
+  fontSize: "20px",
 };
 
 const labelCampo = {
@@ -259,14 +400,6 @@ const botonInactivo = {
 
 const errorBox = {
   border: "1px solid #111111",
-  padding: "14px",
-  marginBottom: "20px",
-  fontSize: "14px",
-};
-
-const avisoVersion = {
-  border: "1px solid #e5e5e5",
-  background: "#fafafa",
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",

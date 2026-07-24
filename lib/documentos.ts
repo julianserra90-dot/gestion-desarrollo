@@ -12,7 +12,13 @@
  * un documento con dos adjuntos.
  */
 
-import { type Ambito, esAmbito } from "@/lib/ambitos";
+import {
+  type Ambito,
+  type LineaDocumento,
+  esAmbito,
+  mismaLinea,
+  versionSiguiente,
+} from "@/lib/ambitos";
 import { createClient } from "@/lib/supabase/server";
 
 export type ArchivoDeDocumento = {
@@ -63,7 +69,10 @@ export async function getDocumentos(obraId: string): Promise<Documento[]> {
        documento_archivos ( id, drive_file_id, nombre, tipo, tamano )`
     )
     .eq("obra_id", obraId)
-    .order("fecha", { ascending: false });
+    // Dos versiones del mismo plano suelen cargarse el mismo día, y ahí la
+    // fecha empata: desempata la carga, así arriba queda siempre la última.
+    .order("fecha", { ascending: false })
+    .order("creado_en", { ascending: false });
 
   return (data ?? []).map((d) => ({
     id: d.id,
@@ -107,6 +116,64 @@ export async function getTitulosUsados(obraId: string): Promise<string[]> {
     .filter((t): t is string => Boolean(t));
 
   return Array.from(new Set(titulos)).sort((a, b) => a.localeCompare(b, "es"));
+}
+
+/** Lo mínimo de cada documento, para resolver versiones y ofrecer nombres. */
+export type DocumentoBreve = {
+  id: string;
+  nombre: string;
+  ambito: Ambito;
+  rubroId: string | null;
+  titulo: string | null;
+  version: string | null;
+  estado: string;
+};
+
+export async function getDocumentosBreves(
+  obraId: string
+): Promise<DocumentoBreve[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("documentos")
+    .select("id, nombre, ambito, rubro_id, titulo, version, estado")
+    .eq("obra_id", obraId);
+
+  return (data ?? []).map((d) => ({
+    id: d.id,
+    nombre: d.nombre,
+    ambito: esAmbito(d.ambito) ? d.ambito : "Administrativa",
+    rubroId: d.rubro_id,
+    titulo: d.titulo,
+    version: d.version,
+    estado: d.estado,
+  }));
+}
+
+/**
+ * Qué versión le toca a una carga nueva y a cuál desplaza.
+ *
+ * La línea la define el nombre dentro de su rubro: "Banquinas" y "Replanteo"
+ * son dos documentos distintos de albañilería, y subir otro "Banquinas" ahí es
+ * la versión siguiente de ése, sin que haya que decirlo.
+ */
+export async function resolverLinea(
+  obraId: string,
+  linea: LineaDocumento
+): Promise<{ version: string; vigente: DocumentoBreve | null }> {
+  const previos = (await getDocumentosBreves(obraId)).filter((d) =>
+    mismaLinea(linea, {
+      ambito: d.ambito,
+      rubroId: d.rubroId,
+      titulo: d.titulo,
+      nombre: d.nombre,
+    })
+  );
+
+  return {
+    version: versionSiguiente(previos.map((d) => d.version)),
+    vigente: previos.find((d) => d.estado === "Vigente") ?? null,
+  };
 }
 
 /** Un documento puntual, para precargar el formulario de nueva versión. */
