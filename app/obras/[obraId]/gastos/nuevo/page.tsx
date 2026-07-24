@@ -1,9 +1,13 @@
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GastoForm from "@/components/GastoForm";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
+import { getCaja } from "@/lib/caja";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
+import { getPresupuestosDeObra } from "@/lib/presupuestos";
+import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import { crearGasto } from "../actions";
 
@@ -36,21 +40,19 @@ export default async function NuevoGastoPage({
     .eq("id", user?.id ?? "")
     .maybeSingle();
 
-  const [{ data: rubros }, { data: socios }, { data: proveedores }] =
+  const [rubros, { data: socios }, { data: proveedores }, presupuestos] =
     await Promise.all([
-      supabase
-        .from("rubros")
-        .select("id, nombre")
-        .eq("obra_id", obra.id)
-        .order("orden"),
+      getRubrosActivos(obra.id),
       supabase
         .from("obra_socios")
         .select("empresa_id, porcentaje, empresas(nombre)")
         .eq("obra_id", obra.id),
       supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
+      getPresupuestosDeObra(obra.id),
     ]);
 
   const cotizacion = await getCotizacionActual();
+  const caja = await getCaja(obra.id);
 
   const listaSocios = (socios ?? [])
     .map((s) => ({
@@ -73,6 +75,17 @@ export default async function NuevoGastoPage({
         </p>
       </section>
 
+      {rubros.length === 0 && (
+        <section style={avisoRubros}>
+          Esta obra todavía no tiene rubros elegidos, así que el gasto va a
+          quedar sin clasificar. Marcalos en la solapa{" "}
+          <Link href={`/obras/${obra.slug}/rubros`} style={enlaceAviso}>
+            Rubros
+          </Link>
+          .
+        </section>
+      )}
+
       {listaSocios.length === 0 ? (
         <section style={ui.panel}>
           <p style={ui.vacio}>
@@ -85,9 +98,11 @@ export default async function NuevoGastoPage({
           action={crearGasto}
           obraId={obra.id}
           slug={obra.slug}
-          rubros={rubros ?? []}
+          rubros={rubros}
           socios={listaSocios}
           proveedores={proveedores ?? []}
+          saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
+          presupuestos={presupuestos}
           error={error}
           empresaFija={perfil?.empresa_id ?? undefined}
           cotizacion={cotizacion?.promedio ?? null}
@@ -96,3 +111,17 @@ export default async function NuevoGastoPage({
     </AppShell>
   );
 }
+
+const avisoRubros = {
+  border: "1px solid #b91c1c",
+  color: "#b91c1c",
+  padding: "14px",
+  marginBottom: "20px",
+  fontSize: "14px",
+  lineHeight: 1.5,
+};
+
+const enlaceAviso = {
+  color: "#b91c1c",
+  textDecoration: "underline",
+};

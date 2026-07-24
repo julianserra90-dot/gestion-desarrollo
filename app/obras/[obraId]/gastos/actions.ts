@@ -3,53 +3,111 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Database } from "@/lib/database.types";
-import { getCotizacionDeFecha } from "@/lib/dolar";
+import { convertirMonto, getCotizacionDeFecha } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { getCaja } from "@/lib/caja";
+import { centavos, repartirPago } from "@/lib/reparto";
+import type { Reparto } from "@/lib/reparto";
+import type { MontoConvertido } from "@/lib/dolar";
 import { createClient } from "@/lib/supabase/server";
 
 type GastoUpdate = Database["public"]["Tables"]["gastos"]["Update"];
 
 /**
- * Deja el gasto expresado en las dos monedas.
+ * Lee del formulario cuánto se saca de cada lado de la cuenta y qué cotización
+ * usar.
  *
- * Se guarda siempre el valor en pesos (es lo que suman los totales) más el
- * equivalente en dólares y la cotización usada. La conversión va al dólar
- * oficial de la fecha del gasto, no al del día en que se carga.
+ * La cotización manual pisa a la oficial en todo el gasto, no sólo en la
+ * conversión de los dólares que salen de la cuenta: si conseguiste otro cambio,
+ * ese es el valor real de lo que pagaste.
  */
-async function convertirMonto(
-  montoIngresado: number,
-  moneda: string,
-  fecha: string
-): Promise<
-  | { ok: true; ars: number; usd: number | null; cotizacion: number | null }
-  | { ok: false; error: string }
-> {
-  const cotizacion = await getCotizacionDeFecha(fecha);
+function leerCaja(formData: FormData, esAjuste: boolean) {
+  // Un ajuste de saldo mueve plata entre socias: nunca toca la cuenta.
+  const usarCaja = formData.get("usar_caja") === "on" && !esAjuste;
+  const manual = formData.get("cotizacion_manual") === "on";
+  const valor = Number(formData.get("cotizacion_valor") ?? 0);
 
-  if (moneda === "USD") {
-    // Sin cotización no hay forma de saber cuántos pesos son: mejor frenar que
-    // guardar un gasto que rompería los totales.
-    if (!cotizacion) {
-      return {
-        ok: false,
-        error:
-          "No se pudo obtener la cotización del dólar para convertir el gasto a pesos. Probá de nuevo en un rato o cargalo en pesos.",
-      };
+  return {
+    usarCaja,
+    cotizacionManual: manual && Number.isFinite(valor) && valor > 0 ? valor : null,
+    pedidoArs: usarCaja ? Number(formData.get("caja_ars") ?? 0) || 0 : 0,
+    pedidoUsd: usarCaja ? Number(formData.get("caja_usd") ?? 0) || 0 : 0,
+  };
+}
+
+type Caja = ReturnType<typeof leerCaja>;
+
+type Resuelto = MontoConvertido & {
+  moneda?: string;
+  /** Lo que efectivamente sale de la cuenta. */
+  reparto?: Reparto;
+};
+
+/**
+ * Resuelve cuánto costó el gasto y cuánto sale de cada lado de la cuenta.
+ *
+ * Pagando con la cuenta el formulario no pide el monto: lo que se carga es
+ * cuánto se quiere pagar con ella, y eso ES el gasto. Si el saldo no llega, la
+ * cuenta pone lo que tiene y la diferencia queda a cargo de una socia.
+ *
+ * Los saldos se miran acá, no en el formulario: entre que se abrió la pantalla
+ * y se apretó Guardar, otro pudo haber gastado esa plata.
+ */
+async function resolverMontos(
+  formData: FormData,
+  fecha: string,
+  caja: Caja,
+  disponibles: { ars: number; usd: number }
+): Promise<Resuelto> {
+  if (!caja.usarCaja) {
+    const moneda = String(formData.get("moneda") ?? "ARS");
+    const monto = Number(formData.get("monto") ?? 0);
+
+    if (!Number.isFinite(monto) || monto <= 0) {
+      return { ok: false, error: "El monto tiene que ser mayor a cero." };
     }
 
     return {
-      ok: true,
-      ars: Math.round(montoIngresado * cotizacion * 100) / 100,
-      usd: montoIngresado,
-      cotizacion,
+      ...(await convertirMonto(monto, moneda, fecha, caja.cotizacionManual)),
+      moneda,
+    };
+  }
+
+  const cotizacion =
+    caja.cotizacionManual ?? (await getCotizacionDeFecha(fecha));
+
+  // Sin cotización no hay forma de saber cuántos pesos son esos dólares.
+  if (caja.pedidoUsd > 0 && !cotizacion) {
+    return {
+      ok: false,
+      error:
+        "No se pudo obtener la cotización del dólar para valuar los dólares del gasto. Cargala a mano con la casilla de cotización personalizada.",
+    };
+  }
+
+  const reparto = repartirPago({
+    pedidoArs: caja.pedidoArs,
+    pedidoUsd: caja.pedidoUsd,
+    disponibleArs: disponibles.ars,
+    disponibleUsd: disponibles.usd,
+    cotizacion,
+  });
+
+  if (reparto.total <= 0) {
+    return {
+      ok: false,
+      error: "Cargá cuánto se paga con la cuenta: el gasto no puede ser cero.",
     };
   }
 
   return {
     ok: true,
-    ars: montoIngresado,
-    usd: cotizacion ? Math.round((montoIngresado / cotizacion) * 100) / 100 : null,
+    ars: reparto.total,
+    usd: cotizacion ? centavos(reparto.total / cotizacion) : null,
     cotizacion,
+    // Se guarda como cargado en dólares sólo si se pagó enteramente con dólares.
+    moneda: caja.pedidoUsd > 0 && caja.pedidoArs === 0 ? "USD" : "ARS",
+    reparto,
   };
 }
 
@@ -105,7 +163,6 @@ async function resolverProveedor(
 export async function crearGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const obraId = String(formData.get("obra_id") ?? "");
-  const monto = Number(formData.get("monto") ?? 0);
   const tipoPago = String(formData.get("tipo_pago") ?? "Facturado");
   const empresaPagadora = String(formData.get("empresa_pagadora_id") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
@@ -119,6 +176,8 @@ export async function crearGasto(formData: FormData) {
   const receptora = String(formData.get("empresa_receptora_id") ?? "");
   const observaciones = String(formData.get("observaciones") ?? "").trim();
   const comprobante = formData.get("comprobante");
+  const caja = leerCaja(formData, esAjuste);
+  const usarCaja = caja.usarCaja;
 
   const volver = (mensaje: string): never =>
     redirect(
@@ -126,11 +185,10 @@ export async function crearGasto(formData: FormData) {
     );
 
   if (!concepto) volver("Poné un detalle para el gasto.");
-  if (!empresaPagadora) volver("Elegí qué empresa pagó el gasto.");
+  // Con dinero en cuenta puede no hacer falta ninguna: se pide más abajo, sólo
+  // si una empresa agregó algo de su bolsillo.
+  if (!usarCaja && !empresaPagadora) volver("Elegí qué empresa pagó el gasto.");
   if (!fecha) volver("Poné la fecha del gasto.");
-  if (!Number.isFinite(monto) || monto <= 0) {
-    volver("El monto tiene que ser mayor a cero.");
-  }
   if (esAjuste && !receptora) {
     volver("Elegí a qué empresa se le transfiere.");
   }
@@ -166,15 +224,32 @@ export async function crearGasto(formData: FormData) {
     volver(proveedor.error);
   }
 
-  const moneda = String(formData.get("moneda") ?? "ARS");
-  const montos = await convertirMonto(monto, moneda, fecha);
+  const saldos = usarCaja ? await getCaja(obraId) : null;
 
-  if (!montos.ok) {
+  const montos = await resolverMontos(formData, fecha, caja, {
+    ars: saldos?.arsSaldo ?? 0,
+    usd: saldos?.usdSaldo ?? 0,
+  });
+
+  const limpiar = async () => {
     if (archivoComprobante) {
       await eliminarArchivo(archivoComprobante.id).catch(() => {});
     }
+  };
+
+  if (!montos.ok) {
+    await limpiar();
     volver(montos.error);
     return;
+  }
+
+  const moneda = montos.moneda ?? "ARS";
+  const reparto = montos.reparto;
+  const faltante = reparto ? reparto.deEmpresa : 0;
+
+  if (faltante > 0 && !empresaPagadora) {
+    await limpiar();
+    volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
   }
 
   const { error } = await supabase.from("gastos").insert({
@@ -186,7 +261,11 @@ export async function crearGasto(formData: FormData) {
     tipo_gasto: tipoGasto,
     proveedor_id: esAjuste ? null : proveedor.id,
     empresa_receptora_id: esAjuste ? receptora : null,
-    empresa_pagadora_id: empresaPagadora,
+    // Si la cuenta se hizo cargo de todo no hay empresa que lo haya pagado.
+    empresa_pagadora_id: !usarCaja || faltante > 0 ? empresaPagadora : null,
+    caja_ars: reparto?.ars ?? 0,
+    caja_usd: reparto?.usd ?? 0,
+    cotizacion_manual: caja.cotizacionManual !== null,
     monto: montos.ars,
     monto_usd: montos.usd,
     cotizacion: montos.cotizacion,
@@ -217,7 +296,6 @@ export async function crearGasto(formData: FormData) {
 export async function actualizarGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const gastoId = String(formData.get("gasto_id") ?? "");
-  const monto = Number(formData.get("monto") ?? 0);
   const tipoPago = String(formData.get("tipo_pago") ?? "Facturado");
   const empresaPagadora = String(formData.get("empresa_pagadora_id") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
@@ -232,6 +310,8 @@ export async function actualizarGasto(formData: FormData) {
   const observaciones = String(formData.get("observaciones") ?? "").trim();
   const comprobante = formData.get("comprobante");
   const quitarComprobante = formData.get("quitar_comprobante") === "on";
+  const caja = leerCaja(formData, esAjuste);
+  const usarCaja = caja.usarCaja;
 
   const volver = (mensaje: string): never =>
     redirect(
@@ -239,11 +319,8 @@ export async function actualizarGasto(formData: FormData) {
     );
 
   if (!concepto) volver("Poné un detalle para el gasto.");
-  if (!empresaPagadora) volver("Elegí qué empresa pagó el gasto.");
+  if (!usarCaja && !empresaPagadora) volver("Elegí qué empresa pagó el gasto.");
   if (!fecha) volver("Poné la fecha del gasto.");
-  if (!Number.isFinite(monto) || monto <= 0) {
-    volver("El monto tiene que ser mayor a cero.");
-  }
   if (esAjuste && !receptora) {
     volver("Elegí a qué empresa se le transfiere.");
   }
@@ -255,7 +332,7 @@ export async function actualizarGasto(formData: FormData) {
 
   const { data: actual } = await supabase
     .from("gastos")
-    .select("comprobante_drive_id, obra_id")
+    .select("comprobante_drive_id, obra_id, caja_ars, caja_usd, estado")
     .eq("id", gastoId)
     .maybeSingle();
 
@@ -269,11 +346,27 @@ export async function actualizarGasto(formData: FormData) {
     volver(proveedor.error);
   }
 
-  const moneda = String(formData.get("moneda") ?? "ARS");
-  const montos = await convertirMonto(monto, moneda, fecha);
+  // Lo que este gasto ya tenía tomado de la cuenta vuelve a estar disponible
+  // para él mismo. Si está anulado no tomó nada: el saldo ya lo contempla.
+  const anulado = actual.estado === "Anulado";
+  const saldos = usarCaja ? await getCaja(actual.obra_id) : null;
+
+  const montos = await resolverMontos(formData, fecha, caja, {
+    ars: (saldos?.arsSaldo ?? 0) + (anulado ? 0 : Number(actual.caja_ars)),
+    usd: (saldos?.usdSaldo ?? 0) + (anulado ? 0 : Number(actual.caja_usd)),
+  });
+
   if (!montos.ok) {
     volver(montos.error);
     return;
+  }
+
+  const moneda = montos.moneda ?? "ARS";
+  const reparto = montos.reparto;
+  const faltante = reparto ? reparto.deEmpresa : 0;
+
+  if (faltante > 0 && !empresaPagadora) {
+    volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
   }
 
   // El comprobante puede quedar igual, reemplazarse o quitarse.
@@ -284,7 +377,10 @@ export async function actualizarGasto(formData: FormData) {
     tipo_gasto: tipoGasto,
     proveedor_id: esAjuste ? null : proveedor.id,
     empresa_receptora_id: esAjuste ? receptora : null,
-    empresa_pagadora_id: empresaPagadora,
+    empresa_pagadora_id: !usarCaja || faltante > 0 ? empresaPagadora : null,
+    caja_ars: reparto?.ars ?? 0,
+    caja_usd: reparto?.usd ?? 0,
+    cotizacion_manual: caja.cotizacionManual !== null,
     monto: montos.ars,
     monto_usd: montos.usd,
     cotizacion: montos.cotizacion,
@@ -363,7 +459,19 @@ export async function restaurarGasto(formData: FormData) {
   const gastoId = String(formData.get("gasto_id") ?? "");
 
   const supabase = await createClient();
-  await supabase.from("gastos").update({ estado: "Pagado" }).eq("id", gastoId);
+
+  // Reactivar un gasto que se había pagado con dinero en cuenta vuelve a
+  // tomar esa plata, y puede que ya no esté.
+  const { error } = await supabase
+    .from("gastos")
+    .update({ estado: "Pagado" })
+    .eq("id", gastoId);
+
+  if (error) {
+    redirect(
+      `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/gastos`);

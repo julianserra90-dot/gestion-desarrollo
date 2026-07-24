@@ -23,7 +23,9 @@ export default async function AvancesPage({
   const [{ data: avances }, { data: registros }] = await Promise.all([
     supabase
       .from("avances")
-      .select("id, porcentaje, estado, comentario, fecha, actualizado_por_nombre, rubro_id, rubros(nombre, orden)")
+      .select(
+        "id, porcentaje, estado, comentario, fecha, actualizado_por_nombre, rubro_id, rubros(nombre, orden, activo)"
+      )
       .eq("obra_id", obra.id),
     supabase
       .from("foto_registros")
@@ -31,9 +33,11 @@ export default async function AvancesPage({
       .eq("obra_id", obra.id),
   ]);
 
-  const lista = (avances ?? []).sort(
-    (a, b) => (a.rubros?.orden ?? 0) - (b.rubros?.orden ?? 0)
-  );
+  // Sólo los rubros que la obra usa. Los desmarcados conservan su avance por
+  // si se vuelven a marcar, pero no ensucian el seguimiento.
+  const lista = (avances ?? [])
+    .filter((a) => a.rubros?.activo)
+    .sort((a, b) => (a.rubros?.orden ?? 0) - (b.rubros?.orden ?? 0));
 
   // Las fotos asociadas a un rubro son las de todos sus registros fotográficos.
   const fotosPorRubro = new Map<string, number>();
@@ -110,7 +114,12 @@ export default async function AvancesPage({
       {lista.length === 0 ? (
         <section style={ui.panel}>
           <p style={ui.vacio}>
-            Todavía no hay avances cargados en esta obra.
+            Esta obra no tiene rubros elegidos, así que no hay nada que seguir.
+            Marcalos en la solapa{" "}
+            <Link href={`/obras/${obra.slug}/rubros`} style={enlaceRubros}>
+              Rubros
+            </Link>
+            .
           </p>
         </section>
       ) : (
@@ -180,6 +189,11 @@ const tituloRubro = {
 const porcentaje = {
   fontSize: "26px",
   fontWeight: 400,
+};
+
+const enlaceRubros = {
+  color: "#111111",
+  textDecoration: "underline",
 };
 
 const pieAvance = {

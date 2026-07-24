@@ -23,7 +23,7 @@ export default async function GastosPage({
   const { data: gastos } = await supabase
     .from("gastos")
     .select(
-      "id, fecha, concepto, monto, tipo_gasto, tipo_pago, estado, comprobante_drive_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
+      "id, fecha, concepto, monto, monto_caja, tipo_gasto, tipo_pago, estado, comprobante_drive_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
     )
     .eq("obra_id", obra.id)
     .order("fecha", { ascending: false });
@@ -150,7 +150,22 @@ export default async function GastosPage({
                       </span>
                     )}
                   </td>
-                  <td style={celda}>{gasto.pagadora?.nombre ?? "—"}</td>
+                  <td style={celda}>
+                    {/* Un gasto puede salir de la caja, de una socia, o de
+                        las dos cuando la caja no alcanzaba. */}
+                    {Number(gasto.monto_caja) >= Number(gasto.monto) ? (
+                      <span style={tagCuenta}>Dinero en cuenta</span>
+                    ) : Number(gasto.monto_caja) > 0 ? (
+                      <>
+                        {gasto.pagadora?.nombre ?? "—"}
+                        <div style={aporteCuenta}>
+                          + {formatMoney(gasto.monto_caja)} de la cuenta
+                        </div>
+                      </>
+                    ) : (
+                      (gasto.pagadora?.nombre ?? "—")
+                    )}
+                  </td>
                   <td style={celda}>
                     {gasto.comprobante_drive_id ? (
                       <div style={accionesArchivo}>
@@ -218,6 +233,19 @@ const tagAjuste = {
   padding: "3px 8px",
   fontSize: "12px",
   whiteSpace: "nowrap" as const,
+};
+
+const tagCuenta = {
+  border: "1px solid #dcdcdc",
+  padding: "3px 8px",
+  fontSize: "12px",
+  whiteSpace: "nowrap" as const,
+};
+
+const aporteCuenta = {
+  fontSize: "13px",
+  color: "#999999",
+  marginTop: "4px",
 };
 
 const tdAnulado = {

@@ -53,11 +53,11 @@ export async function eliminarEmpresa(formData: FormData) {
 
   if (error) {
     // La base rechaza el borrado si la empresa está referenciada en alguna
-    // obra o en algún gasto. Se traduce a algo legible.
+    // obra, gasto o ingreso de fondos. Se traduce a algo legible.
     volverCon(
       "/empresas",
       error.code === "23503"
-        ? "No se puede eliminar: la empresa participa en obras o figura como pagadora de gastos."
+        ? "No se puede eliminar: la empresa participa en obras, figura como pagadora de gastos o aportó fondos."
         : error.message
     );
   }

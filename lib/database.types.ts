@@ -88,6 +88,13 @@ export type Database = {
             foreignKeyName: "avances_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "avances_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
             referencedRelation: "obra_resumen"
             referencedColumns: ["obra_id"]
           },
@@ -97,6 +104,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "obras"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avances_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
           },
           {
             foreignKeyName: "avances_rubro_id_fkey"
@@ -160,6 +174,13 @@ export type Database = {
           version?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "documentos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
           {
             foreignKeyName: "documentos_obra_id_fkey"
             columns: ["obra_id"]
@@ -240,6 +261,13 @@ export type Database = {
             foreignKeyName: "foto_registros_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "foto_registros_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
             referencedRelation: "obra_resumen"
             referencedColumns: ["obra_id"]
           },
@@ -249,6 +277,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "obras"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "foto_registros_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
           },
           {
             foreignKeyName: "foto_registros_rubro_id_fkey"
@@ -312,6 +347,8 @@ export type Database = {
       }
       gastos: {
         Row: {
+          caja_ars: number
+          caja_usd: number
           cargado_por: string | null
           comprobante_drive_id: string | null
           comprobante_mime: string | null
@@ -320,14 +357,16 @@ export type Database = {
           comprobante_tamano: number | null
           concepto: string
           cotizacion: number | null
+          cotizacion_manual: boolean
           creado_en: string
-          empresa_pagadora_id: string
+          empresa_pagadora_id: string | null
           empresa_receptora_id: string | null
           estado: string
           fecha: string
           id: string
           moneda: string
           monto: number
+          monto_caja: number | null
           monto_usd: number | null
           obra_id: string
           observaciones: string | null
@@ -337,6 +376,8 @@ export type Database = {
           tipo_pago: string
         }
         Insert: {
+          caja_ars?: number
+          caja_usd?: number
           cargado_por?: string | null
           comprobante_drive_id?: string | null
           comprobante_mime?: string | null
@@ -345,14 +386,16 @@ export type Database = {
           comprobante_tamano?: number | null
           concepto: string
           cotizacion?: number | null
+          cotizacion_manual?: boolean
           creado_en?: string
-          empresa_pagadora_id: string
+          empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
           estado?: string
           fecha: string
           id?: string
           moneda?: string
           monto: number
+          monto_caja?: number | null
           monto_usd?: number | null
           obra_id: string
           observaciones?: string | null
@@ -362,6 +405,8 @@ export type Database = {
           tipo_pago?: string
         }
         Update: {
+          caja_ars?: number
+          caja_usd?: number
           cargado_por?: string | null
           comprobante_drive_id?: string | null
           comprobante_mime?: string | null
@@ -370,14 +415,16 @@ export type Database = {
           comprobante_tamano?: number | null
           concepto?: string
           cotizacion?: number | null
+          cotizacion_manual?: boolean
           creado_en?: string
-          empresa_pagadora_id?: string
+          empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
           estado?: string
           fecha?: string
           id?: string
           moneda?: string
           monto?: number
+          monto_caja?: number | null
           monto_usd?: number | null
           obra_id?: string
           observaciones?: string | null
@@ -412,6 +459,13 @@ export type Database = {
             foreignKeyName: "gastos_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "gastos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
             referencedRelation: "obra_resumen"
             referencedColumns: ["obra_id"]
           },
@@ -433,7 +487,113 @@ export type Database = {
             foreignKeyName: "gastos_rubro_id_fkey"
             columns: ["rubro_id"]
             isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
+          },
+          {
+            foreignKeyName: "gastos_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
             referencedRelation: "rubros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingresos: {
+        Row: {
+          aportante: string | null
+          cargado_por: string | null
+          comprobante_drive_id: string | null
+          comprobante_mime: string | null
+          comprobante_nombre: string | null
+          comprobante_tamano: number | null
+          concepto: string
+          cotizacion: number | null
+          creado_en: string
+          empresa_id: string | null
+          fecha: string
+          id: string
+          moneda: string
+          monto: number
+          monto_usd: number | null
+          obra_id: string
+          observaciones: string | null
+          origen: string
+        }
+        Insert: {
+          aportante?: string | null
+          cargado_por?: string | null
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          concepto: string
+          cotizacion?: number | null
+          creado_en?: string
+          empresa_id?: string | null
+          fecha: string
+          id?: string
+          moneda?: string
+          monto: number
+          monto_usd?: number | null
+          obra_id: string
+          observaciones?: string | null
+          origen: string
+        }
+        Update: {
+          aportante?: string | null
+          cargado_por?: string | null
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          concepto?: string
+          cotizacion?: number | null
+          creado_en?: string
+          empresa_id?: string | null
+          fecha?: string
+          id?: string
+          moneda?: string
+          monto?: number
+          monto_usd?: number | null
+          obra_id?: string
+          observaciones?: string | null
+          origen?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingresos_cargado_por_fkey"
+            columns: ["cargado_por"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "ingresos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "ingresos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
             referencedColumns: ["id"]
           },
         ]
@@ -461,6 +621,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "empresas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "obra_socios_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
           },
           {
             foreignKeyName: "obra_socios_obra_id_fkey"
@@ -549,6 +716,125 @@ export type Database = {
           },
         ]
       }
+      presupuestos: {
+        Row: {
+          cargado_por: string | null
+          comprobante_drive_id: string | null
+          comprobante_mime: string | null
+          comprobante_nombre: string | null
+          comprobante_tamano: number | null
+          cotizacion: number | null
+          creado_en: string
+          detalle: string | null
+          estado: string
+          fecha: string
+          id: string
+          moneda: string
+          monto: number
+          monto_usd: number | null
+          obra_id: string
+          observaciones: string | null
+          proveedor_id: string
+          rubro_id: string
+          tipo: string
+          validez_hasta: string | null
+        }
+        Insert: {
+          cargado_por?: string | null
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          cotizacion?: number | null
+          creado_en?: string
+          detalle?: string | null
+          estado?: string
+          fecha?: string
+          id?: string
+          moneda?: string
+          monto: number
+          monto_usd?: number | null
+          obra_id: string
+          observaciones?: string | null
+          proveedor_id: string
+          rubro_id: string
+          tipo: string
+          validez_hasta?: string | null
+        }
+        Update: {
+          cargado_por?: string | null
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          cotizacion?: number | null
+          creado_en?: string
+          detalle?: string | null
+          estado?: string
+          fecha?: string
+          id?: string
+          moneda?: string
+          monto?: number
+          monto_usd?: number | null
+          obra_id?: string
+          observaciones?: string | null
+          proveedor_id?: string
+          rubro_id?: string
+          tipo?: string
+          validez_hasta?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presupuestos_cargado_por_fkey"
+            columns: ["cargado_por"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presupuestos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "presupuestos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "presupuestos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presupuestos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presupuestos_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
+          },
+          {
+            foreignKeyName: "presupuestos_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "rubros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       proveedores: {
         Row: {
           creado_en: string
@@ -572,24 +858,40 @@ export type Database = {
       }
       rubros: {
         Row: {
+          activo: boolean
           id: string
           nombre: string
           obra_id: string | null
           orden: number
+          usa_mano_obra: boolean
+          usa_materiales: boolean
         }
         Insert: {
+          activo?: boolean
           id?: string
           nombre: string
           obra_id?: string | null
           orden?: number
+          usa_mano_obra?: boolean
+          usa_materiales?: boolean
         }
         Update: {
+          activo?: boolean
           id?: string
           nombre?: string
           obra_id?: string | null
           orden?: number
+          usa_mano_obra?: boolean
+          usa_materiales?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "rubros_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
           {
             foreignKeyName: "rubros_obra_id_fkey"
             columns: ["obra_id"]
@@ -611,8 +913,10 @@ export type Database = {
       obra_balance: {
         Row: {
           ajustes: number | null
+          aportes: number | null
           empresa: string | null
           empresa_id: string | null
+          fondos_terceros: number | null
           le_corresponde: number | null
           obra_id: string | null
           pagado: number | null
@@ -620,6 +924,7 @@ export type Database = {
           pagado_facturado: number | null
           porcentaje: number | null
           saldo: number | null
+          total_a_repartir: number | null
           total_obra: number | null
         }
         Relationships: [
@@ -629,6 +934,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "empresas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "obra_socios_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
           },
           {
             foreignKeyName: "obra_socios_obra_id_fkey"
@@ -646,6 +958,67 @@ export type Database = {
           },
         ]
       }
+      obra_caja: {
+        Row: {
+          ars_ingresado: number | null
+          ars_saldo: number | null
+          ars_usado: number | null
+          ingresos: number | null
+          ingresos_socias: number | null
+          ingresos_terceros: number | null
+          obra_id: string | null
+          usado: number | null
+          usd_ingresado: number | null
+          usd_saldo: number | null
+          usd_usado: number | null
+        }
+        Relationships: []
+      }
+      obra_presupuesto: {
+        Row: {
+          activo: boolean | null
+          cotizado: number | null
+          diferencia: number | null
+          gastado: number | null
+          obra_id: string | null
+          orden: number | null
+          presupuesto_id: string | null
+          proveedor_id: string | null
+          rubro: string | null
+          rubro_id: string | null
+          tipo: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presupuestos_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rubros_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "rubros_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "rubros_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       obra_resumen: {
         Row: {
           avance_financiero: number | null
@@ -656,6 +1029,7 @@ export type Database = {
           nombre: string | null
           obra_id: string | null
           presupuesto: number | null
+          presupuesto_aprobado: number | null
           slug: string | null
           total_efectivo: number | null
           total_facturado: number | null

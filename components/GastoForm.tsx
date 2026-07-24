@@ -3,10 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import * as ui from "@/components/ui";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatUSD } from "@/lib/format";
+import { repartirPago } from "@/lib/reparto";
 
 type Socio = { empresa_id: string; nombre: string; porcentaje: number };
-type Rubro = { id: string; nombre: string };
+type Rubro = {
+  id: string;
+  nombre: string;
+  usaMateriales: boolean;
+  usaManoObra: boolean;
+};
 export type Proveedor = { id: string; nombre: string; tipo: string };
 
 const TIPOS_GASTO = ["Materiales", "Mano de obra", "Ajuste de saldo"];
@@ -32,12 +38,29 @@ export type GastoExistente = {
   concepto: string;
   tipo_pago: string;
   monto: number;
+  caja_ars: number;
+  caja_usd: number;
+  cotizacion: number | null;
+  cotizacion_manual: boolean;
   moneda: string;
   monto_usd: number | null;
   observaciones: string | null;
-  empresa_pagadora_id: string;
+  empresa_pagadora_id: string | null;
+  estado: string;
   comprobante_drive_id: string | null;
   comprobante_nombre: string | null;
+};
+
+/** Los dos lados de la cuenta de la obra. */
+export type SaldosCaja = { ars: number; usd: number };
+
+/** Lo cotizado y lo ya gastado de cada rubro, para avisar si se pasa. */
+export type PresupuestoRubro = {
+  rubro_id: string;
+  tipo: string;
+  cotizado: number;
+  gastado: number;
+  proveedor: string | null;
 };
 
 export default function GastoForm({
@@ -47,6 +70,8 @@ export default function GastoForm({
   rubros,
   socios,
   proveedores,
+  saldosCaja,
+  presupuestos = [],
   error,
   empresaFija,
   gasto,
@@ -59,6 +84,10 @@ export default function GastoForm({
   rubros: Rubro[];
   socios: Socio[];
   proveedores: Proveedor[];
+  /** Lo que hay hoy en la cuenta de la obra, de cada lado. */
+  saldosCaja: SaldosCaja;
+  /** Cotizado y gastado por rubro, para avisar si el gasto se pasa. */
+  presupuestos?: PresupuestoRubro[];
   error?: string;
   /** Si el usuario pertenece a una empresa, el gasto va siempre a su nombre. */
   empresaFija?: string;
@@ -82,16 +111,86 @@ export default function GastoForm({
   const [tipoGasto, setTipoGasto] = useState(gasto?.tipo_gasto ?? "Materiales");
   const [proveedorId, setProveedorId] = useState(gasto?.proveedor_id ?? "");
   const [receptora, setReceptora] = useState(gasto?.empresa_receptora_id ?? "");
-
-  const ingresado = Number(monto) || 0;
-
-  // El reparto entre socias se calcula siempre sobre el valor en pesos, que es
-  // la moneda en la que se lleva la cuenta de la obra.
-  const total =
-    moneda === "USD" ? (cotizacion ? ingresado * cotizacion : 0) : ingresado;
+  const [rubroId, setRubroId] = useState(gasto?.rubro_id ?? "");
+  const [usarCaja, setUsarCaja] = useState(
+    Number(gasto?.caja_ars ?? 0) > 0 || Number(gasto?.caja_usd ?? 0) > 0
+  );
+  // Al editar se reconstruye lo que se había pedido: lo que salió de la cuenta
+  // más lo que tuvo que poner una empresa, que siempre fue un faltante en pesos.
+  const [cajaArs, setCajaArs] = useState(() => {
+    if (!gasto) return "";
+    const deCuenta =
+      Number(gasto.caja_ars) + Number(gasto.caja_usd) * Number(gasto.cotizacion ?? 0);
+    if (deCuenta <= 0) return "";
+    const pedido = Number(gasto.caja_ars) + Math.max(Number(gasto.monto) - deCuenta, 0);
+    return pedido > 0 ? String(Math.round(pedido * 100) / 100) : "";
+  });
+  const [cajaUsd, setCajaUsd] = useState(
+    gasto && Number(gasto.caja_usd) > 0 ? String(gasto.caja_usd) : ""
+  );
+  const [cotizManual, setCotizManual] = useState(gasto?.cotizacion_manual ?? false);
+  const [cotizValor, setCotizValor] = useState(
+    gasto?.cotizacion_manual ? String(gasto.cotizacion ?? "") : ""
+  );
 
   // Un ajuste de saldo no compra nada: es plata que pasa de una socia a otra.
   const esAjuste = tipoGasto === AJUSTE;
+  const pagaCaja = usarCaja && !esAjuste;
+
+  // La cotización cargada a mano manda sobre todo el gasto, no sólo sobre los
+  // dólares que salen de la cuenta: si conseguiste otro cambio, ese es el valor
+  // real de lo que pagaste.
+  const cotizIngresada = Number(cotizValor) || 0;
+  const cotizEfectiva =
+    cotizManual && cotizIngresada > 0 ? cotizIngresada : (cotizacion ?? null);
+
+  // Al editar, lo que este gasto ya tenía tomado de la cuenta sigue disponible
+  // para él. Si está anulado no tomó nada: el saldo ya lo contempla.
+  const tomadoAntes = gasto && gasto.estado !== "Anulado";
+  const dispArs = saldosCaja.ars + (tomadoAntes ? Number(gasto.caja_ars) : 0);
+  const dispUsd = saldosCaja.usd + (tomadoAntes ? Number(gasto.caja_usd) : 0);
+
+  // Lo que se carga es cuánto se quiere pagar con la cuenta, y eso define el
+  // gasto. Si el saldo no llega, la cuenta pone lo que tiene y la diferencia
+  // queda a cargo de una socia: se calcula sola, no se tipea.
+  const pedidoArs = pagaCaja ? Number(cajaArs) || 0 : 0;
+  const pedidoUsd = pagaCaja ? Number(cajaUsd) || 0 : 0;
+
+  const pago = repartirPago({
+    pedidoArs,
+    pedidoUsd,
+    disponibleArs: dispArs,
+    disponibleUsd: dispUsd,
+    cotizacion: cotizEfectiva,
+  });
+
+  // Sin la cuenta, el monto se carga a mano como siempre.
+  const ingresado = Number(monto) || 0;
+  const totalSinCaja =
+    moneda === "USD" ? (cotizEfectiva ? ingresado * cotizEfectiva : 0) : ingresado;
+
+  const total = pagaCaja ? pago.total : totalSinCaja;
+  const deCaja = pagaCaja ? pago.cubierto : 0;
+  const deEmpresa = pagaCaja ? pago.deEmpresa : totalSinCaja;
+
+  // La empresa sólo hace falta si hay algo que ella tenga que poner.
+  const pideEmpresa = !pagaCaja || deEmpresa > 0.01;
+  const noAlcanza = pagaCaja && deEmpresa > 0.01;
+  const faltaCotizacion = pedidoUsd > 0 && !cotizEfectiva;
+
+  // Cuánto de lo pedido no había en cada lado, para explicar el faltante.
+  const faltanArs = Math.max(pedidoArs - Math.max(dispArs, 0), 0);
+  const faltanUsd = Math.max(pedidoUsd - Math.max(dispUsd, 0), 0);
+
+  function cambiarUsarCaja(activo: boolean) {
+    setUsarCaja(activo);
+    // Los campos del modo anterior dejan de valer: el monto se carga de una
+    // forma o de la otra, nunca de las dos.
+    setMonto("");
+    setMoneda("ARS");
+    setCajaArs("");
+    setCajaUsd("");
+  }
 
   // El desplegable muestra proveedores o contratistas según el tipo de gasto.
   const tipoProveedor = TIPO_PROVEEDOR[tipoGasto] ?? "Proveedor";
@@ -107,6 +206,33 @@ export default function GastoForm({
     setReceptora("");
   }
 
+  /**
+   * Cambiar de rubro puede dejar el tipo elegido sin sentido: si se pasa a un
+   * rubro que sólo se compra, "mano de obra" no corresponde. Se acomoda solo
+   * al que sí admite.
+   */
+  function cambiarRubro(nuevoRubro: string) {
+    setRubroId(nuevoRubro);
+
+    const r = rubros.find((x) => x.id === nuevoRubro);
+    if (!r || esAjuste) return;
+
+    if (tipoGasto === "Materiales" && !r.usaMateriales && r.usaManoObra) {
+      cambiarTipoGasto("Mano de obra");
+    } else if (tipoGasto === "Mano de obra" && !r.usaManoObra && r.usaMateriales) {
+      cambiarTipoGasto("Materiales");
+    }
+  }
+
+  // El desplegable de tipo ofrece sólo lo que el rubro admite. Sin rubro
+  // elegido se ofrecen los dos: todavía no hay con qué decidir.
+  const rubroElegido = rubros.find((r) => r.id === rubroId);
+  const tiposDisponibles = TIPOS_GASTO.filter((t) => {
+    if (t === AJUSTE || !rubroElegido) return true;
+    if (t === "Materiales") return rubroElegido.usaMateriales;
+    return rubroElegido.usaManoObra;
+  });
+
   const reparto = socios.map((socio) => {
     const leCorresponde = (total * socio.porcentaje) / 100;
     const esPagadora = socio.empresa_id === pagadora;
@@ -121,6 +247,23 @@ export default function GastoForm({
   });
 
   const nombrePagadora = socios.find((s) => s.empresa_id === pagadora)?.nombre;
+
+  // Si el rubro tiene una cotización aprobada, se avisa cuando este gasto hace
+  // que se pase. Es un aviso, no un freno: puede haber una compra de urgencia
+  // que nadie cotizó y hay que poder cargarla igual.
+  const presupuesto = presupuestos.find(
+    (p) => p.rubro_id === rubroId && p.tipo === tipoGasto
+  );
+
+  // Al editar, lo que este gasto ya aportaba al acumulado no se cuenta dos veces.
+  const gastadoAntes =
+    presupuesto && gasto && gasto.rubro_id === rubroId && gasto.tipo_gasto === tipoGasto
+      ? Number(gasto.monto)
+      : 0;
+
+  const acumulado = (presupuesto?.gastado ?? 0) - gastadoAntes + total;
+  const cotizado = presupuesto?.cotizado ?? 0;
+  const sePasa = !esAjuste && cotizado > 0 && acumulado > cotizado + 0.01;
 
   return (
     <form action={action} style={layout}>
@@ -144,12 +287,175 @@ export default function GastoForm({
               />
             </label>
 
-            <label style={field}>
+            <div style={{ ...fieldAncho, display: esAjuste ? "none" : "grid" }}>
+              <span style={labelCampo}>Dinero en cuenta</span>
+
+              <label style={checkboxFila}>
+                <input
+                  type="checkbox"
+                  name="usar_caja"
+                  checked={usarCaja}
+                  onChange={(e) => cambiarUsarCaja(e.target.checked)}
+                />
+                <span>Pagar con el dinero en cuenta de la obra</span>
+              </label>
+
+              {!pagaCaja ? (
+                <span style={ayudaCampo}>
+                  {dispArs > 0 || dispUsd > 0
+                    ? `Hay ${formatMoney(dispArs)} y ${formatUSD(dispUsd)} en la cuenta.`
+                    : "Esta obra no tiene plata en cuenta todavía."}
+                </span>
+              ) : (
+                <>
+                  <span style={ayudaCampo}>
+                    Cargá cuánto querés pagar con la cuenta: eso es el gasto, no
+                    hace falta repetir el monto abajo.
+                  </span>
+
+                  <div style={grid}>
+                    <label style={field}>
+                      <span style={labelCampo}>Pesos de la cuenta</span>
+                      <input
+                        type="number"
+                        name="caja_ars"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={cajaArs}
+                        onChange={(e) => setCajaArs(e.target.value)}
+                        style={ui.input}
+                      />
+                      <span style={ayudaCampo}>
+                        Disponible: {formatMoney(Math.max(dispArs, 0))}
+                      </span>
+                    </label>
+
+                    <label style={field}>
+                      <span style={labelCampo}>Dólares de la cuenta</span>
+                      <input
+                        type="number"
+                        name="caja_usd"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={cajaUsd}
+                        onChange={(e) => setCajaUsd(e.target.value)}
+                        style={ui.input}
+                      />
+                      <span style={ayudaCampo}>
+                        Disponible: {formatUSD(Math.max(dispUsd, 0))}
+                        {pedidoUsd > 0 &&
+                          cotizEfectiva &&
+                          ` · rinden ${formatMoney(pedidoUsd * cotizEfectiva)}`}
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* La cotización sólo hace falta si hay dólares de por medio:
+                      es lo que define cuántos pesos son. */}
+                  {pedidoUsd > 0 && (
+                    <div style={{ ...field, marginTop: "4px" }}>
+                      <label style={checkboxFila}>
+                        <input
+                          type="checkbox"
+                          name="cotizacion_manual"
+                          checked={cotizManual}
+                          onChange={(e) => setCotizManual(e.target.checked)}
+                        />
+                        <span>Cotización personalizada</span>
+                      </label>
+
+                      {cotizManual ? (
+                        <>
+                          <input
+                            type="number"
+                            name="cotizacion_valor"
+                            min="0"
+                            step="0.01"
+                            placeholder={
+                              cotizacion ? String(Math.round(cotizacion)) : "0"
+                            }
+                            value={cotizValor}
+                            onChange={(e) => setCotizValor(e.target.value)}
+                            required
+                            style={ui.input}
+                          />
+                          <span style={ayudaCampo}>
+                            Pesos por dólar. Manda sobre todo el gasto: a este
+                            cambio se valúan los dólares que salen de la cuenta.
+                          </span>
+                        </>
+                      ) : (
+                        <span style={faltaCotizacion ? ayudaError : ayudaCampo}>
+                          {faltaCotizacion
+                            ? "No se pudo traer el dólar oficial: cargá la cotización a mano."
+                            : `Se usa el dólar oficial de la fecha del gasto${cotizacion ? ` (hoy ≈ ${formatMoney(cotizacion)})` : ""}. Tildá si conseguiste otro cambio.`}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Si el saldo no llega, la cuenta pone lo que tiene y el
+                      resto lo cubre una socia. El monto sale solo. */}
+                  {noAlcanza && (
+                    <div style={avisoFaltante}>
+                      <p style={{ margin: "0 0 10px", lineHeight: 1.5 }}>
+                        <strong>El dinero en cuenta no alcanza.</strong> Falta
+                        {faltanArs > 0 && ` ${formatMoney(faltanArs)}`}
+                        {faltanArs > 0 && faltanUsd > 0 && " y"}
+                        {faltanUsd > 0 && ` ${formatUSD(faltanUsd)}`}: la cuenta
+                        pone {formatMoney(deCaja)} y una empresa tiene que
+                        aportar <strong>{formatMoney(deEmpresa)}</strong>.
+                      </p>
+
+                      {empresaFija ? (
+                        <>
+                          <input
+                            type="hidden"
+                            name="empresa_pagadora_id"
+                            value={empresaFija}
+                          />
+                          <div style={campoFijo}>
+                            {socios.find((s) => s.empresa_id === empresaFija)
+                              ?.nombre ?? "Tu empresa"}
+                          </div>
+                        </>
+                      ) : (
+                        <select
+                          name="empresa_pagadora_id"
+                          value={pagadora}
+                          onChange={(e) => setPagadora(e.target.value)}
+                          required
+                          style={ui.input}
+                        >
+                          <option value="">Elegí qué empresa lo aporta</option>
+                          {socios.map((socio) => (
+                            <option key={socio.empresa_id} value={socio.empresa_id}>
+                              {socio.nombre}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Pagando con la cuenta, la empresa se pide sólo si hay faltante,
+                y ahí arriba junto a la advertencia. */}
+            <label
+              style={{ ...field, display: pideEmpresa && !noAlcanza ? "grid" : "none" }}
+            >
               <span style={labelCampo}>
                 {esAjuste ? "Empresa que transfiere" : "Empresa que pagó"}
               </span>
 
-              {empresaFija ? (
+              {!pideEmpresa ? (
+                // La cuenta cubre el gasto entero: no hay socia que lo adelante.
+                <div style={campoFijo}>Lo cubre el dinero en cuenta</div>
+              ) : empresaFija ? (
                 <>
                   <input
                     type="hidden"
@@ -182,11 +488,21 @@ export default function GastoForm({
               )}
             </label>
 
+            {/* Con la cuenta cubriendo todo no hay empresa pagadora, pero el
+                campo tiene que decirlo en algún lado. */}
+            {pagaCaja && !pideEmpresa && (
+              <label style={field}>
+                <span style={labelCampo}>Empresa que pagó</span>
+                <div style={campoFijo}>Lo cubre el dinero en cuenta</div>
+              </label>
+            )}
+
             <label style={{ ...field, display: esAjuste ? "none" : "grid" }}>
               <span style={labelCampo}>Rubro</span>
               <select
                 name="rubro_id"
-                defaultValue={gasto?.rubro_id ?? ""}
+                value={rubroId}
+                onChange={(e) => cambiarRubro(e.target.value)}
                 disabled={esAjuste}
                 style={ui.input}
               >
@@ -207,12 +523,20 @@ export default function GastoForm({
                 onChange={(e) => cambiarTipoGasto(e.target.value)}
                 style={ui.input}
               >
-                {TIPOS_GASTO.map((tipo) => (
+                {tiposDisponibles.map((tipo) => (
                   <option key={tipo} value={tipo}>
                     {tipo}
                   </option>
                 ))}
               </select>
+
+              {rubroElegido && tiposDisponibles.length < TIPOS_GASTO.length && (
+                <span style={ayudaCampo}>
+                  En {rubroElegido.nombre} sólo se carga{" "}
+                  {rubroElegido.usaMateriales ? "material" : "mano de obra"}.
+                  Cambialo en la solapa Rubros si hace falta.
+                </span>
+              )}
             </label>
 
             {esAjuste && (
@@ -318,40 +642,89 @@ export default function GastoForm({
               </span>
             </label>
 
-            <label style={field}>
-              <span style={labelCampo}>Monto</span>
-              <input
-                type="number"
-                name="monto"
-                min="0"
-                step="0.01"
-                placeholder="0"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                required
-                style={ui.input}
-              />
-            </label>
+            {/* Pagando con la cuenta el monto ya quedó definido arriba: lo que
+                sale de cada lado ES el gasto. Pedirlo de nuevo sería cargar el
+                mismo número dos veces. */}
+            {!pagaCaja && (
+              <>
+                <label style={field}>
+                  <span style={labelCampo}>Monto</span>
+                  <input
+                    type="number"
+                    name="monto"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    value={monto}
+                    onChange={(e) => setMonto(e.target.value)}
+                    required
+                    style={ui.input}
+                  />
+                </label>
 
-            <label style={field}>
-              <span style={labelCampo}>Moneda</span>
-              <select
-                name="moneda"
-                value={moneda}
-                onChange={(e) => setMoneda(e.target.value)}
-                style={ui.input}
-              >
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
-              </select>
-              {moneda === "USD" && (
-                <span style={ayudaCampo}>
-                  {cotizacion
-                    ? `Se guarda también en pesos al dólar de la fecha del gasto (hoy ≈ ${formatMoney(cotizacion)}).`
-                    : "Se guarda también en pesos al dólar de la fecha del gasto."}
-                </span>
-              )}
-            </label>
+                <label style={field}>
+                  <span style={labelCampo}>Moneda</span>
+                  <select
+                    name="moneda"
+                    value={moneda}
+                    onChange={(e) => setMoneda(e.target.value)}
+                    style={ui.input}
+                  >
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
+                  </select>
+                  {moneda === "USD" && (
+                    <span style={ayudaCampo}>
+                      Se guarda también en pesos, a la cotización de abajo.
+                    </span>
+                  )}
+                </label>
+              </>
+            )}
+
+            {/* Pagando con la cuenta la cotización ya se pidió arriba, junto a
+                los dólares que se sacan. */}
+            {!pagaCaja && (
+              <div style={{ ...fieldAncho, display: esAjuste ? "none" : "grid" }}>
+                <span style={labelCampo}>Cotización</span>
+
+                <label style={checkboxFila}>
+                  <input
+                    type="checkbox"
+                    name="cotizacion_manual"
+                    checked={cotizManual}
+                    onChange={(e) => setCotizManual(e.target.checked)}
+                  />
+                  <span>Cotización personalizada</span>
+                </label>
+
+                {cotizManual ? (
+                  <>
+                    <input
+                      type="number"
+                      name="cotizacion_valor"
+                      min="0"
+                      step="0.01"
+                      placeholder={cotizacion ? String(Math.round(cotizacion)) : "0"}
+                      value={cotizValor}
+                      onChange={(e) => setCotizValor(e.target.value)}
+                      required
+                      style={ui.input}
+                    />
+                    <span style={ayudaCampo}>
+                      Pesos por dólar. Manda sobre todo el gasto: define su
+                      equivalente en dólares.
+                    </span>
+                  </>
+                ) : (
+                  <span style={ayudaCampo}>
+                    {cotizacion
+                      ? `Se usa el dólar oficial de la fecha del gasto (hoy ≈ ${formatMoney(cotizacion)}). Tildá si conseguiste otro cambio.`
+                      : "Se usa el dólar oficial de la fecha del gasto."}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div style={fieldAncho}>
               <span style={labelCampo}>Comprobante / factura</span>
@@ -464,17 +837,67 @@ export default function GastoForm({
           <span>{tipoPago}</span>
         </div>
 
-        {moneda === "USD" && (
-          <div style={filaDesglose}>
-            <span>Cargado en dólares</span>
-            <span>US$ {ingresado.toLocaleString("es-AR")}</span>
-          </div>
+        {/* Con la cuenta el total se arma sumando; sin ella, es el monto que se
+            cargó a mano. */}
+        {pagaCaja ? (
+          <>
+            {pedidoUsd > 0 && (
+              <div style={filaDesglose}>
+                <span>{formatUSD(pedidoUsd)} de la cuenta</span>
+                <span>
+                  {cotizEfectiva
+                    ? formatMoney(pedidoUsd * cotizEfectiva)
+                    : "falta cotización"}
+                </span>
+              </div>
+            )}
+            {pedidoArs > 0 && (
+              <div style={filaDesglose}>
+                <span>Pesos de la cuenta</span>
+                <span>{formatMoney(pedidoArs)}</span>
+              </div>
+            )}
+            {deEmpresa > 0 && (
+              <div style={filaDesglose}>
+                <span>Lo pone {nombrePagadora ?? "una socia"}</span>
+                <span>{formatMoney(deEmpresa)}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          moneda === "USD" && (
+            <div style={filaDesglose}>
+              <span>Cargado en dólares</span>
+              <span>US$ {ingresado.toLocaleString("es-AR")}</span>
+            </div>
+          )
         )}
 
         <div style={filaTotal}>
-          <span>{moneda === "USD" ? "Equivale a" : "Monto total"}</span>
+          <span>
+            {!pagaCaja && moneda === "USD" ? "Equivale a" : "Monto total"}
+          </span>
           <strong>{formatMoney(total)}</strong>
         </div>
+
+        {pagaCaja && total > 0 && (
+          <div style={{ marginTop: "6px" }}>
+            <div style={filaDesglose}>
+              <span>Sale de la cuenta</span>
+              <span>{formatMoney(deCaja)}</span>
+            </div>
+            <div style={filaDesglose}>
+              <span>Queda en cuenta</span>
+              {/* Lo que sale de verdad, no lo pedido: si no alcanzaba, la
+                  cuenta se vacía y el resto lo puso una socia. */}
+              <span>
+                {formatMoney(Math.max(dispArs, 0) - pago.ars)} y{" "}
+                {formatUSD(Math.max(dispUsd, 0) - pago.usd)}
+              </span>
+            </div>
+          </div>
+        )}
+
 
         <table style={{ ...ui.table, marginTop: "16px" }}>
           <thead>
@@ -501,10 +924,26 @@ export default function GastoForm({
         <div style={caja}>
           <p style={tituloCaja}>Efecto en los saldos</p>
 
-          {!pagadora || total <= 0 ? (
+          {total <= 0 || (!pagadora && deEmpresa > 0.01) ? (
             <p style={{ margin: 0, fontSize: "14px" }}>
               Elegí la empresa que pagó y cargá el monto para ver la
               compensación.
+            </p>
+          ) : deEmpresa <= 0.01 ? (
+            <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.6 }}>
+              Lo paga entero el dinero en cuenta, así que{" "}
+              <strong>no cambia lo que puso ninguna socia</strong>. El gasto sí
+              se reparte entre todas según su participación.
+            </p>
+          ) : deCaja > 0 ? (
+            // Con la caja de por medio no se puede decir "A le debe X a B": la
+            // pagadora sólo adelantó su parte, no el gasto entero.
+            <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.6 }}>
+              <strong>{nombrePagadora}</strong> adelanta{" "}
+              <strong>{formatMoney(deEmpresa)}</strong> de su bolsillo. Los
+              otros {formatMoney(deCaja)} salen del dinero en cuenta y no se le
+              suman a ninguna socia. A cada una le toca lo que dice el cuadro
+              de arriba.
             </p>
           ) : (
             <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "14px", lineHeight: 1.7 }}>
@@ -520,6 +959,39 @@ export default function GastoForm({
             </ul>
           )}
         </div>
+
+        {cotizado > 0 && (
+          <div style={sePasa ? cajaExcedido : caja}>
+            <p style={tituloCaja}>Contra lo cotizado</p>
+
+            <div style={filaDesglose}>
+              <span>Cotizado y aprobado</span>
+              <span>{formatMoney(cotizado)}</span>
+            </div>
+            <div style={filaDesglose}>
+              <span>Gastado con este</span>
+              <span>{formatMoney(acumulado)}</span>
+            </div>
+
+            {sePasa ? (
+              <p style={{ margin: "12px 0 0", fontSize: "14px", lineHeight: 1.6 }}>
+                Este gasto deja el rubro{" "}
+                <strong>{formatMoney(acumulado - cotizado)}</strong> por encima
+                de lo cotizado
+                {presupuesto?.proveedor ? ` por ${presupuesto.proveedor}` : ""}.
+                Se puede guardar igual: revisá si corresponde.
+              </p>
+            ) : (
+              <p style={{ margin: "12px 0 0", fontSize: "14px", lineHeight: 1.6 }}>
+                Queda {formatMoney(cotizado - acumulado)} de margen
+                {presupuesto?.proveedor
+                  ? ` sobre lo que cotizó ${presupuesto.proveedor}`
+                  : ""}
+                .
+              </p>
+            )}
+          </div>
+        )}
 
         <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
           El gasto se registra por el 100%. El reparto sale del porcentaje de
@@ -631,6 +1103,34 @@ const quitarLabel = {
   cursor: "pointer",
 };
 
+const ayudaError = {
+  fontSize: "13px",
+  color: "#b91c1c",
+};
+
+// El faltante se avisa en rojo porque cambia quién pone la plata: no es un
+// detalle de formato, es una empresa que queda comprometida.
+const avisoFaltante = {
+  border: "1px solid #b91c1c",
+  color: "#b91c1c",
+  padding: "14px",
+  marginTop: "8px",
+  fontSize: "14px",
+  display: "grid",
+  gap: "4px",
+};
+
+const checkboxFila = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  border: "1px solid #dcdcdc",
+  background: "#ffffff",
+  padding: "12px",
+  fontSize: "14px",
+  cursor: "pointer",
+};
+
 const campoFijo = {
   border: "1px solid #eeeeee",
   background: "#fafafa",
@@ -641,6 +1141,14 @@ const campoFijo = {
 
 const caja = {
   border: "1px solid #111111",
+  padding: "16px",
+  marginTop: "20px",
+};
+
+// Pasarse del presupuesto no impide guardar, pero tiene que saltar a la vista.
+const cajaExcedido = {
+  border: "1px solid #b91c1c",
+  color: "#b91c1c",
   padding: "16px",
   marginTop: "20px",
 };

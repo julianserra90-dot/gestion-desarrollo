@@ -4,7 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import SubirFotosForm from "@/components/SubirFotosForm";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
-import { createClient } from "@/lib/supabase/server";
+import { getRubrosActivos } from "@/lib/rubros";
 import { crearRegistroFotos } from "../actions";
 
 export default async function NuevasFotosPage({
@@ -22,12 +22,7 @@ export default async function NuevasFotosPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const supabase = await createClient();
-  const { data: rubros } = await supabase
-    .from("rubros")
-    .select("id, nombre")
-    .eq("obra_id", obra.id)
-    .order("orden");
+  const rubros = await getRubrosActivos(obra.id);
 
   return (
     <AppShell>
@@ -42,11 +37,22 @@ export default async function NuevasFotosPage({
         </p>
       </section>
 
+      {rubros.length === 0 && (
+        <section style={avisoRubros}>
+          Esta obra todavía no tiene rubros elegidos, así que las fotos van a
+          quedar sin clasificar. Marcalos en la solapa{" "}
+          <Link href={`/obras/${obra.slug}/rubros`} style={enlaceAviso}>
+            Rubros
+          </Link>
+          .
+        </section>
+      )}
+
       <SubirFotosForm
         action={crearRegistroFotos}
         obraId={obra.id}
         slug={obra.slug}
-        rubros={rubros ?? []}
+        rubros={rubros}
         error={error}
       />
 
@@ -58,3 +64,17 @@ export default async function NuevasFotosPage({
     </AppShell>
   );
 }
+
+const avisoRubros = {
+  border: "1px solid #b91c1c",
+  color: "#b91c1c",
+  padding: "14px",
+  marginBottom: "20px",
+  fontSize: "14px",
+  lineHeight: 1.5,
+};
+
+const enlaceAviso = {
+  color: "#b91c1c",
+  textDecoration: "underline",
+};

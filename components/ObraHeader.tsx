@@ -17,7 +17,18 @@ export default function ObraHeader({
 }) {
   const tabs = [
     { label: "Economía", href: `/obras/${obra.slug}`, key: "economia" },
+    {
+      label: "Presupuestos",
+      href: `/obras/${obra.slug}/presupuestos`,
+      key: "presupuestos",
+    },
     { label: "Gastos", href: `/obras/${obra.slug}/gastos`, key: "gastos" },
+    { label: "Ingresos", href: `/obras/${obra.slug}/ingresos`, key: "ingresos" },
+    {
+      label: "Dinero en cuenta",
+      href: `/obras/${obra.slug}/dinero-en-cuenta`,
+      key: "caja",
+    },
     { label: "Dólares", href: `/obras/${obra.slug}/dolares`, key: "dolares" },
     { label: "Avances", href: `/obras/${obra.slug}/avances`, key: "avances" },
     { label: "Fotos", href: `/obras/${obra.slug}/fotos`, key: "fotos" },

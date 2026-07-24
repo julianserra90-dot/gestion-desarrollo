@@ -1,6 +1,8 @@
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
-import { formatDate, formatMoney } from "@/lib/format";
+import { getCaja } from "@/lib/caja";
+import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { calcularLiquidacion } from "@/lib/liquidacion";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,17 +24,17 @@ export default async function ObraDetalle({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [{ data: balance }, { data: resumen }, { data: gastos }] = await Promise.all([
+  const [{ data: balance }, { data: resumen }, { data: gastos }, caja] = await Promise.all([
     supabase
       .from("obra_balance")
       .select(
-        "empresa, porcentaje, pagado, le_corresponde, saldo, pagado_facturado, pagado_efectivo, ajustes"
+        "empresa, porcentaje, pagado, le_corresponde, saldo, pagado_facturado, pagado_efectivo, ajustes, aportes, fondos_terceros, total_a_repartir"
       )
       .eq("obra_id", obra.id),
     supabase
       .from("obra_resumen")
       .select(
-        "total_gastado, avance_fisico, avance_financiero, total_facturado, total_efectivo"
+        "total_gastado, avance_fisico, avance_financiero, total_facturado, total_efectivo, presupuesto_aprobado"
       )
       .eq("obra_id", obra.id)
       .maybeSingle(),
@@ -41,10 +43,11 @@ export default async function ObraDetalle({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, estado, tipo_gasto, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, estado, tipo_gasto, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
+    getCaja(obra.id),
   ]);
 
   const socios = (balance ?? []).map((item) => ({
@@ -56,10 +59,22 @@ export default async function ObraDetalle({
     facturado: Number(item.pagado_facturado ?? 0),
     efectivo: Number(item.pagado_efectivo ?? 0),
     ajustes: Number(item.ajustes ?? 0),
+    aportes: Number(item.aportes ?? 0),
   }));
 
-  // La columna de ajustes sólo aparece si alguna socia hizo alguno.
+  // Las columnas de ajustes y aportes sólo aparecen si alguna socia tiene.
   const hayAjustes = socios.some((s) => s.ajustes !== 0);
+  const hayAportes = socios.some((s) => s.aportes !== 0);
+
+  // Lo que pusieron inversores y compradores no lo reparten las socias.
+  const fondosTerceros = Number(balance?.[0]?.fondos_terceros ?? 0);
+  const aRepartir = Number(balance?.[0]?.total_a_repartir ?? 0);
+
+  const suma = (campo: (s: (typeof socios)[number]) => number) =>
+    socios.reduce((acc, s) => acc + campo(s), 0);
+
+  const hayEnCuenta = caja.arsSaldo > 0 || caja.usdSaldo > 0;
+  const aprobado = Number(resumen?.presupuesto_aprobado ?? 0);
 
   const liquidacion = calcularLiquidacion(socios);
 
@@ -131,6 +146,13 @@ export default async function ObraDetalle({
           <p style={label}>En efectivo</p>
           <h3 style={number}>{formatMoney(resumen?.total_efectivo)}</h3>
         </div>
+        <Link href={`/obras/${obra.slug}/dinero-en-cuenta`} style={cardEnlace}>
+          <p style={label}>Dinero en cuenta</p>
+          <h3 style={number}>{formatMoney(caja.arsSaldo)}</h3>
+          <p style={{ ...note, margin: "6px 0 0" }}>
+            {formatUSD(caja.usdSaldo)}
+          </p>
+        </Link>
         <div style={card}>
           <p style={label}>Presupuesto consumido</p>
           <h3 style={number}>{consumido}</h3>
@@ -150,6 +172,7 @@ export default async function ObraDetalle({
               <th style={th}>Particip.</th>
               <th style={thRight}>Facturado</th>
               <th style={thRight}>Efectivo</th>
+              {hayAportes && <th style={thRight}>Puso en cuenta</th>}
               {hayAjustes && <th style={thRight}>Ajustes</th>}
               <th style={thRight}>Total</th>
               <th style={thRight}>Le corresponde</th>
@@ -167,6 +190,11 @@ export default async function ObraDetalle({
                 <td style={tdRight}>
                   {socio.efectivo > 0 ? formatMoney(socio.efectivo) : "—"}
                 </td>
+                {hayAportes && (
+                  <td style={tdRight}>
+                    {socio.aportes > 0 ? formatMoney(socio.aportes) : "—"}
+                  </td>
+                )}
                 {hayAjustes && (
                   <td style={tdRight}>
                     {socio.ajustes !== 0 ? (
@@ -197,21 +225,56 @@ export default async function ObraDetalle({
           <tfoot>
             <tr>
               <td style={tdTotal} colSpan={2}>
-                Total de obra
+                Puesto por las socias
               </td>
-              <td style={tdTotalRight}>
-                {formatMoney(resumen?.total_facturado)}
-              </td>
-              <td style={tdTotalRight}>
-                {formatMoney(resumen?.total_efectivo)}
-              </td>
+              <td style={tdTotalRight}>{formatMoney(suma((s) => s.facturado))}</td>
+              <td style={tdTotalRight}>{formatMoney(suma((s) => s.efectivo))}</td>
+              {hayAportes && (
+                <td style={tdTotalRight}>{formatMoney(suma((s) => s.aportes))}</td>
+              )}
               {hayAjustes && <td style={tdTotalRight}>—</td>}
-              <td style={tdTotalRight}>{formatMoney(resumen?.total_gastado)}</td>
-              <td style={tdTotalRight}>—</td>
-              <td style={tdTotalRight}>—</td>
+              <td style={tdTotalRight}>{formatMoney(suma((s) => s.pagado))}</td>
+              <td style={tdTotalRight}>{formatMoney(aRepartir)}</td>
+              <td style={tdTotalRight}>{formatMoney(suma((s) => s.saldo))}</td>
             </tr>
           </tfoot>
         </table>
+
+        {/* La tabla de arriba sólo mira a las socias. Esto explica la
+            diferencia contra el gasto total de la obra. */}
+        {(caja.usado > 0 || fondosTerceros > 0) && (
+          <div style={desglose}>
+            <p style={resultTitle}>De dónde salió el gasto de la obra</p>
+
+            <div style={filaDesglose}>
+              <span>Total gastado</span>
+              <strong>{formatMoney(resumen?.total_gastado)}</strong>
+            </div>
+            <div style={filaDesglose}>
+              <span>Pagado con dinero en cuenta</span>
+              <strong>− {formatMoney(caja.usado)}</strong>
+            </div>
+            <div style={filaDesglose}>
+              <span>Pagado de su bolsillo por las socias</span>
+              <strong>
+                {formatMoney(suma((s) => s.facturado + s.efectivo))}
+              </strong>
+            </div>
+
+            {fondosTerceros > 0 && (
+              <>
+                <div style={{ ...filaDesglose, marginTop: "14px" }}>
+                  <span>Fondos de inversores y compradores</span>
+                  <strong>{formatMoney(fondosTerceros)}</strong>
+                </div>
+                <div style={filaDesglose}>
+                  <span>Queda a repartir entre las socias</span>
+                  <strong>{formatMoney(aRepartir)}</strong>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div style={resultBox}>
           <p style={resultTitle}>Liquidación sugerida</p>
@@ -234,6 +297,18 @@ export default async function ObraDetalle({
         <p style={note}>
           Saldo positivo significa que la empresa aportó de más y le deben.
           Negativo, que tiene que compensar.
+          {hayEnCuenta && (
+            <>
+              {" "}
+              La suma de los saldos no da cero porque queda plata sin gastar en
+              la cuenta de la obra —{" "}
+              <strong>
+                {formatMoney(caja.arsSaldo)}
+                {caja.usdSaldo > 0 && ` y ${formatUSD(caja.usdSaldo)}`}
+              </strong>{" "}
+              — y esa plata todavía es de quien la puso.
+            </>
+          )}
         </p>
       </section>
 
@@ -277,9 +352,26 @@ export default async function ObraDetalle({
           <div style={panel}>
             <h3 style={sectionTitle}>Ejecución presupuestaria</h3>
             <div style={row}>
-              <span>Presupuesto</span>
+              <span>Presupuesto estimado</span>
               <strong>
                 {hayPresupuesto ? formatMoney(obra.presupuesto) : "Sin cargar"}
+              </strong>
+            </div>
+            {/* El estimado se calculó antes de arrancar; el real lo van armando
+                las cotizaciones que se aprueban a medida que avanza la obra. */}
+            <div style={row}>
+              <span>Presupuesto real</span>
+              <strong>
+                {aprobado > 0 ? (
+                  <Link
+                    href={`/obras/${obra.slug}/presupuestos`}
+                    style={{ color: "#111111" }}
+                  >
+                    {formatMoney(aprobado)}
+                  </Link>
+                ) : (
+                  "Sin cotizaciones"
+                )}
               </strong>
             </div>
             <div style={row}>
@@ -295,6 +387,14 @@ export default async function ObraDetalle({
               <p style={{ ...note, marginBottom: 0, marginTop: "14px" }}>
                 Cargá el presupuesto en <strong>Editar obra</strong> para poder
                 comparar lo gastado contra lo previsto.
+              </p>
+            )}
+
+            {aprobado === 0 && (
+              <p style={{ ...note, marginBottom: 0, marginTop: "14px" }}>
+                A medida que apruebes cotizaciones en{" "}
+                <strong>Presupuestos</strong>, el presupuesto real se va
+                armando solo.
               </p>
             )}
           </div>
@@ -345,7 +445,10 @@ export default async function ObraDetalle({
                   <td style={td}>{formatDate(gasto.fecha)}</td>
                   <td style={td}>{gasto.rubros?.nombre ?? "—"}</td>
                   <td style={td}>{gasto.concepto}</td>
-                  <td style={td}>{gasto.pagadora?.nombre ?? "—"}</td>
+                  <td style={td}>
+                    {gasto.pagadora?.nombre ??
+                      (Number(gasto.monto_caja) > 0 ? "Dinero en cuenta" : "—")}
+                  </td>
                   <td style={td}>{gasto.estado}</td>
                   <td style={tdRight}>{formatMoney(gasto.monto)}</td>
                 </tr>
@@ -421,7 +524,7 @@ const barraRelleno = {
 
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr)",
+  gridTemplateColumns: "repeat(5, 1fr)",
   gap: "16px",
 };
 
@@ -429,6 +532,14 @@ const card = {
   border: "1px solid #e5e5e5",
   padding: "24px",
   background: "#ffffff",
+};
+
+// Misma tarjeta, pero lleva a la solapa donde está el detalle de la cuenta.
+const cardEnlace = {
+  ...card,
+  display: "block",
+  color: "#111111",
+  textDecoration: "none",
 };
 
 const label = {
@@ -536,6 +647,21 @@ const resultBox = {
   border: "1px solid #111111",
   padding: "16px",
   marginTop: "24px",
+};
+
+const desglose = {
+  border: "1px solid #e5e5e5",
+  padding: "16px",
+  marginTop: "24px",
+};
+
+const filaDesglose = {
+  display: "flex",
+  justifyContent: "space-between",
+  fontSize: "14px",
+  color: "#555555",
+  paddingTop: "8px",
+  gap: "16px",
 };
 
 const resultTitle = {

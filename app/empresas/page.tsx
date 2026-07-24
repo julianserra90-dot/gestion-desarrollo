@@ -12,11 +12,12 @@ export default async function EmpresasPage({
   const { error } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: empresas }, { data: socios }, { data: gastos }] =
+  const [{ data: empresas }, { data: socios }, { data: gastos }, { data: ingresos }] =
     await Promise.all([
       supabase.from("empresas").select("id, nombre").order("nombre"),
       supabase.from("obra_socios").select("empresa_id, obras(nombre)"),
       supabase.from("gastos").select("empresa_pagadora_id"),
+      supabase.from("ingresos").select("empresa_id"),
     ]);
 
   const obrasPorEmpresa = new Map<string, string[]>();
@@ -26,11 +27,22 @@ export default async function EmpresasPage({
     obrasPorEmpresa.set(socio.empresa_id, lista);
   }
 
+  // Los gastos pagados con dinero en cuenta no tienen empresa pagadora.
   const gastosPorEmpresa = new Map<string, number>();
   for (const gasto of gastos ?? []) {
+    if (!gasto.empresa_pagadora_id) continue;
     gastosPorEmpresa.set(
       gasto.empresa_pagadora_id,
       (gastosPorEmpresa.get(gasto.empresa_pagadora_id) ?? 0) + 1
+    );
+  }
+
+  const aportesPorEmpresa = new Map<string, number>();
+  for (const ingreso of ingresos ?? []) {
+    if (!ingreso.empresa_id) continue;
+    aportesPorEmpresa.set(
+      ingreso.empresa_id,
+      (aportesPorEmpresa.get(ingreso.empresa_id) ?? 0) + 1
     );
   }
 
@@ -80,7 +92,8 @@ export default async function EmpresasPage({
             {(empresas ?? []).map((empresa) => {
               const obras = obrasPorEmpresa.get(empresa.id) ?? [];
               const cantGastos = gastosPorEmpresa.get(empresa.id) ?? 0;
-              const enUso = obras.length > 0 || cantGastos > 0;
+              const cantAportes = aportesPorEmpresa.get(empresa.id) ?? 0;
+              const enUso = obras.length > 0 || cantGastos > 0 || cantAportes > 0;
 
               return (
                 <div key={empresa.id} style={fila}>
@@ -114,6 +127,12 @@ export default async function EmpresasPage({
                           <span>
                             {cantGastos} {cantGastos === 1 ? "gasto" : "gastos"}{" "}
                             a su nombre
+                          </span>
+                        )}
+                        {cantAportes > 0 && (
+                          <span>
+                            {cantAportes}{" "}
+                            {cantAportes === 1 ? "aporte" : "aportes"} de fondos
                           </span>
                         )}
                       </>

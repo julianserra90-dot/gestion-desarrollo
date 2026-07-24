@@ -51,7 +51,9 @@ export async function crearObra(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect(`/obras/${obra.slug}`);
+  // Derecho a Rubros: la obra nace con el catálogo cargado pero sin nada
+  // marcado, y sin rubros no se puede clasificar ni un gasto.
+  redirect(`/obras/${obra.slug}/rubros?nueva=1`);
 }
 
 export async function actualizarObra(formData: FormData) {
