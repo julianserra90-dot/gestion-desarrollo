@@ -13,6 +13,28 @@ import { NextResponse, type NextRequest } from "next/server";
  * válida las queries no devuelven nada.
  */
 export async function proxy(request: NextRequest) {
+  // En el login no hay sesión que validar, así que preguntarle a Supabase es
+  // un viaje de ida y vuelta por la red al pedo. Con la conexión lenta se nota:
+  // la pantalla donde alguien está esperando para entrar es justo la que no
+  // tiene por qué esperar.
+  if (request.nextUrl.pathname.startsWith("/login")) {
+    return NextResponse.next({ request });
+  }
+
+  // Sin cookie de sesión no hay nada que validar: se manda al login sin
+  // preguntarle a Supabase. Esto no relaja nada —una cookie inventada igual
+  // tiene que pasar por getUser() más abajo— pero le ahorra un viaje por la red
+  // a quien entra sin haber iniciado sesión.
+  const haySesion = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"));
+
+  if (!haySesion) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
