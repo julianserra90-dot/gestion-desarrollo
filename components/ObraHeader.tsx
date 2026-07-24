@@ -8,6 +8,48 @@ type Obra = {
   estado: string;
 };
 
+type Solapa = { key: string; label: string; path: string };
+
+/**
+ * Las secciones de una obra, en dos niveles y dos grupos: la plata y la obra.
+ *
+ * Diez solapas en una fila obligaban a leerlas todas para encontrar una, y
+ * ponían Dólares al mismo nivel que Rubros, que no se parecen en nada. Partido
+ * en dos, la pregunta que se hace primero —¿vengo a mirar plata o a mirar cómo
+ * va la obra?— se contesta antes de buscar.
+ *
+ * Cada grupo entra por su resumen: Economía por el balance entre socias, Obra
+ * por el estado general —avance contra calendario—. Las dos portadas contestan
+ * "¿cómo venimos?" antes de que haya que abrir nada.
+ */
+const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
+  {
+    key: "economia",
+    label: "Economía",
+    path: "",
+    hijas: [
+      { key: "economia", label: "Balance", path: "" },
+      { key: "gastos", label: "Gastos", path: "/gastos" },
+      { key: "ingresos", label: "Ingresos", path: "/ingresos" },
+      { key: "caja", label: "Dinero en cuenta", path: "/dinero-en-cuenta" },
+      { key: "dolares", label: "Dólares", path: "/dolares" },
+    ],
+  },
+  {
+    key: "obra",
+    label: "Obra",
+    path: "/estado",
+    hijas: [
+      { key: "estado", label: "Estado", path: "/estado" },
+      { key: "presupuestos", label: "Presupuestos", path: "/presupuestos" },
+      { key: "avances", label: "Avances", path: "/avances" },
+      { key: "fotos", label: "Fotos", path: "/fotos" },
+      { key: "documentos", label: "Documentos", path: "/documentos" },
+      { key: "rubros", label: "Rubros", path: "/rubros" },
+    ],
+  },
+];
+
 export default function ObraHeader({
   obra,
   activeSection,
@@ -15,26 +57,12 @@ export default function ObraHeader({
   obra: Obra;
   activeSection: string;
 }) {
-  const tabs = [
-    { label: "Economía", href: `/obras/${obra.slug}`, key: "economia" },
-    {
-      label: "Presupuestos",
-      href: `/obras/${obra.slug}/presupuestos`,
-      key: "presupuestos",
-    },
-    { label: "Gastos", href: `/obras/${obra.slug}/gastos`, key: "gastos" },
-    { label: "Ingresos", href: `/obras/${obra.slug}/ingresos`, key: "ingresos" },
-    {
-      label: "Dinero en cuenta",
-      href: `/obras/${obra.slug}/dinero-en-cuenta`,
-      key: "caja",
-    },
-    { label: "Dólares", href: `/obras/${obra.slug}/dolares`, key: "dolares" },
-    { label: "Avances", href: `/obras/${obra.slug}/avances`, key: "avances" },
-    { label: "Fotos", href: `/obras/${obra.slug}/fotos`, key: "fotos" },
-    { label: "Documentos", href: `/obras/${obra.slug}/documentos`, key: "documentos" },
-    { label: "Rubros", href: `/obras/${obra.slug}/rubros`, key: "rubros" },
-  ];
+  const href = (path: string) => `/obras/${obra.slug}${path}`;
+
+  // La sección de arriba que corresponde: la propia, o la madre de la activa.
+  const seccion = SECCIONES.find(
+    (s) => s.key === activeSection || s.hijas?.some((h) => h.key === activeSection)
+  );
 
   return (
     <>
@@ -46,7 +74,7 @@ export default function ObraHeader({
         </div>
 
         <div style={headerActions}>
-          <Link href={`/obras/${obra.slug}/editar`} style={editLink}>
+          <Link href={href("/editar")} style={editLink}>
             Editar obra
           </Link>
 
@@ -57,16 +85,30 @@ export default function ObraHeader({
       </header>
 
       <nav style={tabsContainer}>
-        {tabs.map((tab) => (
+        {SECCIONES.map((s) => (
           <Link
-            key={tab.key}
-            href={tab.href}
-            style={activeSection === tab.key ? tabActive : tabItem}
+            key={s.key}
+            href={href(s.path)}
+            style={seccion?.key === s.key ? tabActive : tabItem}
           >
-            {tab.label}
+            {s.label}
           </Link>
         ))}
       </nav>
+
+      {seccion?.hijas && (
+        <nav style={subTabsContainer}>
+          {seccion.hijas.map((h) => (
+            <Link
+              key={h.key}
+              href={href(h.path)}
+              style={activeSection === h.key ? subTabActive : subTabItem}
+            >
+              {h.label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </>
   );
 }
@@ -137,10 +179,34 @@ const tabItem = {
 };
 
 const tabActive = {
+  ...tabItem,
   color: "#ffffff",
-  textDecoration: "none",
   border: "1px solid #111111",
-  padding: "10px 14px",
-  fontSize: "14px",
   background: "#111111",
+};
+
+// El segundo nivel no repite las cajas del primero: si las dos filas se ven
+// igual, no se entiende cuál cuelga de cuál.
+const subTabsContainer = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "20px",
+  marginTop: "-16px",
+  marginBottom: "32px",
+  paddingBottom: "12px",
+  borderBottom: "1px solid #e5e5e5",
+};
+
+const subTabItem = {
+  color: "#777777",
+  textDecoration: "none",
+  fontSize: "14px",
+  paddingBottom: "4px",
+  borderBottom: "2px solid transparent",
+};
+
+const subTabActive = {
+  ...subTabItem,
+  color: "#111111",
+  borderBottom: "2px solid #111111",
 };

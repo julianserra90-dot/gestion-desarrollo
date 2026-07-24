@@ -12,7 +12,9 @@ export async function getObraPorSlug(slug: string) {
 
   const { data } = await supabase
     .from("obras")
-    .select("id, slug, nombre, ubicacion, estado")
+    .select(
+      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada"
+    )
     .eq("slug", slug)
     .maybeSingle();
 
