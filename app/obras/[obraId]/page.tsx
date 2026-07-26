@@ -28,7 +28,7 @@ export default async function ObraDetalle({
     supabase
       .from("obra_balance")
       .select(
-        "empresa, porcentaje, pagado, le_corresponde, saldo, pagado_facturado, pagado_efectivo, ajustes, aportes, fondos_terceros, total_a_repartir"
+        "empresa_id, empresa, porcentaje, pagado, le_corresponde, saldo, pagado_facturado, pagado_efectivo, ajustes, aportes, fondos_terceros, total_a_repartir"
       )
       .eq("obra_id", obra.id),
     supabase
@@ -43,12 +43,26 @@ export default async function ObraDetalle({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, monto_caja, estado, tipo_gasto, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, empresa_factura_id, estado, tipo_gasto, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
     getCaja(obra.id),
   ]);
+
+  // El crédito fiscal es de la empresa que figura en cada factura A. La columna
+  // `iva` ya da 0 en el resto, así que se agrupa por el titular de la factura.
+  const creditoPorEmpresa = new Map<string, number>();
+  for (const g of gastos ?? []) {
+    if (g.estado === "Anulado" || !g.empresa_factura_id) continue;
+    const iva = Number(g.iva ?? 0);
+    if (iva > 0) {
+      creditoPorEmpresa.set(
+        g.empresa_factura_id,
+        (creditoPorEmpresa.get(g.empresa_factura_id) ?? 0) + iva
+      );
+    }
+  }
 
   const socios = (balance ?? []).map((item) => ({
     empresa: item.empresa ?? "—",
@@ -60,11 +74,16 @@ export default async function ObraDetalle({
     efectivo: Number(item.pagado_efectivo ?? 0),
     ajustes: Number(item.ajustes ?? 0),
     aportes: Number(item.aportes ?? 0),
+    creditoFiscal: item.empresa_id
+      ? (creditoPorEmpresa.get(item.empresa_id) ?? 0)
+      : 0,
   }));
 
-  // Las columnas de ajustes y aportes sólo aparecen si alguna socia tiene.
+  // Las columnas de ajustes, aportes y crédito fiscal sólo aparecen si alguna
+  // socia tiene.
   const hayAjustes = socios.some((s) => s.ajustes !== 0);
   const hayAportes = socios.some((s) => s.aportes !== 0);
+  const hayCreditoFiscal = socios.some((s) => s.creditoFiscal > 0);
 
   // Lo que pusieron inversores y compradores no lo reparten las socias.
   const fondosTerceros = Number(balance?.[0]?.fondos_terceros ?? 0);
@@ -87,6 +106,10 @@ export default async function ObraDetalle({
     (g) => g.estado !== "Anulado" && g.tipo_gasto !== "Ajuste de saldo"
   );
   const totalVigente = vigentes.reduce((acc, g) => acc + Number(g.monto), 0);
+
+  // El IVA que se puede recuperar: la columna `iva` ya da 0 en todo lo que no
+  // sea factura A, así que alcanza con sumarla.
+  const creditoFiscal = vigentes.reduce((acc, g) => acc + Number(g.iva ?? 0), 0);
 
   const porRubro = new Map<string, number>();
   for (const gasto of vigentes) {
@@ -157,6 +180,15 @@ export default async function ObraDetalle({
           <p style={label}>Presupuesto consumido</p>
           <h3 style={number}>{consumido}</h3>
         </div>
+        {creditoFiscal > 0 && (
+          <div style={card}>
+            <p style={label}>Crédito fiscal (IVA)</p>
+            <h3 style={number}>{formatMoney(creditoFiscal)}</h3>
+            <p style={{ ...note, margin: "6px 0 0" }}>
+              De las facturas A cargadas.
+            </p>
+          </div>
+        )}
       </section>
 
       <section style={panelWithMargin}>
@@ -175,6 +207,7 @@ export default async function ObraDetalle({
               {hayAportes && <th style={thRight}>Puso en cuenta</th>}
               {hayAjustes && <th style={thRight}>Ajustes</th>}
               <th style={thRight}>Total</th>
+              {hayCreditoFiscal && <th style={thRight}>Crédito fiscal</th>}
               <th style={thRight}>Le corresponde</th>
               <th style={thRight}>Saldo</th>
             </tr>
@@ -210,6 +243,13 @@ export default async function ObraDetalle({
                 <td style={tdRight}>
                   <strong>{formatMoney(socio.pagado)}</strong>
                 </td>
+                {hayCreditoFiscal && (
+                  <td style={tdRight}>
+                    {socio.creditoFiscal > 0
+                      ? formatMoney(socio.creditoFiscal)
+                      : "—"}
+                  </td>
+                )}
                 <td style={tdRight}>{formatMoney(socio.leCorresponde)}</td>
                 <td style={tdRight}>
                   {/* El signo acompaña al color: así se entiende igual en una
@@ -234,6 +274,11 @@ export default async function ObraDetalle({
               )}
               {hayAjustes && <td style={tdTotalRight}>—</td>}
               <td style={tdTotalRight}>{formatMoney(suma((s) => s.pagado))}</td>
+              {hayCreditoFiscal && (
+                <td style={tdTotalRight}>
+                  {formatMoney(suma((s) => s.creditoFiscal))}
+                </td>
+              )}
               <td style={tdTotalRight}>{formatMoney(aRepartir)}</td>
               <td style={tdTotalRight}>{formatMoney(suma((s) => s.saldo))}</td>
             </tr>
@@ -524,7 +569,7 @@ const barraRelleno = {
 
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(5, 1fr)",
+  gridTemplateColumns: "repeat(3, 1fr)",
   gap: "16px",
 };
 

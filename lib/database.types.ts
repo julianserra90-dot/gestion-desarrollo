@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -406,6 +406,7 @@ export type Database = {
       }
       gastos: {
         Row: {
+          alicuota_iva: number | null
           caja_ars: number
           caja_usd: number
           cargado_por: string | null
@@ -418,11 +419,13 @@ export type Database = {
           cotizacion: number | null
           cotizacion_manual: boolean
           creado_en: string
+          empresa_factura_id: string | null
           empresa_pagadora_id: string | null
           empresa_receptora_id: string | null
           estado: string
           fecha: string
           id: string
+          iva: number | null
           moneda: string
           monto: number
           monto_caja: number | null
@@ -431,10 +434,12 @@ export type Database = {
           observaciones: string | null
           proveedor_id: string | null
           rubro_id: string | null
+          tipo_factura: string | null
           tipo_gasto: string
           tipo_pago: string
         }
         Insert: {
+          alicuota_iva?: number | null
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
@@ -447,11 +452,13 @@ export type Database = {
           cotizacion?: number | null
           cotizacion_manual?: boolean
           creado_en?: string
+          empresa_factura_id?: string | null
           empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
           estado?: string
           fecha: string
           id?: string
+          iva?: number | null
           moneda?: string
           monto: number
           monto_caja?: number | null
@@ -460,10 +467,12 @@ export type Database = {
           observaciones?: string | null
           proveedor_id?: string | null
           rubro_id?: string | null
+          tipo_factura?: string | null
           tipo_gasto?: string
           tipo_pago?: string
         }
         Update: {
+          alicuota_iva?: number | null
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
@@ -476,11 +485,13 @@ export type Database = {
           cotizacion?: number | null
           cotizacion_manual?: boolean
           creado_en?: string
+          empresa_factura_id?: string | null
           empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
           estado?: string
           fecha?: string
           id?: string
+          iva?: number | null
           moneda?: string
           monto?: number
           monto_caja?: number | null
@@ -489,6 +500,7 @@ export type Database = {
           observaciones?: string | null
           proveedor_id?: string | null
           rubro_id?: string | null
+          tipo_factura?: string | null
           tipo_gasto?: string
           tipo_pago?: string
         }
@@ -498,6 +510,13 @@ export type Database = {
             columns: ["cargado_por"]
             isOneToOne: false
             referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gastos_empresa_factura_id_fkey"
+            columns: ["empresa_factura_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
           {

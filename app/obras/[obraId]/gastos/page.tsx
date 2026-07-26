@@ -23,7 +23,7 @@ export default async function GastosPage({
   const { data: gastos } = await supabase
     .from("gastos")
     .select(
-      "id, fecha, concepto, monto, monto_caja, tipo_gasto, tipo_pago, estado, comprobante_drive_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
+      "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, tipo_gasto, tipo_pago, estado, comprobante_drive_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
     )
     .eq("obra_id", obra.id)
     .order("fecha", { ascending: false });
@@ -100,7 +100,7 @@ export default async function GastosPage({
                 <th style={ui.th}>Tipo</th>
                 <th style={ui.th}>Proveedor / Contratista</th>
                 <th style={ui.th}>Detalle</th>
-                <th style={ui.th}>Tipo de pago</th>
+                <th style={ui.th}>Comprobante</th>
                 <th style={ui.th}>Pagó</th>
                 <th style={ui.th}>Comprob.</th>
                 <th style={ui.thRight}>Monto</th>
@@ -146,7 +146,9 @@ export default async function GastosPage({
                           gasto.tipo_pago === "Efectivo" ? tagEfectivo : tagFacturado
                         }
                       >
-                        {gasto.tipo_pago}
+                        {gasto.tipo_factura
+                          ? `Factura ${gasto.tipo_factura}`
+                          : "Efectivo"}
                       </span>
                     )}
                   </td>
@@ -189,6 +191,9 @@ export default async function GastosPage({
                   </td>
                   <td style={anulado ? tdAnuladoRight : ui.tdRight}>
                     <strong>{formatMoney(gasto.monto)}</strong>
+                    {Number(gasto.iva ?? 0) > 0 && (
+                      <div style={ivaChico}>IVA {formatMoney(gasto.iva)}</div>
+                    )}
                   </td>
                   <td style={celda}>
                     <Link
@@ -274,6 +279,12 @@ const editarLink = {
   color: "#111111",
   fontSize: "14px",
   textDecoration: "underline",
+};
+
+const ivaChico = {
+  fontSize: "12px",
+  color: "#999999",
+  marginTop: "4px",
 };
 
 const tagFacturado = {

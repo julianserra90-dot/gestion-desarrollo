@@ -160,15 +160,43 @@ async function resolverProveedor(
   return { id: creado.id };
 }
 
+/**
+ * Deriva del comprobante lo que se guarda: si el gasto es facturado o efectivo,
+ * el tipo de factura y la alícuota.
+ *
+ * El formulario manda `tipo_factura` (A/B/C, o vacío para efectivo). De ahí sale
+ * si es facturado. La alícuota sólo tiene sentido en la A. Un ajuste de saldo no
+ * compra nada, así que nunca lleva factura ni IVA —aunque el campo oculto del
+ * form venga con algo, acá se anula.
+ */
+function leerComprobante(formData: FormData, esAjuste: boolean) {
+  const tipoFactura = esAjuste
+    ? null
+    : String(formData.get("tipo_factura") ?? "").trim() || null;
+
+  const alicuota = Number(formData.get("alicuota_iva") ?? 0);
+  const esA = tipoFactura === "A";
+  const titular = String(formData.get("empresa_factura_id") ?? "").trim();
+
+  return {
+    tipo_pago: tipoFactura ? "Facturado" : "Efectivo",
+    tipo_factura: tipoFactura,
+    alicuota_iva:
+      esA && Number.isFinite(alicuota) && alicuota > 0 ? alicuota : null,
+    // El titular sólo tiene sentido en la factura A: es quien computa el IVA.
+    empresa_factura_id: esA && titular ? titular : null,
+  };
+}
+
 export async function crearGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const obraId = String(formData.get("obra_id") ?? "");
-  const tipoPago = String(formData.get("tipo_pago") ?? "Facturado");
   const empresaPagadora = String(formData.get("empresa_pagadora_id") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
   const rubro = String(formData.get("rubro_id") ?? "");
   const tipoGasto = String(formData.get("tipo_gasto") ?? "Materiales");
   const esAjuste = tipoGasto === "Ajuste de saldo";
+  const factura = leerComprobante(formData, esAjuste);
   // Todos los ajustes llevan el mismo detalle, venga lo que venga del form.
   const concepto = esAjuste
     ? "Ajuste de saldo"
@@ -269,7 +297,10 @@ export async function crearGasto(formData: FormData) {
     monto: montos.ars,
     monto_usd: montos.usd,
     cotizacion: montos.cotizacion,
-    tipo_pago: tipoPago,
+    tipo_pago: factura.tipo_pago,
+    tipo_factura: factura.tipo_factura,
+    alicuota_iva: factura.alicuota_iva,
+    empresa_factura_id: factura.empresa_factura_id,
     moneda,
     // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
     estado: "Pagado",
@@ -296,12 +327,12 @@ export async function crearGasto(formData: FormData) {
 export async function actualizarGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const gastoId = String(formData.get("gasto_id") ?? "");
-  const tipoPago = String(formData.get("tipo_pago") ?? "Facturado");
   const empresaPagadora = String(formData.get("empresa_pagadora_id") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
   const rubro = String(formData.get("rubro_id") ?? "");
   const tipoGasto = String(formData.get("tipo_gasto") ?? "Materiales");
   const esAjuste = tipoGasto === "Ajuste de saldo";
+  const factura = leerComprobante(formData, esAjuste);
   // Todos los ajustes llevan el mismo detalle, venga lo que venga del form.
   const concepto = esAjuste
     ? "Ajuste de saldo"
@@ -384,7 +415,10 @@ export async function actualizarGasto(formData: FormData) {
     monto: montos.ars,
     monto_usd: montos.usd,
     cotizacion: montos.cotizacion,
-    tipo_pago: tipoPago,
+    tipo_pago: factura.tipo_pago,
+    tipo_factura: factura.tipo_factura,
+    alicuota_iva: factura.alicuota_iva,
+    empresa_factura_id: factura.empresa_factura_id,
     moneda,
     observaciones: observaciones === "" ? null : observaciones,
   };

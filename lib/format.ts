@@ -1,8 +1,11 @@
 export function formatMoney(value: number | null | undefined) {
+  // Dos decimales siempre: los gastos se cargan al centavo (el total de una
+  // factura no es redondo) y redondear a pesos enteros escondía esos centavos.
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value ?? 0);
 }
 

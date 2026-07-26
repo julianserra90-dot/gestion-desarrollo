@@ -26,7 +26,19 @@ const TIPO_PROVEEDOR: Record<string, string> = {
 
 const NUEVO = "__nuevo__";
 
-const TIPOS_PAGO = ["Facturado", "Efectivo"];
+/**
+ * El comprobante define si hay IVA que recuperar. Sólo la factura A lo
+ * discrimina; B y C lo tienen adentro o no lo tienen, pero no dan crédito. Sin
+ * factura es el efectivo de siempre.
+ */
+const COMPROBANTES = [
+  { valor: "A", label: "Factura A", tipoPago: "Facturado" },
+  { valor: "B", label: "Factura B", tipoPago: "Facturado" },
+  { valor: "C", label: "Factura C", tipoPago: "Facturado" },
+  { valor: "sin", label: "Sin factura (efectivo)", tipoPago: "Efectivo" },
+];
+
+const ALICUOTAS = ["21", "10.5"];
 
 export type GastoExistente = {
   id: string;
@@ -37,6 +49,9 @@ export type GastoExistente = {
   tipo_gasto: string;
   concepto: string;
   tipo_pago: string;
+  tipo_factura: string | null;
+  alicuota_iva: number | null;
+  empresa_factura_id: string | null;
   monto: number;
   caja_ars: number;
   caja_usd: number;
@@ -103,7 +118,24 @@ export default function GastoForm({
     gasto ? String(gasto.moneda === "USD" ? (gasto.monto_usd ?? "") : gasto.monto) : ""
   );
   const [moneda, setMoneda] = useState(gasto?.moneda ?? "ARS");
-  const [tipoPago, setTipoPago] = useState(gasto?.tipo_pago ?? "Facturado");
+  // Al editar: efectivo -> "sin"; facturado sin tipo cargado (gastos viejos)
+  // arranca en A, el caso más común, pero no se guarda hasta que se confirme.
+  const [comprobante, setComprobante] = useState(
+    gasto
+      ? gasto.tipo_pago === "Efectivo"
+        ? "sin"
+        : (gasto.tipo_factura ?? "A")
+      : "A"
+  );
+  const [alicuota, setAlicuota] = useState(
+    gasto?.alicuota_iva ? String(gasto.alicuota_iva) : "21"
+  );
+  // El titular de la factura arranca vacío y sigue a la pagadora hasta que se
+  // elija uno a mano. Así "arranca en la que pagó" sin quedar pegado si después
+  // cambia quién pagó.
+  const [empresaFactura, setEmpresaFactura] = useState(
+    gasto?.empresa_factura_id ?? ""
+  );
   const [pagadora, setPagadora] = useState(
     gasto?.empresa_pagadora_id ?? empresaFija ?? ""
   );
@@ -181,6 +213,19 @@ export default function GastoForm({
   // Cuánto de lo pedido no había en cada lado, para explicar el faltante.
   const faltanArs = Math.max(pedidoArs - Math.max(dispArs, 0), 0);
   const faltanUsd = Math.max(pedidoUsd - Math.max(dispUsd, 0), 0);
+
+  // El IVA que se recupera: sólo la factura A lo discrimina. El monto es el
+  // total con IVA adentro, así que el neto se saca hacia atrás y el IVA es la
+  // diferencia. Un ajuste de saldo no compra nada, así que nunca lleva IVA.
+  const esFacturaA = comprobante === "A" && !esAjuste;
+  const alic = Number(alicuota) || 21;
+  const iva = esFacturaA ? Math.round((total - total / (1 + alic / 100)) * 100) / 100 : 0;
+  const neto = total - iva;
+
+  // El crédito fiscal es de la empresa de la factura. Mientras no se elija una,
+  // sigue a la que pagó (o a la del usuario si tiene empresa fija).
+  const titularEfectivo = empresaFactura || pagadora || empresaFija || "";
+  const nombreTitular = socios.find((s) => s.empresa_id === titularEfectivo)?.nombre;
 
   function cambiarUsarCaja(activo: boolean) {
     setUsarCaja(activo);
@@ -624,23 +669,99 @@ export default function GastoForm({
             </div>
 
             <label style={{ ...field, display: esAjuste ? "none" : "grid" }}>
-              <span style={labelCampo}>Tipo de pago</span>
+              <span style={labelCampo}>Comprobante</span>
+
+              {/* Se manda el tipo de factura; la empresa deriva de acá si el
+                  gasto es facturado o efectivo. */}
+              <input
+                type="hidden"
+                name="tipo_factura"
+                value={comprobante === "sin" ? "" : comprobante}
+              />
+
               <select
-                name="tipo_pago"
-                value={tipoPago}
-                onChange={(e) => setTipoPago(e.target.value)}
+                value={comprobante}
+                onChange={(e) => setComprobante(e.target.value)}
                 style={ui.input}
               >
-                {TIPOS_PAGO.map((tipo) => (
-                  <option key={tipo} value={tipo}>
-                    {tipo}
+                {COMPROBANTES.map((c) => (
+                  <option key={c.valor} value={c.valor}>
+                    {c.label}
                   </option>
                 ))}
               </select>
+
               <span style={ayudaCampo}>
-                {tipoPago === "Facturado" ? "Con factura." : "Sin factura."}
+                {comprobante === "A"
+                  ? "Discrimina IVA: da crédito fiscal."
+                  : comprobante === "sin"
+                    ? "Sin factura."
+                    : "Con factura, pero no da crédito fiscal."}
               </span>
             </label>
+
+            {esFacturaA && (
+              <label style={field}>
+                <span style={labelCampo}>Alícuota de IVA</span>
+                <select
+                  name="alicuota_iva"
+                  value={alicuota}
+                  onChange={(e) => setAlicuota(e.target.value)}
+                  style={ui.input}
+                >
+                  {ALICUOTAS.map((a) => (
+                    <option key={a} value={a}>
+                      {a.replace(".", ",")}%
+                    </option>
+                  ))}
+                </select>
+                <span style={ayudaCampo}>
+                  {total > 0
+                    ? `De ${formatMoney(total)}, el IVA es ${formatMoney(iva)}.`
+                    : "Sobre el neto, no sobre el total."}
+                </span>
+              </label>
+            )}
+
+            {esFacturaA && (
+              <label style={field}>
+                <span style={labelCampo}>Empresa de la factura</span>
+
+                {empresaFija ? (
+                  <>
+                    <input
+                      type="hidden"
+                      name="empresa_factura_id"
+                      value={empresaFija}
+                    />
+                    <div style={campoFijo}>
+                      {socios.find((s) => s.empresa_id === empresaFija)?.nombre ??
+                        "Tu empresa"}
+                    </div>
+                  </>
+                ) : (
+                  <select
+                    name="empresa_factura_id"
+                    value={titularEfectivo}
+                    onChange={(e) => setEmpresaFactura(e.target.value)}
+                    required
+                    style={ui.input}
+                  >
+                    <option value="">Seleccionar empresa</option>
+                    {socios.map((socio) => (
+                      <option key={socio.empresa_id} value={socio.empresa_id}>
+                        {socio.nombre}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <span style={ayudaCampo}>
+                  A nombre de quién está la factura: esa empresa computa el
+                  crédito fiscal. Arranca en la que pagó.
+                </span>
+              </label>
+            )}
 
             {/* Pagando con la cuenta el monto ya quedó definido arriba: lo que
                 sale de cada lado ES el gasto. Pedirlo de nuevo sería cargar el
@@ -833,8 +954,10 @@ export default function GastoForm({
         ) : (
           <>
         <div style={filaDesglose}>
-          <span>Tipo de pago</span>
-          <span>{tipoPago}</span>
+          <span>Comprobante</span>
+          <span>
+            {COMPROBANTES.find((c) => c.valor === comprobante)?.label ?? "—"}
+          </span>
         </div>
 
         {/* Con la cuenta el total se arma sumando; sin ella, es el monto que se
@@ -879,6 +1002,25 @@ export default function GastoForm({
           </span>
           <strong>{formatMoney(total)}</strong>
         </div>
+
+        {/* La factura A discrimina IVA: se muestra el neto y cuánto de crédito
+            fiscal deja este gasto. */}
+        {esFacturaA && total > 0 && (
+          <div style={{ marginTop: "6px" }}>
+            <div style={filaDesglose}>
+              <span>Neto</span>
+              <span>{formatMoney(neto)}</span>
+            </div>
+            <div style={filaDesglose}>
+              <span>IVA {alicuota.replace(".", ",")}%</span>
+              <span>{formatMoney(iva)}</span>
+            </div>
+            <div style={filaDesglose}>
+              <span>Crédito fiscal de</span>
+              <span>{nombreTitular ?? "—"}</span>
+            </div>
+          </div>
+        )}
 
         {pagaCaja && total > 0 && (
           <div style={{ marginTop: "6px" }}>
