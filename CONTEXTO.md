@@ -77,6 +77,20 @@ cuyo CUIT está en la factura** (`empresa_factura_id`), que puede NO ser la que
 pagó — es un dato propio, arranca en la pagadora. Economía muestra el total y
 una columna por empresa en el balance.
 
+### Gastos administrativos
+Cuarto tipo de gasto, al lado de Materiales, Mano de obra y Ajuste de saldo. Es
+para lo que la obra paga pero no compra ni contrata: impuestos del terreno (ABL),
+honorarios de agrimensor, tasas municipales. Se cargan en el rubro **Impuestos**
+(está en el catálogo, inactivo hasta que se lo marque). Diferencias con un gasto
+normal: no se cotiza ni aparece en Presupuestos, y no está atado a los flags del
+rubro (`usa_materiales`/`usa_mano_obra`) — se puede cargar en cualquiera. En todo
+lo demás es un gasto común: se reparte entre las socias, suma al total y al
+balance, y **puede llevar Factura A con IVA/crédito fiscal** como el resto. El
+"proveedor" de estos gastos va en una tercera categoría, **Varios** (junto a
+Proveedor y Contratista); ahí se cargan los ABL, AFIP, agrimensores, etc.
+Economía lo muestra como una tercera fila en "En qué se gastó", pero sólo si la
+obra tiene alguno.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance

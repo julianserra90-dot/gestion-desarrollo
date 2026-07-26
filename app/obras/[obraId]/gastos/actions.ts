@@ -111,9 +111,15 @@ async function resolverMontos(
   };
 }
 
-/** Materiales se compran a un proveedor; la mano de obra la hace un contratista. */
+/**
+ * Cada tipo de gasto se paga a una categoría de proveedor distinta: materiales
+ * a un proveedor, mano de obra a un contratista, y lo administrativo —impuestos,
+ * honorarios, gastos municipales— a "Varios".
+ */
 function tipoProveedorPara(tipoGasto: string) {
-  return tipoGasto === "Mano de obra" ? "Contratista" : "Proveedor";
+  if (tipoGasto === "Mano de obra") return "Contratista";
+  if (tipoGasto === "Administrativo") return "Varios";
+  return "Proveedor";
 }
 
 /**

@@ -15,13 +15,31 @@ type Rubro = {
 };
 export type Proveedor = { id: string; nombre: string; tipo: string };
 
-const TIPOS_GASTO = ["Materiales", "Mano de obra", "Ajuste de saldo"];
+const TIPOS_GASTO = [
+  "Materiales",
+  "Mano de obra",
+  "Administrativo",
+  "Ajuste de saldo",
+];
 const AJUSTE = "Ajuste de saldo";
+const ADMINISTRATIVO = "Administrativo";
 
-/** Materiales se compran a un proveedor; la mano de obra la hace un contratista. */
+/**
+ * Cada tipo de gasto se le paga a una categoría de proveedor distinta:
+ * materiales a un proveedor, mano de obra a un contratista, y lo administrativo
+ * —impuestos, honorarios, gastos municipales— a la categoría "Varios".
+ */
 const TIPO_PROVEEDOR: Record<string, string> = {
   Materiales: "Proveedor",
   "Mano de obra": "Contratista",
+  Administrativo: "Varios",
+};
+
+/** Cómo se rotula el desplegable de proveedor según la categoría. */
+const PROVEEDOR_LABEL: Record<string, { label: string; placeholder: string }> = {
+  Proveedor: { label: "Proveedor", placeholder: "Ej: Corralón Central" },
+  Contratista: { label: "Contratista", placeholder: "Ej: Yesería Martínez" },
+  Varios: { label: "Varios", placeholder: "Ej: ABL, honorarios agrimensor" },
 };
 
 const NUEVO = "__nuevo__";
@@ -237,8 +255,9 @@ export default function GastoForm({
     setCajaUsd("");
   }
 
-  // El desplegable muestra proveedores o contratistas según el tipo de gasto.
+  // El desplegable muestra proveedores, contratistas o varios según el tipo.
   const tipoProveedor = TIPO_PROVEEDOR[tipoGasto] ?? "Proveedor";
+  const rotuloProveedor = PROVEEDOR_LABEL[tipoProveedor] ?? PROVEEDOR_LABEL.Proveedor;
   const disponibles = proveedores.filter((p) => p.tipo === tipoProveedor);
   const agregandoNuevo = proveedorId === NUEVO;
 
@@ -273,7 +292,9 @@ export default function GastoForm({
   // elegido se ofrecen los dos: todavía no hay con qué decidir.
   const rubroElegido = rubros.find((r) => r.id === rubroId);
   const tiposDisponibles = TIPOS_GASTO.filter((t) => {
-    if (t === AJUSTE || !rubroElegido) return true;
+    // Ajuste y Administrativo no dependen del rubro: un impuesto o un honorario
+    // no se cotiza, va en cualquier rubro.
+    if (t === AJUSTE || t === ADMINISTRATIVO || !rubroElegido) return true;
     if (t === "Materiales") return rubroElegido.usaMateriales;
     return rubroElegido.usaManoObra;
   });
@@ -608,9 +629,7 @@ export default function GastoForm({
             )}
 
             <div style={{ ...field, display: esAjuste ? "none" : "grid" }}>
-              <span style={labelCampo}>
-                {tipoProveedor === "Proveedor" ? "Proveedor" : "Contratista"}
-              </span>
+              <span style={labelCampo}>{rotuloProveedor.label}</span>
 
               <select
                 name="proveedor_id"
@@ -625,20 +644,14 @@ export default function GastoForm({
                     {p.nombre}
                   </option>
                 ))}
-                <option value={NUEVO}>
-                  + Agregar {tipoProveedor.toLowerCase()} nuevo
-                </option>
+                <option value={NUEVO}>+ Agregar nuevo</option>
               </select>
 
               {agregandoNuevo && (
                 <input
                   type="text"
                   name="proveedor_nuevo"
-                  placeholder={
-                    tipoProveedor === "Proveedor"
-                      ? "Ej: Corralón Central"
-                      : "Ej: Yesería Martínez"
-                  }
+                  placeholder={rotuloProveedor.placeholder}
                   required
                   autoFocus
                   style={{ ...ui.input, marginTop: "8px" }}

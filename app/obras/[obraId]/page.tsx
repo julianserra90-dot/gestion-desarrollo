@@ -131,17 +131,21 @@ export default async function ObraDetalle({
     .sort((a, b) => b.total - a.total);
 
   // Materiales vs mano de obra: la otra lectura útil de en qué se va la plata.
-  const porTipo = ["Materiales", "Mano de obra"].map((tipo) => {
-    const total = vigentes
-      .filter((g) => g.tipo_gasto === tipo)
-      .reduce((acc, g) => acc + Number(g.monto), 0);
+  // Lo administrativo (impuestos, honorarios) se suma como tercera categoría,
+  // pero sólo aparece si la obra tiene alguno: no todas las obras lo tienen.
+  const porTipo = ["Materiales", "Mano de obra", "Administrativo"]
+    .map((tipo) => {
+      const total = vigentes
+        .filter((g) => g.tipo_gasto === tipo)
+        .reduce((acc, g) => acc + Number(g.monto), 0);
 
-    return {
-      tipo,
-      total,
-      porcentaje: totalVigente > 0 ? Math.round((total / totalVigente) * 100) : 0,
-    };
-  });
+      return {
+        tipo,
+        total,
+        porcentaje: totalVigente > 0 ? Math.round((total / totalVigente) * 100) : 0,
+      };
+    })
+    .filter((item) => item.tipo !== "Administrativo" || item.total > 0);
 
   return (
     <AppShell>
