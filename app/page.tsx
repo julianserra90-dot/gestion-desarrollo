@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { cerrarSesion } from "./login/actions";
 
@@ -15,7 +15,9 @@ export default async function Home({
 
   const consultaObras = supabase
     .from("obras")
-    .select("id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada")
+    .select(
+      "id, slug, nombre, ubicacion, domicilio, unidades_funcionales, pisos, estado, fecha_inicio, fecha_fin_estimada"
+    )
     .order("nombre");
 
   const [{ data: obras, error }, { data: resumenes }, { count: cantArchivadas }] =
@@ -23,7 +25,7 @@ export default async function Home({
       viendoArchivadas
         ? consultaObras.not("archivada_en", "is", null)
         : consultaObras.is("archivada_en", null),
-      supabase.from("obra_resumen").select("obra_id, total_gastado, avance_fisico"),
+      supabase.from("obra_resumen").select("obra_id, avance_fisico"),
       supabase
         .from("obras")
         .select("*", { count: "exact", head: true })
@@ -101,11 +103,44 @@ export default async function Home({
           const resumen = resumenPorObra.get(obra.id);
           const avance = resumen?.avance_fisico ?? 0;
 
+          // Sólo lo que está cargado: una fila con "—" ocupa el mismo lugar
+          // que un dato y no dice nada. En el listado importa qué obra es,
+          // no cuánto se gastó.
+          const detalles = [
+            obra.unidades_funcionales
+              ? {
+                  etiqueta:
+                    obra.unidades_funcionales === 1
+                      ? "Unidad funcional"
+                      : "Unidades funcionales",
+                  valor: String(obra.unidades_funcionales),
+                }
+              : null,
+            obra.pisos !== null
+              ? {
+                  etiqueta: "Pisos",
+                  valor: obra.pisos === 0 ? "Sólo PB" : `PB + ${obra.pisos}`,
+                }
+              : null,
+            obra.fecha_inicio
+              ? { etiqueta: "Inicio", valor: formatDate(obra.fecha_inicio) }
+              : null,
+            obra.fecha_fin_estimada
+              ? {
+                  etiqueta: "Fin estimado",
+                  valor: formatDate(obra.fecha_fin_estimada),
+                }
+              : null,
+          ].filter((d): d is { etiqueta: string; valor: string } => Boolean(d));
+
           return (
             <Link key={obra.id} href={`/obras/${obra.slug}`} style={obraCard}>
               <div>
                 <p style={eyebrow}>{obra.estado}</p>
                 <h2 style={obraTitle}>{obra.nombre}</h2>
+                {obra.domicilio && (
+                  <p style={obraAddress}>{obra.domicilio}</p>
+                )}
                 <p style={obraLocation}>{obra.ubicacion}</p>
               </div>
 
@@ -126,20 +161,12 @@ export default async function Home({
               </div>
 
               <div style={meta}>
-                <div style={metaRow}>
-                  <span>Total gastado</span>
-                  <strong>{formatMoney(resumen?.total_gastado)}</strong>
-                </div>
-
-                <div style={metaRow}>
-                  <span>Inicio</span>
-                  <strong>{formatDate(obra.fecha_inicio)}</strong>
-                </div>
-
-                <div style={metaRow}>
-                  <span>Fin estimado</span>
-                  <strong>{formatDate(obra.fecha_fin_estimada)}</strong>
-                </div>
+                {detalles.map((d) => (
+                  <div key={d.etiqueta} style={metaRow}>
+                    <span>{d.etiqueta}</span>
+                    <strong>{d.valor}</strong>
+                  </div>
+                ))}
               </div>
             </Link>
           );
@@ -254,15 +281,26 @@ const obraCard = {
   background: "#ffffff",
 };
 
+// Tres escalones de jerarquía: el nombre manda, el domicilio identifica, la
+// localidad es el pie. Cada uno más chico y más claro que el anterior, para
+// que el ojo los lea en ese orden sin pensarlo.
 const obraTitle = {
-  fontSize: "26px",
+  fontSize: "28px",
   fontWeight: 400,
-  margin: "14px 0 8px",
+  margin: "14px 0 10px",
+  lineHeight: 1.15,
+};
+
+const obraAddress = {
+  color: "#333333",
+  margin: 0,
+  fontSize: "16px",
 };
 
 const obraLocation = {
-  color: "#666666",
-  margin: 0,
+  color: "#999999",
+  margin: "3px 0 0",
+  fontSize: "13px",
 };
 
 const progressBlock = {
