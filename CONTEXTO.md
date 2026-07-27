@@ -91,6 +91,27 @@ Proveedor y Contratista); ahí se cargan los ABL, AFIP, agrimensores, etc.
 Economía lo muestra como una tercera fila en "En qué se gastó", pero sólo si la
 obra tiene alguno.
 
+### Lote (la compra del terreno)
+El terreno se lleva **aparte** de los gastos de construcción: es una compra de
+inmueble en dólares, y su valor no debe inflar el m² de obra. Decisión de diseño
+tomada con el usuario: el lote NO pasa por `gastos` ni por el balance entre
+socias (queda fuera de la liquidación; si una socia pone más del terreno, esa
+diferencia se lleva por afuera por ahora). Vive en columnas de la obra
+(`lote_valor_usd`, `lote_superficie_m2`, `lote_vendedor`, `lote_detalle`) más una
+tabla `lote_pagos`. Una obra, un lote.
+
+Cada pago tiene una `categoria`: **Compra** abona el precio pactado (baja el
+saldo), y Escribanía/Sellos/Comisión/Otro son gastos de la operación (aparte del
+saldo). Los montos se guardan en su moneda (`monto` + `moneda`); la conversión a
+USD se hace **en la lectura** con `getConvertidor` (al dólar de la fecha de cada
+pago), no se persiste. Todo se mide en dólares porque así se compra un inmueble.
+
+La vista Lote (solapa bajo Economía) muestra pactado / pagado / saldo / gastos
+asociados / total desembolsado / incidencia por m² construido / inversión total
+(lote + construcción). Estado repite un resumen compacto. `lib/lote-tipos.ts`
+tiene las categorías puras (sin base), porque el form cliente las necesita y
+`lib/lote.ts` es sólo servidor —mismo patrón que `ambitos.ts`/`documentos.ts`—.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance
@@ -109,9 +130,9 @@ anterior Obsoleta sola; el encadenado es explícito (`reemplaza_a`).
 gastado; el nombre/domicilio/localidad van en tres escalones de jerarquía.
 
 ### Solapas agrupadas (hecho en la otra máquina)
-Las 10 solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
-Ingresos, Dinero en cuenta, Dólares) y **Obra** (Estado, Presupuestos, Avances,
-Fotos, Documentos, Rubros).
+Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
+Ingresos, Dinero en cuenta, Lote, Dólares) y **Obra** (Estado, Presupuestos,
+Avances, Fotos, Documentos, Rubros).
 
 ## Flujo de trabajo entre dos máquinas
 

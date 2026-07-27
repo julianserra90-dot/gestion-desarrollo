@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -676,6 +676,64 @@ export type Database = {
           },
         ]
       }
+      lote_pagos: {
+        Row: {
+          categoria: string
+          concepto: string
+          creado_en: string
+          fecha: string
+          id: string
+          moneda: string
+          monto: number
+          obra_id: string
+          observaciones: string | null
+        }
+        Insert: {
+          categoria: string
+          concepto: string
+          creado_en?: string
+          fecha?: string
+          id?: string
+          moneda?: string
+          monto: number
+          obra_id: string
+          observaciones?: string | null
+        }
+        Update: {
+          categoria?: string
+          concepto?: string
+          creado_en?: string
+          fecha?: string
+          id?: string
+          moneda?: string
+          monto?: number
+          obra_id?: string
+          observaciones?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lote_pagos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "lote_pagos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "lote_pagos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       obra_socios: {
         Row: {
           empresa_id: string
@@ -732,6 +790,10 @@ export type Database = {
           fecha_fin_estimada: string | null
           fecha_inicio: string | null
           id: string
+          lote_detalle: string | null
+          lote_superficie_m2: number | null
+          lote_valor_usd: number | null
+          lote_vendedor: string | null
           nombre: string
           pisos: number | null
           presupuesto: number | null
@@ -749,6 +811,10 @@ export type Database = {
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
+          lote_detalle?: string | null
+          lote_superficie_m2?: number | null
+          lote_valor_usd?: number | null
+          lote_vendedor?: string | null
           nombre: string
           pisos?: number | null
           presupuesto?: number | null
@@ -766,6 +832,10 @@ export type Database = {
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
+          lote_detalle?: string | null
+          lote_superficie_m2?: number | null
+          lote_valor_usd?: number | null
+          lote_vendedor?: string | null
           nombre?: string
           pisos?: number | null
           presupuesto?: number | null

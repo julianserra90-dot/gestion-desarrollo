@@ -8,6 +8,7 @@ import {
   getUltimaActividad,
 } from "@/lib/avances";
 import { formatDate, formatUSD } from "@/lib/format";
+import { getLote, incidenciaPorM2 } from "@/lib/lote";
 import { calcularValorM2, leerDesvioM2 } from "@/lib/metro-cuadrado";
 import { getObraPorSlug } from "@/lib/obras";
 import { calcularPlazo, leerDesvio } from "@/lib/plazo";
@@ -25,13 +26,24 @@ export default async function EstadoDeObraPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [rubros, ultima, totales] = await Promise.all([
+  const [rubros, ultima, totales, lote] = await Promise.all([
     getAvancePorRubro(obra.id),
     getUltimaActividad(obra.id),
     getTotalesUsd(obra.id),
+    getLote(
+      obra.id,
+      obra.lote_valor_usd,
+      obra.lote_superficie_m2,
+      obra.lote_vendedor,
+      obra.lote_detalle
+    ),
   ]);
 
   const avance = avanceGeneral(rubros);
+
+  const hayLote = lote.valorUsd !== null || lote.pagos.length > 0;
+  const incidenciaLote = incidenciaPorM2(lote.valorUsd, obra.superficie_m2);
+  const inversionTotal = totales.gastadoUsd + lote.totalUsd;
 
   const m2 = calcularValorM2({
     superficie: obra.superficie_m2,
@@ -339,6 +351,44 @@ export default async function EstadoDeObraPage({
         )}
       </section>
 
+      {/* --- El lote, si lo hay -------------------------------------------- */}
+
+      {hayLote && (
+        <>
+          <div style={ui.toolbar}>
+            <h3 style={ui.sectionTitle}>Lote y construcción</h3>
+            <Link href={`/obras/${obra.slug}/lote`} style={enlace}>
+              Ver lote
+            </Link>
+          </div>
+
+          <section style={ui.panel}>
+            <div style={filaInversion}>
+              <span>Lote, pagado a hoy</span>
+              <strong>
+                {formatUSD(lote.totalUsd)}
+                {(lote.valorUsd !== null || incidenciaLote !== null) && (
+                  <span style={incidenciaTexto}>
+                    {lote.valorUsd !== null &&
+                      ` de ${formatUSD(lote.valorUsd)} pactado`}
+                    {incidenciaLote !== null &&
+                      ` · ${formatUSD(incidenciaLote)} /m² construido`}
+                  </span>
+                )}
+              </strong>
+            </div>
+            <div style={filaInversion}>
+              <span>Construcción, gastado a hoy</span>
+              <strong>{formatUSD(totales.gastadoUsd)}</strong>
+            </div>
+            <div style={{ ...filaInversion, ...filaInversionTotal }}>
+              <span>Inversión total a hoy</span>
+              <strong>{formatUSD(inversionTotal)}</strong>
+            </div>
+          </section>
+        </>
+      )}
+
       {/* --- Los rubros ---------------------------------------------------- */}
 
       <div style={ui.toolbar}>
@@ -526,6 +576,27 @@ const aclaracion = {
   fontSize: "13px",
   color: "#999999",
   marginTop: "4px",
+};
+
+const filaInversion = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "16px",
+  padding: "10px 0",
+  color: "#444444",
+  borderTop: "1px solid #eeeeee",
+};
+
+const filaInversionTotal = {
+  borderTop: "2px solid #111111",
+  color: "#111111",
+  fontSize: "17px",
+};
+
+const incidenciaTexto = {
+  color: "#999999",
+  fontWeight: 400,
+  fontSize: "14px",
 };
 
 const desvioTotalTexto = {

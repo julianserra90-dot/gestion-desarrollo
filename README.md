@@ -25,6 +25,7 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 | **Gastos** | Cada gasto por el 100%, repartido según participación |
 | **Ingresos** | Plata que entra: aportes de socias, inversores, compradores |
 | **Dinero en cuenta** | Lo disponible para gastar, en pesos y en dólares |
+| **Lote** | La compra del terreno: pactado, pagos, escribanía, incidencia por m² |
 | **Dólares** | Todo valuado al dólar de la fecha de cada movimiento |
 | **Avances** | Historial de avance por rubro, período a período |
 | **Documentos** | Planos y papeles, por ámbito y rubro, versionados |
@@ -107,6 +108,23 @@ plano viejo. Lo obsoleto no se borra —se esconde de la lista y está a un clic
 
 El encadenado es explícito (cada documento guarda de cuál es continuación), no
 adivinado por nombre, así que un plano renombrado no rompe la cadena.
+
+### Lote
+
+La compra del terreno se lleva **aparte** del costo de construir: es una compra
+de inmueble, casi siempre en dólares, y su valor no entra en el m² de obra —los
+800 USD/m² son de construcción, no de tierra—. Por eso el lote no pasa por
+`gastos` ni por el balance entre socias: tiene su propia tabla y su propia vista.
+
+Se carga el **valor pactado** (USD) y los **pagos** a medida que se hacen (seña,
+escritura, cuotas). Cada pago se clasifica: "Compra" abona el precio —y baja el
+saldo pendiente—, mientras que escribanía, sellos y comisión son gastos de la
+operación que van aparte. Un pago en pesos se valúa al dólar de su fecha.
+
+De ahí salen tres lecturas: cuánto falta de la compra, cuánto salió la operación
+completa, y la **incidencia del terreno por m² construido** —un terreno caro
+sube el piso de toda la obra—. En Estado se ve el lote y la construcción sumados
+como inversión total.
 
 ### Dinero en cuenta
 
