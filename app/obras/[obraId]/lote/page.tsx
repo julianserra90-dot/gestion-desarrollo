@@ -38,6 +38,9 @@ export default async function LotePage({
   const incidencia = incidenciaPorM2(lote.valorUsd, obra.superficie_m2);
   const inversionTotal = construccion.gastadoUsd + lote.totalUsd;
 
+  // Para el desplegable del formulario: las socias de la obra.
+  const socios = lote.socios.map((s) => ({ id: s.empresaId, nombre: s.empresa }));
+
   const hoy = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Argentina/Buenos_Aires",
   });
@@ -121,6 +124,73 @@ export default async function LotePage({
         </section>
       )}
 
+      {/* --- Reparto del lote entre socias --------------------------------- */}
+
+      {lote.pagos.length > 0 && lote.socios.length > 0 && (
+        <section style={ui.panelConMargen}>
+          <h3 style={ui.sectionTitle}>Reparto del lote entre socias</h3>
+          <p style={{ ...ui.note, marginTop: 0, marginBottom: "16px" }}>
+            Cada socia pone su porcentaje del terreno. Este reparto es del lote y
+            va aparte del balance de la obra.
+          </p>
+
+          <table style={ui.table}>
+            <thead>
+              <tr>
+                <th style={ui.th}>Empresa</th>
+                <th style={ui.th}>Particip.</th>
+                <th style={thDer}>Puso</th>
+                <th style={thDer}>Le corresponde</th>
+                <th style={thDer}>Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lote.socios.map((s) => (
+                <tr key={s.empresaId}>
+                  <td style={ui.td}>{s.empresa}</td>
+                  <td style={ui.td}>{s.porcentaje}%</td>
+                  <td style={tdDer}>{formatUSD(s.puestoUsd)}</td>
+                  <td style={tdDer}>{formatUSD(s.leCorrespondeUsd)}</td>
+                  <td style={tdDer}>
+                    <strong style={estiloSaldo(s.saldoUsd)}>
+                      {s.saldoUsd > 0 ? "+" : ""}
+                      {formatUSD(s.saldoUsd)}
+                    </strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {lote.sinAsignarUsd > 0.01 && (
+            <p style={{ ...ui.note, marginTop: "14px" }}>
+              Hay {formatUSD(lote.sinAsignarUsd)} en pagos{" "}
+              <strong>sin asignar</strong>. No entran en el reparto hasta que les
+              elijas la empresa que pagó (editá cada pago).
+            </p>
+          )}
+
+          <div style={liquidacionBox}>
+            <p style={liquidacionTitulo}>Liquidación sugerida del lote</p>
+            {lote.liquidacion.length === 0 ? (
+              <p style={{ ...ui.text, margin: 0 }}>
+                Las socias están a la par en el lote.
+              </p>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                {lote.liquidacion.map((mov, i) => (
+                  <li key={i} style={{ ...ui.text, lineHeight: 1.7 }}>
+                    <strong>{mov.de}</strong> le transfiere{" "}
+                    <strong>{formatUSD(mov.monto)}</strong> a{" "}
+                    <strong>{mov.a}</strong>.
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* --- Ficha del lote ------------------------------------------------ */}
 
       <section style={ui.panelConMargen}>
@@ -197,6 +267,7 @@ export default async function LotePage({
           obraId={obra.id}
           slug={obra.slug}
           hoy={hoy}
+          socios={socios}
         />
       </section>
 
@@ -216,6 +287,7 @@ export default async function LotePage({
                 <th style={ui.th}>Fecha</th>
                 <th style={ui.th}>Tipo</th>
                 <th style={ui.th}>Concepto</th>
+                <th style={ui.th}>Pagó</th>
                 <th style={ui.th}>Monto</th>
                 <th style={ui.th}>En USD</th>
                 <th style={ui.th} />
@@ -227,6 +299,11 @@ export default async function LotePage({
                   <td style={ui.td}>{formatDate(pago.fecha)}</td>
                   <td style={ui.td}>{pago.categoria}</td>
                   <td style={ui.td}>{pago.concepto}</td>
+                  <td style={ui.td}>
+                    {pago.empresa ?? (
+                      <span style={{ color: "#b00020" }}>Sin asignar</span>
+                    )}
+                  </td>
                   <td style={ui.td}>
                     {pago.moneda === "USD"
                       ? formatUSD(pago.monto)
@@ -281,6 +358,37 @@ const filaTotal = {
   borderTop: "2px solid #111111",
   color: "#111111",
   fontSize: "17px",
+};
+
+const thDer = {
+  ...ui.th,
+  textAlign: "right" as const,
+};
+
+const tdDer = {
+  ...ui.td,
+  textAlign: "right" as const,
+};
+
+// Verde: puso de más y le deben. Rojo: tiene que compensar.
+function estiloSaldo(saldo: number) {
+  if (saldo > 0.01) return { color: "#15803d" };
+  if (saldo < -0.01) return { color: "#b91c1c" };
+  return undefined;
+}
+
+const liquidacionBox = {
+  border: "1px solid #111111",
+  padding: "16px",
+  marginTop: "24px",
+};
+
+const liquidacionTitulo = {
+  fontSize: "13px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.08em",
+  color: "#555555",
+  margin: "0 0 10px",
 };
 
 const grid = {

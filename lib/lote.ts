@@ -13,6 +13,7 @@
  */
 
 import { getConvertidor } from "@/lib/dolar";
+import { calcularLiquidacion, type Transferencia } from "@/lib/liquidacion";
 import { type CategoriaLote, esCategoriaLote } from "@/lib/lote-tipos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,6 +34,22 @@ export type PagoLote = {
   /** El pago valuado en dólares al cambio de su fecha. */
   usd: number | null;
   observaciones: string | null;
+  /** La socia que lo pagó. Null si todavía no se asignó. */
+  empresaId: string | null;
+  empresa: string | null;
+};
+
+/** Lo que cada socia puso en el lote, contra lo que le toca por su porcentaje. */
+export type SocioLote = {
+  empresaId: string;
+  empresa: string;
+  porcentaje: number;
+  /** Lo que efectivamente puso, en USD. */
+  puestoUsd: number;
+  /** Su parte del total desembolsado, según el porcentaje. */
+  leCorrespondeUsd: number;
+  /** Puesto menos lo que le corresponde: positivo puso de más. */
+  saldoUsd: number;
 };
 
 export type Lote = {
@@ -52,6 +69,12 @@ export type Lote = {
   totalUsd: number;
   /** Cuántos pagos no se pudieron valuar por falta de cotización. */
   sinCotizar: number;
+  /** El reparto del lote entre socias, con sus saldos. */
+  socios: SocioLote[];
+  /** Quién le transfiere a quién para emparejar el lote. */
+  liquidacion: Transferencia[];
+  /** Lo desembolsado que todavía no se atribuyó a una socia, en USD. */
+  sinAsignarUsd: number;
 };
 
 export async function getLote(
@@ -63,11 +86,19 @@ export async function getLote(
 ): Promise<Lote> {
   const supabase = await createClient();
 
-  const { data } = await supabase
-    .from("lote_pagos")
-    .select("id, fecha, categoria, concepto, monto, moneda, observaciones")
-    .eq("obra_id", obraId)
-    .order("fecha", { ascending: false });
+  const [{ data }, { data: socios }] = await Promise.all([
+    supabase
+      .from("lote_pagos")
+      .select(
+        "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, empresas(nombre)"
+      )
+      .eq("obra_id", obraId)
+      .order("fecha", { ascending: false }),
+    supabase
+      .from("obra_socios")
+      .select("empresa_id, porcentaje, empresas(nombre)")
+      .eq("obra_id", obraId),
+  ]);
 
   const filas = data ?? [];
   const convertidor = await getConvertidor(filas.map((p) => p.fecha));
@@ -87,6 +118,8 @@ export async function getLote(
     moneda: p.moneda === "ARS" ? "ARS" : "USD",
     usd: aUsd(Number(p.monto), p.moneda, p.fecha),
     observaciones: p.observaciones,
+    empresaId: p.empresa_id,
+    empresa: p.empresas?.nombre ?? null,
   }));
 
   const sumaUsd = (filtro: (p: PagoLote) => boolean) =>
@@ -94,6 +127,26 @@ export async function getLote(
 
   const pagadoCompraUsd = sumaUsd((p) => p.categoria === "Compra");
   const asociadosUsd = sumaUsd((p) => p.categoria !== "Compra");
+
+  // El reparto se calcula sobre lo atribuido: un pago sin empresa no le puede
+  // corresponder a nadie, así que queda afuera y los saldos siguen dando cero.
+  const atribuidoUsd = sumaUsd((p) => p.empresaId !== null);
+
+  const listaSocios: SocioLote[] = (socios ?? [])
+    .map((s) => {
+      const puestoUsd = sumaUsd((p) => p.empresaId === s.empresa_id);
+      const leCorrespondeUsd = (Number(s.porcentaje) / 100) * atribuidoUsd;
+
+      return {
+        empresaId: s.empresa_id,
+        empresa: s.empresas?.nombre ?? "—",
+        porcentaje: Number(s.porcentaje),
+        puestoUsd,
+        leCorrespondeUsd,
+        saldoUsd: puestoUsd - leCorrespondeUsd,
+      };
+    })
+    .sort((a, b) => a.empresa.localeCompare(b.empresa));
 
   return {
     valorUsd,
@@ -106,6 +159,11 @@ export async function getLote(
     asociadosUsd,
     totalUsd: pagadoCompraUsd + asociadosUsd,
     sinCotizar: pagos.filter((p) => p.usd === null).length,
+    socios: listaSocios,
+    liquidacion: calcularLiquidacion(
+      listaSocios.map((s) => ({ empresa: s.empresa, saldo: s.saldoUsd }))
+    ),
+    sinAsignarUsd: sumaUsd((p) => p.empresaId === null),
   };
 }
 
@@ -118,7 +176,9 @@ export async function getPagoLote(
 
   const { data } = await supabase
     .from("lote_pagos")
-    .select("id, fecha, categoria, concepto, monto, moneda, observaciones")
+    .select(
+      "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, empresas(nombre)"
+    )
     .eq("id", pagoId)
     .eq("obra_id", obraId)
     .maybeSingle();
@@ -134,6 +194,8 @@ export async function getPagoLote(
     moneda: data.moneda === "ARS" ? "ARS" : "USD",
     usd: null,
     observaciones: data.observaciones,
+    empresaId: data.empresa_id,
+    empresa: data.empresas?.nombre ?? null,
   };
 }
 

@@ -681,6 +681,7 @@ export type Database = {
           categoria: string
           concepto: string
           creado_en: string
+          empresa_id: string | null
           fecha: string
           id: string
           moneda: string
@@ -692,6 +693,7 @@ export type Database = {
           categoria: string
           concepto: string
           creado_en?: string
+          empresa_id?: string | null
           fecha?: string
           id?: string
           moneda?: string
@@ -703,6 +705,7 @@ export type Database = {
           categoria?: string
           concepto?: string
           creado_en?: string
+          empresa_id?: string | null
           fecha?: string
           id?: string
           moneda?: string
@@ -711,6 +714,13 @@ export type Database = {
           observaciones?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lote_pagos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lote_pagos_obra_id_fkey"
             columns: ["obra_id"]

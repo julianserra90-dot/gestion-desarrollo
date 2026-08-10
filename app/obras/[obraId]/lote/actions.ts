@@ -42,6 +42,7 @@ type CamposPago = {
   monto: number;
   moneda: string;
   observaciones: string;
+  empresaId: string;
 };
 
 function leerPago(formData: FormData): CamposPago {
@@ -52,6 +53,7 @@ function leerPago(formData: FormData): CamposPago {
     monto: Number(formData.get("monto") ?? 0),
     moneda: String(formData.get("moneda") ?? "USD"),
     observaciones: String(formData.get("observaciones") ?? "").trim(),
+    empresaId: String(formData.get("empresa_id") ?? "").trim(),
   };
 }
 
@@ -62,6 +64,9 @@ function validar(p: CamposPago): string | null {
   }
   if (!p.concepto) {
     return "Poné un concepto (seña, escritura, honorarios...).";
+  }
+  if (!p.empresaId) {
+    return "Elegí qué empresa hizo el pago.";
   }
   if (!Number.isFinite(p.monto) || p.monto <= 0) {
     return "El monto tiene que ser mayor a cero.";
@@ -96,6 +101,7 @@ export async function crearPagoLote(formData: FormData) {
     monto: campos.monto,
     moneda: campos.moneda,
     observaciones: campos.observaciones === "" ? null : campos.observaciones,
+    empresa_id: campos.empresaId,
   });
 
   if (error) {
@@ -135,6 +141,7 @@ export async function actualizarPagoLote(formData: FormData) {
       monto: campos.monto,
       moneda: campos.moneda,
       observaciones: campos.observaciones === "" ? null : campos.observaciones,
+      empresa_id: campos.empresaId,
     })
     .eq("id", pagoId)
     .eq("obra_id", obraId);

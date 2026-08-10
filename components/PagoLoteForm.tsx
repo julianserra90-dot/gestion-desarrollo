@@ -13,13 +13,17 @@ export type PagoEnEdicion = {
   monto: number;
   moneda: string;
   observaciones: string | null;
+  empresaId: string | null;
 };
+
+export type SocioOpcion = { id: string; nombre: string };
 
 export default function PagoLoteForm({
   action,
   obraId,
   slug,
   hoy,
+  socios,
   pago,
   textoBoton,
 }: {
@@ -27,6 +31,7 @@ export default function PagoLoteForm({
   obraId: string;
   slug: string;
   hoy: string;
+  socios: SocioOpcion[];
   pago?: PagoEnEdicion;
   textoBoton?: string;
 }) {
@@ -68,6 +73,28 @@ export default function PagoLoteForm({
             required
             style={ui.input}
           />
+        </label>
+
+        <label style={field}>
+          <span style={labelCampo}>Pagó</span>
+          <select
+            name="empresa_id"
+            defaultValue={pago?.empresaId ?? ""}
+            required
+            style={ui.input}
+          >
+            <option value="">Elegir empresa</option>
+            {socios.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nombre}
+              </option>
+            ))}
+          </select>
+          <span style={ayuda}>
+            {socios.length === 0
+              ? "Esta obra todavía no tiene socias cargadas."
+              : "La socia que hizo este pago."}
+          </span>
         </label>
 
         <label style={field}>

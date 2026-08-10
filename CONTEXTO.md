@@ -112,6 +112,15 @@ asociados / total desembolsado / incidencia por m² construido / inversión tota
 tiene las categorías puras (sin base), porque el form cliente las necesita y
 `lib/lote.ts` es sólo servidor —mismo patrón que `ambitos.ts`/`documentos.ts`—.
 
+Cada pago lleva la **socia que lo hizo** (`lote_pagos.empresa_id`, obligatorio en
+el form, nullable en la base para no romper pagos viejos sin asignar). Con eso el
+lote tiene su **propia liquidación** —aparte del balance de obra—: cada socia
+pone su porcentaje del terreno, y se sugiere quién le transfiere a quién,
+reusando `calcularLiquidacion`. El reparto se calcula sólo sobre lo **atribuido**
+(pagos con empresa); lo que queda "sin asignar" se muestra aparte y no descuadra
+los saldos. Un pago sin empresa aparece marcado en rojo hasta que se le asigna
+una socia editándolo.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance

@@ -4,6 +4,7 @@ import PagoLoteForm from "@/components/PagoLoteForm";
 import * as ui from "@/components/ui";
 import { getPagoLote } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
+import { createClient } from "@/lib/supabase/server";
 import { actualizarPagoLote } from "../../actions";
 
 export default async function EditarPagoLotePage({
@@ -21,11 +22,23 @@ export default async function EditarPagoLotePage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const pago = await getPagoLote(obra.id, pagoId);
+  const supabase = await createClient();
+
+  const [pago, { data: socios }] = await Promise.all([
+    getPagoLote(obra.id, pagoId),
+    supabase
+      .from("obra_socios")
+      .select("empresa_id, empresas(nombre)")
+      .eq("obra_id", obra.id),
+  ]);
 
   if (!pago) {
     return <AppShell>Pago no encontrado</AppShell>;
   }
+
+  const listaSocios = (socios ?? [])
+    .map((s) => ({ id: s.empresa_id, nombre: s.empresas?.nombre ?? "—" }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   const hoy = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/Argentina/Buenos_Aires",
@@ -49,6 +62,7 @@ export default async function EditarPagoLotePage({
           obraId={obra.id}
           slug={obra.slug}
           hoy={hoy}
+          socios={listaSocios}
           pago={{
             id: pago.id,
             fecha: pago.fecha,
@@ -57,6 +71,7 @@ export default async function EditarPagoLotePage({
             monto: pago.monto,
             moneda: pago.moneda,
             observaciones: pago.observaciones,
+            empresaId: pago.empresaId,
           }}
           textoBoton="Guardar cambios"
         />
