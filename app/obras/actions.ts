@@ -277,10 +277,15 @@ function leerDatosObra(formData: FormData) {
   };
 
   const presupuesto = String(formData.get("presupuesto") ?? "").trim();
-  const superficie = String(formData.get("superficie_m2") ?? "").trim();
   const valorM2 = String(formData.get("valor_m2_usd") ?? "").trim();
   const unidades = String(formData.get("unidades_funcionales") ?? "").trim();
   const pisos = String(formData.get("pisos") ?? "").trim();
+
+  // Un campo de superficie: número o null si viene vacío.
+  const superficie = (campo: string) => {
+    const valor = String(formData.get(campo) ?? "").trim();
+    return valor === "" ? null : Number(valor);
+  };
 
   return {
     nombre: String(formData.get("nombre") ?? "").trim(),
@@ -289,11 +294,16 @@ function leerDatosObra(formData: FormData) {
     fecha_inicio: texto("fecha_inicio"),
     fecha_fin_estimada: texto("fecha_fin_estimada"),
     presupuesto: presupuesto === "" ? null : Number(presupuesto),
-    superficie_m2: superficie === "" ? null : Number(superficie),
     valor_m2_usd: valorM2 === "" ? null : Number(valorM2),
     domicilio: texto("domicilio"),
     unidades_funcionales: unidades === "" ? null : Number(unidades),
     pisos: pisos === "" ? null : Number(pisos),
+    sup_cubierta_m2: superficie("sup_cubierta_m2"),
+    sup_semicubierta_m2: superficie("sup_semicubierta_m2"),
+    sup_descubierta_m2: superficie("sup_descubierta_m2"),
+    // El coeficiente siempre viene del desplegable; el default sólo por las dudas.
+    coef_semicubierta: Number(formData.get("coef_semicubierta") ?? 0.5),
+    coef_descubierta: Number(formData.get("coef_descubierta") ?? 0),
   };
 }
 

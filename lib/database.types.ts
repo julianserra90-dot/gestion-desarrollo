@@ -794,6 +794,8 @@ export type Database = {
       obras: {
         Row: {
           archivada_en: string | null
+          coef_descubierta: number
+          coef_semicubierta: number
           creado_en: string
           domicilio: string | null
           estado: string
@@ -808,13 +810,17 @@ export type Database = {
           pisos: number | null
           presupuesto: number | null
           slug: string
-          superficie_m2: number | null
+          sup_cubierta_m2: number | null
+          sup_descubierta_m2: number | null
+          sup_semicubierta_m2: number | null
           ubicacion: string | null
           unidades_funcionales: number | null
           valor_m2_usd: number | null
         }
         Insert: {
           archivada_en?: string | null
+          coef_descubierta?: number
+          coef_semicubierta?: number
           creado_en?: string
           domicilio?: string | null
           estado?: string
@@ -829,13 +835,17 @@ export type Database = {
           pisos?: number | null
           presupuesto?: number | null
           slug: string
-          superficie_m2?: number | null
+          sup_cubierta_m2?: number | null
+          sup_descubierta_m2?: number | null
+          sup_semicubierta_m2?: number | null
           ubicacion?: string | null
           unidades_funcionales?: number | null
           valor_m2_usd?: number | null
         }
         Update: {
           archivada_en?: string | null
+          coef_descubierta?: number
+          coef_semicubierta?: number
           creado_en?: string
           domicilio?: string | null
           estado?: string
@@ -850,7 +860,9 @@ export type Database = {
           pisos?: number | null
           presupuesto?: number | null
           slug?: string
-          superficie_m2?: number | null
+          sup_cubierta_m2?: number | null
+          sup_descubierta_m2?: number | null
+          sup_semicubierta_m2?: number | null
           ubicacion?: string | null
           unidades_funcionales?: number | null
           valor_m2_usd?: number | null

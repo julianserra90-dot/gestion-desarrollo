@@ -11,6 +11,10 @@ import { formatDate, formatUSD } from "@/lib/format";
 import { getLote, incidenciaPorM2 } from "@/lib/lote";
 import { calcularValorM2, leerDesvioM2 } from "@/lib/metro-cuadrado";
 import { getObraPorSlug } from "@/lib/obras";
+import {
+  superficieConstruccion,
+  superficieVenta,
+} from "@/lib/superficies";
 import { calcularPlazo, leerDesvio } from "@/lib/plazo";
 import { getTotalesUsd } from "@/lib/totales-usd";
 
@@ -41,13 +45,27 @@ export default async function EstadoDeObraPage({
 
   const avance = avanceGeneral(rubros);
 
+  const supConstruccion = superficieConstruccion(obra);
+  const supVenta = superficieVenta(obra);
+
   const hayLote = lote.valorUsd !== null || lote.pagos.length > 0;
-  const incidenciaLote = incidenciaPorM2(lote.valorUsd, obra.superficie_m2);
+  const incidenciaConstruccion = incidenciaPorM2(lote.valorUsd, supConstruccion);
+  const incidenciaVenta = incidenciaPorM2(lote.valorUsd, supVenta);
   const inversionTotal = totales.gastadoUsd + lote.totalUsd;
 
+  // El objetivo y el desvío se miden sobre la construcción, que es lo que se
+  // cuesta. La venta sirve para leer el gastado/proyectado del lado del negocio.
   const m2 = calcularValorM2({
-    superficie: obra.superficie_m2,
+    superficie: supConstruccion,
     objetivoUsd: obra.valor_m2_usd,
+    aprobadoUsd: totales.aprobadoUsd,
+    gastadoUsd: totales.gastadoUsd,
+    avance,
+  });
+
+  const m2Venta = calcularValorM2({
+    superficie: supVenta,
+    objetivoUsd: null,
     aprobadoUsd: totales.aprobadoUsd,
     gastadoUsd: totales.gastadoUsd,
     avance,
@@ -72,8 +90,12 @@ export default async function EstadoDeObraPage({
   const fichaProyecto = [
     { etiqueta: "Domicilio", valor: obra.domicilio },
     {
-      etiqueta: "Superficie",
-      valor: obra.superficie_m2 ? `${obra.superficie_m2} m²` : null,
+      etiqueta: "Sup. de construcción",
+      valor: supConstruccion ? `${supConstruccion} m²` : null,
+    },
+    {
+      etiqueta: "Sup. de venta",
+      valor: supVenta ? `${supVenta} m²` : null,
     },
     {
       etiqueta: "Unidades funcionales",
@@ -89,8 +111,8 @@ export default async function EstadoDeObraPage({
     {
       etiqueta: "Promedio por unidad",
       valor:
-        obra.superficie_m2 && obra.unidades_funcionales
-          ? `${Math.round(obra.superficie_m2 / obra.unidades_funcionales)} m²`
+        supConstruccion && obra.unidades_funcionales
+          ? `${Math.round(supConstruccion / obra.unidades_funcionales)} m²`
           : null,
     },
   ].filter((d): d is { etiqueta: string; valor: string } => Boolean(d.valor));
@@ -221,16 +243,21 @@ export default async function EstadoDeObraPage({
       {/* --- El valor del metro cuadrado ------------------------------------ */}
 
       <div style={ui.toolbar}>
-        <h3 style={ui.sectionTitle}>Valor del m² en dólares</h3>
-        {obra.superficie_m2 && (
-          <span style={superficieTexto}>{obra.superficie_m2} m²</span>
+        <h3 style={ui.sectionTitle}>Valor del m² de construcción</h3>
+        {supConstruccion && (
+          <span style={superficieTexto}>
+            {supConstruccion} m² construcción
+            {supVenta && supVenta !== supConstruccion
+              ? ` · ${supVenta} m² venta`
+              : ""}
+          </span>
         )}
       </div>
 
       <section style={ui.panel}>
-        {!obra.superficie_m2 ? (
+        {!supConstruccion ? (
           <p style={ui.vacio}>
-            Cargá la superficie en{" "}
+            Cargá las superficies en{" "}
             <Link href={`/obras/${obra.slug}/editar`} style={enlace}>
               Editar obra
             </Link>{" "}
@@ -270,7 +297,7 @@ export default async function EstadoDeObraPage({
                     Llevás gastado
                     <span style={aclaracion}>
                       {formatUSD(totales.gastadoUsd)} repartidos en los{" "}
-                      {obra.superficie_m2} m².{" "}
+                      {supConstruccion} m² de construcción.{" "}
                       {avance > 0 && avance < 100
                         ? `Va a subir: falta el ${100 - avance}% de la obra.`
                         : "Es plata ya pagada, no una estimación."}
@@ -339,6 +366,16 @@ export default async function EstadoDeObraPage({
               </p>
             )}
 
+            {supVenta && supVenta !== supConstruccion && (
+              <p style={{ ...aclaracionPie, color: "#555555" }}>
+                <strong>Por m² de venta</strong> ({supVenta} m²): gastado{" "}
+                {formatUSD(m2Venta.gastado ?? 0)} /m²
+                {m2Venta.proyectado !== null &&
+                  `, proyectado al cierre ${formatUSD(m2Venta.proyectado)} /m²`}
+                .
+              </p>
+            )}
+
             <p style={aclaracionPie}>
               Cada gasto se valúa al dólar de su fecha, así que el total sale al
               dólar promedio real de la obra y no a una cotización única.
@@ -367,12 +404,15 @@ export default async function EstadoDeObraPage({
               <span>Lote, pagado a hoy</span>
               <strong>
                 {formatUSD(lote.totalUsd)}
-                {(lote.valorUsd !== null || incidenciaLote !== null) && (
+                {(lote.valorUsd !== null || incidenciaConstruccion !== null) && (
                   <span style={incidenciaTexto}>
                     {lote.valorUsd !== null &&
                       ` de ${formatUSD(lote.valorUsd)} pactado`}
-                    {incidenciaLote !== null &&
-                      ` · ${formatUSD(incidenciaLote)} /m² construido`}
+                    {incidenciaConstruccion !== null &&
+                      ` · incidencia ${formatUSD(incidenciaConstruccion)}/m² constr.`}
+                    {incidenciaVenta !== null &&
+                      incidenciaVenta !== incidenciaConstruccion &&
+                      ` · ${formatUSD(incidenciaVenta)}/m² venta`}
                   </span>
                 )}
               </strong>

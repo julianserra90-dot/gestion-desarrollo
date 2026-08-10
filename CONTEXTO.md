@@ -134,9 +134,20 @@ anterior Obsoleta sola; el encadenado es explícito (`reemplaza_a`).
 
 ### Ficha de obra (hecha en la otra máquina + esta)
 `domicilio` (calle y altura, aparte de `ubicacion` = localidad),
-`unidades_funcionales`, `pisos` (número sobre PB), `superficie_m2`,
-`valor_m2_usd`. El listado de obras muestra domicilio/unidades/pisos, no el total
-gastado; el nombre/domicilio/localidad van en tres escalones de jerarquía.
+`unidades_funcionales`, `pisos` (número sobre PB), `valor_m2_usd`. El listado de
+obras muestra domicilio/unidades/pisos, no el total gastado; el
+nombre/domicilio/localidad van en tres escalones de jerarquía.
+
+### Superficies (desglose)
+Ya no hay un solo `superficie_m2`: se cargan **cubierta**, **semicubierta** y
+**descubierta** por separado (`sup_cubierta_m2`, etc.), más un coeficiente por
+obra para cada una (`coef_semicubierta` 0.5/1, `coef_descubierta` 0/0.25/0.5).
+De ahí salen dos superficies, calculadas en `lib/superficies.ts` (puro, sin
+base): **de construcción** = suma al 100% (manda para el costo de construir) y
+**de venta** = ponderada por los coeficientes (manda para el negocio). El viejo
+`superficie_m2` se migró a cubierta, así que las obras cargadas no cambiaron sus
+números. La incidencia del lote y el gastado/m² se muestran sobre las dos
+superficies; el objetivo y el desvío siguen sobre la de construcción.
 
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,

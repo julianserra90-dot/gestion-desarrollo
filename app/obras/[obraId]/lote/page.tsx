@@ -6,6 +6,10 @@ import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { getLote, incidenciaPorM2 } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
+import {
+  superficieConstruccion,
+  superficieVenta,
+} from "@/lib/superficies";
 import { getTotalesUsd } from "@/lib/totales-usd";
 import { crearPagoLote, eliminarPagoLote, guardarDatosLote } from "./actions";
 
@@ -35,7 +39,11 @@ export default async function LotePage({
     getTotalesUsd(obra.id),
   ]);
 
-  const incidencia = incidenciaPorM2(lote.valorUsd, obra.superficie_m2);
+  const incidenciaConstruccion = incidenciaPorM2(
+    lote.valorUsd,
+    superficieConstruccion(obra)
+  );
+  const incidenciaVenta = incidenciaPorM2(lote.valorUsd, superficieVenta(obra));
   const inversionTotal = construccion.gastadoUsd + lote.totalUsd;
 
   // Para el desplegable del formulario: las socias de la obra.
@@ -99,12 +107,19 @@ export default async function LotePage({
               <span>Total desembolsado en el lote</span>
               <strong>{formatUSD(lote.totalUsd)}</strong>
             </div>
-            {incidencia !== null && (
+            {incidenciaConstruccion !== null && (
               <div style={filaResumen}>
-                <span>Incidencia por m² construido</span>
-                <strong>{formatUSD(incidencia)} /m²</strong>
+                <span>Incidencia por m² de construcción</span>
+                <strong>{formatUSD(incidenciaConstruccion)} /m²</strong>
               </div>
             )}
+            {incidenciaVenta !== null &&
+              incidenciaVenta !== incidenciaConstruccion && (
+                <div style={filaResumen}>
+                  <span>Incidencia por m² de venta</span>
+                  <strong>{formatUSD(incidenciaVenta)} /m²</strong>
+                </div>
+              )}
             <div style={filaResumen}>
               <span>Gastado en construcción</span>
               <strong>{formatUSD(construccion.gastadoUsd)}</strong>
