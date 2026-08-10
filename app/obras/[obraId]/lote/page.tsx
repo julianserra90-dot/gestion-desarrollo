@@ -315,8 +315,12 @@ export default async function LotePage({
                   <td style={ui.td}>{pago.categoria}</td>
                   <td style={ui.td}>{pago.concepto}</td>
                   <td style={ui.td}>
-                    {pago.empresa ?? (
-                      <span style={{ color: "#b00020" }}>Sin asignar</span>
+                    {pago.compartido ? (
+                      "Entre las socias"
+                    ) : (
+                      pago.empresa ?? (
+                        <span style={{ color: "#b00020" }}>Sin asignar</span>
+                      )
                     )}
                   </td>
                   <td style={ui.td}>

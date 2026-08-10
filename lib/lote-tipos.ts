@@ -27,3 +27,6 @@ export const CATEGORIAS_ASOCIADAS: readonly CategoriaLote[] = [
 export function esCategoriaLote(valor: string): valor is CategoriaLote {
   return (CATEGORIAS_LOTE as readonly string[]).includes(valor);
 }
+
+/** Valor del desplegable "Pagó" para un pago entre todas las socias, mitad y mitad. */
+export const PAGO_COMPARTIDO = "__ambas__";

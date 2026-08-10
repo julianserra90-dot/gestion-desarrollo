@@ -121,6 +121,13 @@ reusando `calcularLiquidacion`. El reparto se calcula sólo sobre lo **atribuido
 los saldos. Un pago sin empresa aparece marcado en rojo hasta que se le asigna
 una socia editándolo.
 
+Un pago puede ser **entre las socias** (`compartido = true`, `empresa_id` null):
+en el desplegable "Pagó" está la opción "Entre las socias (partes iguales)". Una
+cuota de US$ 2.000 compartida suma US$ 1.000 al "puso" de cada socia (monto /
+cantidad de socias). Sirve para las cuotas del terreno que ponen las dos juntas
+sin tener que cargar dos pagos. El centinela del desplegable es
+`PAGO_COMPARTIDO` en `lib/lote-tipos.ts`.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance

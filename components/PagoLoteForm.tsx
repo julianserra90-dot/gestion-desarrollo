@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import * as ui from "@/components/ui";
-import { CATEGORIAS_LOTE } from "@/lib/lote-tipos";
+import { CATEGORIAS_LOTE, PAGO_COMPARTIDO } from "@/lib/lote-tipos";
 
 export type PagoEnEdicion = {
   id: string;
@@ -14,6 +14,7 @@ export type PagoEnEdicion = {
   moneda: string;
   observaciones: string | null;
   empresaId: string | null;
+  compartido: boolean;
 };
 
 export type SocioOpcion = { id: string; nombre: string };
@@ -79,11 +80,16 @@ export default function PagoLoteForm({
           <span style={labelCampo}>Pagó</span>
           <select
             name="empresa_id"
-            defaultValue={pago?.empresaId ?? ""}
+            defaultValue={pago?.compartido ? PAGO_COMPARTIDO : pago?.empresaId ?? ""}
             required
             style={ui.input}
           >
             <option value="">Elegir empresa</option>
+            {socios.length > 1 && (
+              <option value={PAGO_COMPARTIDO}>
+                Entre las socias (partes iguales)
+              </option>
+            )}
             {socios.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.nombre}
@@ -93,7 +99,7 @@ export default function PagoLoteForm({
           <span style={ayuda}>
             {socios.length === 0
               ? "Esta obra todavía no tiene socias cargadas."
-              : "La socia que hizo este pago."}
+              : "Quién hizo el pago. “Entre las socias” reparte el monto en partes iguales."}
           </span>
         </label>
 

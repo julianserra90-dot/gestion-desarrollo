@@ -72,6 +72,7 @@ export default async function EditarPagoLotePage({
             moneda: pago.moneda,
             observaciones: pago.observaciones,
             empresaId: pago.empresaId,
+            compartido: pago.compartido,
           }}
           textoBoton="Guardar cambios"
         />

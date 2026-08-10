@@ -34,9 +34,11 @@ export type PagoLote = {
   /** El pago valuado en dólares al cambio de su fecha. */
   usd: number | null;
   observaciones: string | null;
-  /** La socia que lo pagó. Null si todavía no se asignó. */
+  /** La socia que lo pagó. Null si es compartido o todavía no se asignó. */
   empresaId: string | null;
   empresa: string | null;
+  /** true = lo pusieron todas las socias en partes iguales. */
+  compartido: boolean;
 };
 
 /** Lo que cada socia puso en el lote, contra lo que le toca por su porcentaje. */
@@ -90,7 +92,7 @@ export async function getLote(
     supabase
       .from("lote_pagos")
       .select(
-        "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, empresas(nombre)"
+        "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, empresas(nombre)"
       )
       .eq("obra_id", obraId)
       .order("fecha", { ascending: false }),
@@ -120,6 +122,7 @@ export async function getLote(
     observaciones: p.observaciones,
     empresaId: p.empresa_id,
     empresa: p.empresas?.nombre ?? null,
+    compartido: p.compartido ?? false,
   }));
 
   const sumaUsd = (filtro: (p: PagoLote) => boolean) =>
@@ -128,13 +131,21 @@ export async function getLote(
   const pagadoCompraUsd = sumaUsd((p) => p.categoria === "Compra");
   const asociadosUsd = sumaUsd((p) => p.categoria !== "Compra");
 
-  // El reparto se calcula sobre lo atribuido: un pago sin empresa no le puede
-  // corresponder a nadie, así que queda afuera y los saldos siguen dando cero.
-  const atribuidoUsd = sumaUsd((p) => p.empresaId !== null);
+  // Un pago compartido lo pusieron todas por igual: su mitad (o tercio) le suma
+  // a cada socia. Los demás van a la empresa que los hizo. Lo que quedó sin
+  // asignar —ni empresa ni compartido— no entra, así los saldos dan cero.
+  const cantSocios = (socios ?? []).length;
+  const compartidoUsd = sumaUsd((p) => p.compartido);
+  const porSociaDelCompartido =
+    cantSocios > 0 ? compartidoUsd / cantSocios : 0;
+
+  const atribuidoUsd =
+    sumaUsd((p) => p.empresaId !== null) + compartidoUsd;
 
   const listaSocios: SocioLote[] = (socios ?? [])
     .map((s) => {
-      const puestoUsd = sumaUsd((p) => p.empresaId === s.empresa_id);
+      const propio = sumaUsd((p) => p.empresaId === s.empresa_id);
+      const puestoUsd = propio + porSociaDelCompartido;
       const leCorrespondeUsd = (Number(s.porcentaje) / 100) * atribuidoUsd;
 
       return {
@@ -163,7 +174,7 @@ export async function getLote(
     liquidacion: calcularLiquidacion(
       listaSocios.map((s) => ({ empresa: s.empresa, saldo: s.saldoUsd }))
     ),
-    sinAsignarUsd: sumaUsd((p) => p.empresaId === null),
+    sinAsignarUsd: sumaUsd((p) => p.empresaId === null && !p.compartido),
   };
 }
 
@@ -177,7 +188,7 @@ export async function getPagoLote(
   const { data } = await supabase
     .from("lote_pagos")
     .select(
-      "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, empresas(nombre)"
+      "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, empresas(nombre)"
     )
     .eq("id", pagoId)
     .eq("obra_id", obraId)
@@ -196,6 +207,7 @@ export async function getPagoLote(
     observaciones: data.observaciones,
     empresaId: data.empresa_id,
     empresa: data.empresas?.nombre ?? null,
+    compartido: data.compartido ?? false,
   };
 }
 

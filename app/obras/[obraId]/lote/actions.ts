@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { esCategoriaLote } from "@/lib/lote-tipos";
+import { esCategoriaLote, PAGO_COMPARTIDO } from "@/lib/lote-tipos";
 import { createClient } from "@/lib/supabase/server";
 
 /** Guarda la ficha del lote: precio pactado, superficie del terreno, vendedor. */
@@ -42,10 +42,15 @@ type CamposPago = {
   monto: number;
   moneda: string;
   observaciones: string;
-  empresaId: string;
+  /** La socia que pagó, o null si es compartido. */
+  empresaId: string | null;
+  compartido: boolean;
 };
 
 function leerPago(formData: FormData): CamposPago {
+  const quienPago = String(formData.get("empresa_id") ?? "").trim();
+  const compartido = quienPago === PAGO_COMPARTIDO;
+
   return {
     fecha: String(formData.get("fecha") ?? "").trim(),
     categoria: String(formData.get("categoria") ?? "").trim(),
@@ -53,7 +58,8 @@ function leerPago(formData: FormData): CamposPago {
     monto: Number(formData.get("monto") ?? 0),
     moneda: String(formData.get("moneda") ?? "USD"),
     observaciones: String(formData.get("observaciones") ?? "").trim(),
-    empresaId: String(formData.get("empresa_id") ?? "").trim(),
+    empresaId: compartido || quienPago === "" ? null : quienPago,
+    compartido,
   };
 }
 
@@ -65,8 +71,8 @@ function validar(p: CamposPago): string | null {
   if (!p.concepto) {
     return "Poné un concepto (seña, escritura, honorarios...).";
   }
-  if (!p.empresaId) {
-    return "Elegí qué empresa hizo el pago.";
+  if (!p.compartido && !p.empresaId) {
+    return "Elegí quién hizo el pago.";
   }
   if (!Number.isFinite(p.monto) || p.monto <= 0) {
     return "El monto tiene que ser mayor a cero.";
@@ -102,6 +108,7 @@ export async function crearPagoLote(formData: FormData) {
     moneda: campos.moneda,
     observaciones: campos.observaciones === "" ? null : campos.observaciones,
     empresa_id: campos.empresaId,
+    compartido: campos.compartido,
   });
 
   if (error) {
@@ -142,6 +149,7 @@ export async function actualizarPagoLote(formData: FormData) {
       moneda: campos.moneda,
       observaciones: campos.observaciones === "" ? null : campos.observaciones,
       empresa_id: campos.empresaId,
+      compartido: campos.compartido,
     })
     .eq("id", pagoId)
     .eq("obra_id", obraId);

@@ -679,6 +679,7 @@ export type Database = {
       lote_pagos: {
         Row: {
           categoria: string
+          compartido: boolean
           concepto: string
           creado_en: string
           empresa_id: string | null
@@ -691,6 +692,7 @@ export type Database = {
         }
         Insert: {
           categoria: string
+          compartido?: boolean
           concepto: string
           creado_en?: string
           empresa_id?: string | null
@@ -703,6 +705,7 @@ export type Database = {
         }
         Update: {
           categoria?: string
+          compartido?: boolean
           concepto?: string
           creado_en?: string
           empresa_id?: string | null
