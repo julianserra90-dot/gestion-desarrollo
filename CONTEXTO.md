@@ -259,6 +259,13 @@ acción de borrar el pago del lote viaja como prop.
   Factura A; se van marcando A/B/C a medida que se tocan.
 - Ver la nota de "queda margen" (gasto por debajo de lo cotizado) en vivo — nunca
   se dio con datos reales.
+- **Resumen por empresa que sume obra + lote**: la idea es que sigan sin
+  cruzarse (gastos de obra por un lado, gastos de lote por otro, cada uno con su
+  liquidación) y que además haya una lectura consolidada de lo que puso cada
+  empresa entre los dos. Falta hacerla.
+- **Datos de prueba en 3 De Febrero**: el valor pactado del lote, las cuotas y la
+  superficie (160 m²) son de prueba. Reemplazarlos por los reales cuando se
+  cargue la obra en serio.
 
 ## Cómo retomar en una sesión nueva
 
