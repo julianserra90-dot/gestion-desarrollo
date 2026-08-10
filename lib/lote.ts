@@ -69,6 +69,9 @@ export type Lote = {
   asociadosUsd: number;
   /** Todo lo desembolsado por el lote: compra pagada + asociados. */
   totalUsd: number;
+  /** Lo mismo, pero en pesos (cada pago al dólar de su fecha). Para sumarlo con
+   * los gastos, que están en pesos. */
+  totalArs: number;
   /** Cuántos pagos no se pudieron valuar por falta de cotización. */
   sinCotizar: number;
   /** El reparto del lote entre socias, con sus saldos. */
@@ -128,6 +131,19 @@ export async function getLote(
   const sumaUsd = (filtro: (p: PagoLote) => boolean) =>
     pagos.filter(filtro).reduce((total, p) => total + (p.usd ?? 0), 0);
 
+  // El mismo pago en pesos: los dólares valuados al cambio de su fecha. Sirve
+  // para sumar el lote con los gastos, que están en pesos.
+  const aArs = (monto: number, moneda: string, fecha: string): number => {
+    if (moneda === "ARS") return monto;
+    const cotizacion = convertidor.cotizacionDe(fecha);
+    return cotizacion ? monto * cotizacion : 0;
+  };
+
+  const totalArs = pagos.reduce(
+    (total, p) => total + aArs(p.monto, p.moneda, p.fecha),
+    0
+  );
+
   const pagadoCompraUsd = sumaUsd((p) => p.categoria === "Compra");
   const asociadosUsd = sumaUsd((p) => p.categoria !== "Compra");
 
@@ -169,6 +185,7 @@ export async function getLote(
     saldoUsd: valorUsd === null ? null : valorUsd - pagadoCompraUsd,
     asociadosUsd,
     totalUsd: pagadoCompraUsd + asociadosUsd,
+    totalArs,
     sinCotizar: pagos.filter((p) => p.usd === null).length,
     socios: listaSocios,
     liquidacion: calcularLiquidacion(

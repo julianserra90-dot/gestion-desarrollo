@@ -1,9 +1,11 @@
 import AppShell from "@/components/AppShell";
+import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getConvertidor } from "@/lib/dolar";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { getLote } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,7 +23,7 @@ export default async function DolaresPage({
 
   const supabase = await createClient();
 
-  const [{ data: gastos }, { data: ingresos }, caja] = await Promise.all([
+  const [{ data: gastos }, { data: ingresos }, caja, lote] = await Promise.all([
     supabase
       .from("gastos")
       .select(
@@ -37,6 +39,8 @@ export default async function DolaresPage({
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
     getCaja(obra.id),
+    // El lote, en dólares, para reflejarlo también en el resumen en USD.
+    getLote(obra.id, null, null, null, null),
   ]);
 
   // Los ajustes de saldo no son gasto de obra, así que quedan afuera.
@@ -116,6 +120,26 @@ export default async function DolaresPage({
 
   const totalUsd = convertidos.reduce((acc, g) => acc + (g.usd ?? 0), 0);
   const totalArs = convertidos.reduce((acc, g) => acc + g.montoArs, 0);
+
+  // "En qué se gastó", en dólares: cada rubro más el lote (que ya está en USD).
+  // Es la misma lectura que en Economía, pero en la moneda en que se piensa.
+  const porRubroUsd = new Map<string, number>();
+  for (const g of convertidos) {
+    const nombre = g.rubros?.nombre ?? "Sin rubro";
+    porRubroUsd.set(nombre, (porRubroUsd.get(nombre) ?? 0) + (g.usd ?? 0));
+  }
+
+  const tortaUsd = [
+    ...[...porRubroUsd.entries()].map(([etiqueta, valor]) => ({
+      etiqueta,
+      valor,
+    })),
+    ...(lote.totalUsd > 0
+      ? [{ etiqueta: "Lote / Terreno", valor: lote.totalUsd }]
+      : []),
+  ];
+
+  const inversionUsd = totalUsd + lote.totalUsd;
   const sinCotizar =
     convertidos.filter((g) => g.usd === null).length +
     convertidasEntradas.filter((i) => i.usd === null).length;
@@ -264,6 +288,23 @@ export default async function DolaresPage({
           se devaluó desde que se hicieron los gastos.
         </p>
       </section>
+
+      {tortaUsd.length > 0 && (
+        <section style={ui.panelConMargen}>
+          <h3 style={ui.sectionTitle}>En qué se gastó, en dólares</h3>
+          <div style={{ marginTop: "20px" }}>
+            <GraficoTorta datos={tortaUsd} formato={formatUSD} />
+
+            {lote.totalUsd > 0 && (
+              <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
+                <strong>Inversión total: {formatUSD(inversionUsd)}</strong> (obra
+                + lote). El lote ya está en dólares; los gastos se valúan al de
+                cada fecha.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {hayCaja && (
         <section style={ui.panelConMargen}>

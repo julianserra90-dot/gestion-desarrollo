@@ -207,6 +207,17 @@ Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
   → Restore/Resume, tarda 1-2 min). Si el login falla y el CLI da timeout, es el
   primer sospechoso.
 
+### Gráfico de torta "en qué se gastó" (con el lote)
+Economía y Dólares tienen un gráfico de torta por rubro que **incluye el lote**
+como una porción más (`components/GraficoTorta.tsx`, SVG puro, sin librería). En
+Economía va en pesos (el lote se valúa a pesos al dólar de cada pago,
+`lote.totalArs`); en Dólares va en USD (`lote.totalUsd`). Debajo se muestra la
+**inversión total** = obra + lote.
+
+Decisión: el lote NO se sumó a la tarjeta "Total gastado" de arriba, porque esa
+cuadra con "facturado + efectivo" y meterle el lote la rompía. En su lugar está
+la "inversión total". Si se quiere, se puede reconsiderar.
+
 ### Buscar / filtrar gastos y pagos del lote
 Las listas grandes se filtran del lado del cliente (todo ya viene cargado, se
 filtra en JS). Gastos: `components/GastosLista.tsx` (buscador de texto que pega en

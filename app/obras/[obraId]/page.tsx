@@ -1,9 +1,11 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
 import { getCaja } from "@/lib/caja";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { calcularLiquidacion } from "@/lib/liquidacion";
+import { getLote } from "@/lib/lote";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ObraDetalle({
@@ -24,7 +26,7 @@ export default async function ObraDetalle({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [{ data: balance }, { data: resumen }, { data: gastos }, caja] = await Promise.all([
+  const [{ data: balance }, { data: resumen }, { data: gastos }, caja, lote] = await Promise.all([
     supabase
       .from("obra_balance")
       .select(
@@ -48,6 +50,9 @@ export default async function ObraDetalle({
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
     getCaja(obra.id),
+    // El lote va aparte de los gastos, pero para "en qué se gastó" cuenta como
+    // uno más. Sólo se necesita su total en pesos (los otros campos, null).
+    getLote(obra.id, null, null, null, null),
   ]);
 
   // El crédito fiscal es de la empresa que figura en cada factura A. La columna
@@ -122,13 +127,26 @@ export default async function ObraDetalle({
   const hayPresupuesto = Number(obra.presupuesto ?? 0) > 0;
   const consumido = hayPresupuesto ? `${resumen?.avance_financiero ?? 0}%` : "—";
 
-  const gastoPorRubro = [...porRubro.entries()]
-    .map(([rubro, total]) => ({
-      rubro,
-      total,
-      porcentaje: totalVigente > 0 ? Math.round((total / totalVigente) * 100) : 0,
-    }))
+  // El lote (en dólares) valuado en pesos, para que entre en el mismo desglose
+  // que los gastos. Es una inversión aparte de la obra, pero también es plata
+  // que salió, así que en "en qué se gastó" cuenta como un rubro más.
+  const loteArs = Math.round(lote.totalArs);
+  const totalConLote = totalVigente + loteArs;
+
+  const porcentajeDe = (total: number) =>
+    totalConLote > 0 ? Math.round((total / totalConLote) * 100) : 0;
+
+  const gastoPorRubro = [
+    ...[...porRubro.entries()].map(([rubro, total]) => ({ rubro, total })),
+    ...(loteArs > 0 ? [{ rubro: "Lote / Terreno", total: loteArs }] : []),
+  ]
+    .map((r) => ({ ...r, porcentaje: porcentajeDe(r.total) }))
     .sort((a, b) => b.total - a.total);
+
+  const torta = gastoPorRubro.map((r) => ({
+    etiqueta: r.rubro,
+    valor: r.total,
+  }));
 
   // Materiales vs mano de obra: la otra lectura útil de en qué se va la plata.
   // Lo administrativo (impuestos, honorarios) se suma como tercera categoría,
@@ -380,20 +398,17 @@ export default async function ObraDetalle({
           {gastoPorRubro.length === 0 ? (
             <p style={text}>Sin gastos cargados todavía.</p>
           ) : (
-            gastoPorRubro.map((item) => (
-              <div key={item.rubro} style={{ marginTop: "18px" }}>
-                <div style={filaRubro}>
-                  <span>{item.rubro}</span>
-                  <strong>
-                    {formatMoney(item.total)}{" "}
-                    <span style={porcentajeRubro}>{item.porcentaje}%</span>
-                  </strong>
-                </div>
-                <div style={barraFondo}>
-                  <div style={{ ...barraRelleno, width: `${item.porcentaje}%` }} />
-                </div>
-              </div>
-            ))
+            <div style={{ marginTop: "20px" }}>
+              <GraficoTorta datos={torta} formato={formatMoney} />
+
+              {loteArs > 0 && (
+                <p style={notaTorta}>
+                  <strong>Inversión total: {formatMoney(totalConLote)}</strong>
+                  {" "}(obra + lote). El lote está en dólares; acá se valúa en
+                  pesos al cambio de cada pago para poder sumarlo.
+                </p>
+              )}
+            </div>
           )}
         </div>
 
@@ -547,28 +562,17 @@ const tarjetaTipo = {
   padding: "12px",
 };
 
-const filaRubro = {
-  display: "flex",
-  justifyContent: "space-between",
-  fontSize: "14px",
-  marginBottom: "8px",
-  color: "#444444",
-  gap: "12px",
-};
-
 const porcentajeRubro = {
   color: "#999999",
   fontWeight: 400,
 };
 
-const barraFondo = {
-  height: "8px",
-  background: "#eeeeee",
-};
-
-const barraRelleno = {
-  height: "8px",
-  background: "#111111",
+const notaTorta = {
+  fontSize: "13px",
+  color: "#777777",
+  lineHeight: 1.5,
+  marginTop: "20px",
+  marginBottom: 0,
 };
 
 const statsGrid = {
