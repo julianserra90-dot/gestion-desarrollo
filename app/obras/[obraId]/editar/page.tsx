@@ -25,7 +25,7 @@ export default async function EditarObraPage({
   const { data: obra } = await supabase
     .from("obras")
     .select(
-      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada, presupuesto, valor_m2_usd, domicilio, unidades_funcionales, pisos, sup_cubierta_m2, sup_semicubierta_m2, sup_descubierta_m2, coef_semicubierta, coef_descubierta, archivada_en"
+      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada, presupuesto, valor_m2_usd, domicilio, unidades_funcionales, pisos, sup_cubierta_m2, sup_semicubierta_m2, sup_descubierta_m2, coef_semicubierta, coef_descubierta, sup_venta_m2, archivada_en"
     )
     .eq("slug", obraId)
     .maybeSingle();

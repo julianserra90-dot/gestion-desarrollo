@@ -3,7 +3,7 @@ import SociosEditor, {
   type Empresa,
   type SocioInicial,
 } from "@/components/SociosEditor";
-import { COEF_DESCUBIERTA, COEF_SEMICUBIERTA } from "@/lib/superficies";
+import SuperficiesObra from "@/components/SuperficiesObra";
 
 type Obra = {
   id: string;
@@ -23,6 +23,7 @@ type Obra = {
   sup_descubierta_m2: number | null;
   coef_semicubierta: number | null;
   coef_descubierta: number | null;
+  sup_venta_m2: number | null;
 };
 
 const ESTADOS = ["Proyecto", "En ejecución", "Pausada", "Finalizada"];
@@ -147,78 +148,15 @@ export default function ObraForm({
             />
           </label>
 
-          <label style={field}>
-            <span style={label}>Superficie cubierta (m²)</span>
-            <input
-              type="number"
-              name="sup_cubierta_m2"
-              min="0"
-              step="0.01"
-              defaultValue={obra?.sup_cubierta_m2 ?? ""}
-              placeholder="0"
-              style={input}
-            />
-            <span style={ayudaCampo}>Cerrada y techada. Cuenta al 100%.</span>
-          </label>
-
-          <label style={field}>
-            <span style={label}>Semicubierta (m²)</span>
-            <input
-              type="number"
-              name="sup_semicubierta_m2"
-              min="0"
-              step="0.01"
-              defaultValue={obra?.sup_semicubierta_m2 ?? ""}
-              placeholder="0"
-              style={input}
-            />
-          </label>
-
-          <label style={field}>
-            <span style={label}>Semicubierta cuenta al</span>
-            <select
-              name="coef_semicubierta"
-              defaultValue={String(obra?.coef_semicubierta ?? 0.5)}
-              style={input}
-            >
-              {COEF_SEMICUBIERTA.map((c) => (
-                <option key={c.valor} value={c.valor}>
-                  {c.etiqueta}
-                </option>
-              ))}
-            </select>
-            <span style={ayudaCampo}>De la superficie de venta.</span>
-          </label>
-
-          <label style={field}>
-            <span style={label}>Descubierta (m²)</span>
-            <input
-              type="number"
-              name="sup_descubierta_m2"
-              min="0"
-              step="0.01"
-              defaultValue={obra?.sup_descubierta_m2 ?? ""}
-              placeholder="0"
-              style={input}
-            />
-            <span style={ayudaCampo}>Patios, terrazas sin techo.</span>
-          </label>
-
-          <label style={field}>
-            <span style={label}>Descubierta cuenta al</span>
-            <select
-              name="coef_descubierta"
-              defaultValue={String(obra?.coef_descubierta ?? 0)}
-              style={input}
-            >
-              {COEF_DESCUBIERTA.map((c) => (
-                <option key={c.valor} value={c.valor}>
-                  {c.etiqueta}
-                </option>
-              ))}
-            </select>
-            <span style={ayudaCampo}>De la superficie de venta.</span>
-          </label>
+          <SuperficiesObra
+            cubierta={obra?.sup_cubierta_m2 ?? null}
+            semicubierta={obra?.sup_semicubierta_m2 ?? null}
+            descubierta={obra?.sup_descubierta_m2 ?? null}
+            coefSemi={obra?.coef_semicubierta ?? null}
+            coefDesc={obra?.coef_descubierta ?? null}
+            venta={obra?.sup_venta_m2 ?? null}
+            estilos={{ field, label, input, ayuda: ayudaCampo }}
+          />
 
           <label style={field}>
             <span style={label}>Unidades funcionales</span>

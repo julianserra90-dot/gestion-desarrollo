@@ -301,6 +301,7 @@ function leerDatosObra(formData: FormData) {
     sup_cubierta_m2: superficie("sup_cubierta_m2"),
     sup_semicubierta_m2: superficie("sup_semicubierta_m2"),
     sup_descubierta_m2: superficie("sup_descubierta_m2"),
+    sup_venta_m2: superficie("sup_venta_m2"),
     // El coeficiente siempre viene del desplegable; el default sólo por las dudas.
     coef_semicubierta: Number(formData.get("coef_semicubierta") ?? 0.5),
     coef_descubierta: Number(formData.get("coef_descubierta") ?? 0),

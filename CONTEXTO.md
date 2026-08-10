@@ -138,16 +138,23 @@ anterior Obsoleta sola; el encadenado es explícito (`reemplaza_a`).
 obras muestra domicilio/unidades/pisos, no el total gastado; el
 nombre/domicilio/localidad van en tres escalones de jerarquía.
 
-### Superficies (desglose)
-Ya no hay un solo `superficie_m2`: se cargan **cubierta**, **semicubierta** y
-**descubierta** por separado (`sup_cubierta_m2`, etc.), más un coeficiente por
-obra para cada una (`coef_semicubierta` 0.5/1, `coef_descubierta` 0/0.25/0.5).
-De ahí salen dos superficies, calculadas en `lib/superficies.ts` (puro, sin
-base): **de construcción** = suma al 100% (manda para el costo de construir) y
-**de venta** = ponderada por los coeficientes (manda para el negocio). El viejo
-`superficie_m2` se migró a cubierta, así que las obras cargadas no cambiaron sus
-números. La incidencia del lote y el gastado/m² se muestran sobre las dos
-superficies; el objetivo y el desvío siguen sobre la de construcción.
+### Superficies (construcción por desglose, venta a mano)
+Ya no hay un solo `superficie_m2`. La **superficie de construcción** sale del
+desglose: `sup_cubierta_m2` (al 100%) + `sup_semicubierta_m2` × `coef_semicubierta`
+(0.5/1) + `sup_descubierta_m2` × `coef_descubierta` (0/0.25/0.5). El coeficiente
+elige cómo contemplar semi/descubierta en lo construido.
+
+La **superficie de venta** (`sup_venta_m2`) NO se deriva de eso: es la neta,
+vendible de las unidades, y se carga a mano. Son datos distintos: un depto vende
+35 m² y se construye 36, porque la construcción cuenta los muros y la venta es la
+neta. No hay coeficiente que las relacione.
+
+Todo el cálculo está en `lib/superficies.ts` (puro, sin base). En el formulario
+(`components/SuperficiesObra.tsx`, cliente) el total de construcción se muestra
+en vivo mientras se carga el desglose. El viejo `superficie_m2` se migró a
+cubierta, así que las obras cargadas no cambiaron. La incidencia del lote y el
+gastado/m² se muestran sobre las dos superficies; el objetivo y el desvío siguen
+sobre la de construcción.
 
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,

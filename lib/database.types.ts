@@ -813,6 +813,7 @@ export type Database = {
           sup_cubierta_m2: number | null
           sup_descubierta_m2: number | null
           sup_semicubierta_m2: number | null
+          sup_venta_m2: number | null
           ubicacion: string | null
           unidades_funcionales: number | null
           valor_m2_usd: number | null
@@ -838,6 +839,7 @@ export type Database = {
           sup_cubierta_m2?: number | null
           sup_descubierta_m2?: number | null
           sup_semicubierta_m2?: number | null
+          sup_venta_m2?: number | null
           ubicacion?: string | null
           unidades_funcionales?: number | null
           valor_m2_usd?: number | null
@@ -863,6 +865,7 @@ export type Database = {
           sup_cubierta_m2?: number | null
           sup_descubierta_m2?: number | null
           sup_semicubierta_m2?: number | null
+          sup_venta_m2?: number | null
           ubicacion?: string | null
           unidades_funcionales?: number | null
           valor_m2_usd?: number | null
