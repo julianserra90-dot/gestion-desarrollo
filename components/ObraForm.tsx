@@ -3,7 +3,6 @@ import SociosEditor, {
   type Empresa,
   type SocioInicial,
 } from "@/components/SociosEditor";
-import SuperficiesObra from "@/components/SuperficiesObra";
 
 type Obra = {
   id: string;
@@ -18,11 +17,7 @@ type Obra = {
   domicilio: string | null;
   unidades_funcionales: number | null;
   pisos: number | null;
-  sup_cubierta_m2: number | null;
-  sup_semicubierta_m2: number | null;
-  sup_descubierta_m2: number | null;
-  coef_semicubierta: number | null;
-  coef_descubierta: number | null;
+  sup_construccion_m2: number | null;
   sup_venta_m2: number | null;
 };
 
@@ -148,15 +143,33 @@ export default function ObraForm({
             />
           </label>
 
-          <SuperficiesObra
-            cubierta={obra?.sup_cubierta_m2 ?? null}
-            semicubierta={obra?.sup_semicubierta_m2 ?? null}
-            descubierta={obra?.sup_descubierta_m2 ?? null}
-            coefSemi={obra?.coef_semicubierta ?? null}
-            coefDesc={obra?.coef_descubierta ?? null}
-            venta={obra?.sup_venta_m2 ?? null}
-            estilos={{ field, label, input, ayuda: ayudaCampo }}
-          />
+          <label style={field}>
+            <span style={label}>Superficie de construcción (m²)</span>
+            <input
+              type="number"
+              name="sup_construccion_m2"
+              min="0"
+              step="0.01"
+              defaultValue={obra?.sup_construccion_m2 ?? ""}
+              placeholder="0"
+              style={input}
+            />
+            <span style={ayudaCampo}>Lo que se construye, con muros.</span>
+          </label>
+
+          <label style={field}>
+            <span style={label}>Superficie de venta (m²)</span>
+            <input
+              type="number"
+              name="sup_venta_m2"
+              min="0"
+              step="0.01"
+              defaultValue={obra?.sup_venta_m2 ?? ""}
+              placeholder="0"
+              style={input}
+            />
+            <span style={ayudaCampo}>La neta vendible de las unidades.</span>
+          </label>
 
           <label style={field}>
             <span style={label}>Unidades funcionales</span>

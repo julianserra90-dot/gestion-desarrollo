@@ -794,8 +794,6 @@ export type Database = {
       obras: {
         Row: {
           archivada_en: string | null
-          coef_descubierta: number
-          coef_semicubierta: number
           creado_en: string
           domicilio: string | null
           estado: string
@@ -810,9 +808,7 @@ export type Database = {
           pisos: number | null
           presupuesto: number | null
           slug: string
-          sup_cubierta_m2: number | null
-          sup_descubierta_m2: number | null
-          sup_semicubierta_m2: number | null
+          sup_construccion_m2: number | null
           sup_venta_m2: number | null
           ubicacion: string | null
           unidades_funcionales: number | null
@@ -820,8 +816,6 @@ export type Database = {
         }
         Insert: {
           archivada_en?: string | null
-          coef_descubierta?: number
-          coef_semicubierta?: number
           creado_en?: string
           domicilio?: string | null
           estado?: string
@@ -836,9 +830,7 @@ export type Database = {
           pisos?: number | null
           presupuesto?: number | null
           slug: string
-          sup_cubierta_m2?: number | null
-          sup_descubierta_m2?: number | null
-          sup_semicubierta_m2?: number | null
+          sup_construccion_m2?: number | null
           sup_venta_m2?: number | null
           ubicacion?: string | null
           unidades_funcionales?: number | null
@@ -846,8 +838,6 @@ export type Database = {
         }
         Update: {
           archivada_en?: string | null
-          coef_descubierta?: number
-          coef_semicubierta?: number
           creado_en?: string
           domicilio?: string | null
           estado?: string
@@ -862,9 +852,7 @@ export type Database = {
           pisos?: number | null
           presupuesto?: number | null
           slug?: string
-          sup_cubierta_m2?: number | null
-          sup_descubierta_m2?: number | null
-          sup_semicubierta_m2?: number | null
+          sup_construccion_m2?: number | null
           sup_venta_m2?: number | null
           ubicacion?: string | null
           unidades_funcionales?: number | null

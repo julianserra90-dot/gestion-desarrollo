@@ -138,23 +138,20 @@ anterior Obsoleta sola; el encadenado es explícito (`reemplaza_a`).
 obras muestra domicilio/unidades/pisos, no el total gastado; el
 nombre/domicilio/localidad van en tres escalones de jerarquía.
 
-### Superficies (construcción por desglose, venta a mano)
-Ya no hay un solo `superficie_m2`. La **superficie de construcción** sale del
-desglose: `sup_cubierta_m2` (al 100%) + `sup_semicubierta_m2` × `coef_semicubierta`
-(0.5/1) + `sup_descubierta_m2` × `coef_descubierta` (0/0.25/0.5). El coeficiente
-elige cómo contemplar semi/descubierta en lo construido.
+### Superficies (dos campos a mano)
+Dos números directos: **superficie de construcción** (`sup_construccion_m2`, lo
+que se levanta, con muros) y **superficie de venta** (`sup_venta_m2`, la neta
+vendible de las unidades). Son distintos y no se derivan uno del otro: un depto
+vende 35 m² y se construye 36. Se cargan a mano en Editar obra. (Hubo un intento
+con desglose cubierta/semi/descubierta + coeficientes; se simplificó a dos
+campos.) La superficie del **lote** (terreno) va aparte, en la solapa Lote
+(`lote_superficie_m2`).
 
-La **superficie de venta** (`sup_venta_m2`) NO se deriva de eso: es la neta,
-vendible de las unidades, y se carga a mano. Son datos distintos: un depto vende
-35 m² y se construye 36, porque la construcción cuenta los muros y la venta es la
-neta. No hay coeficiente que las relacione.
-
-Todo el cálculo está en `lib/superficies.ts` (puro, sin base). En el formulario
-(`components/SuperficiesObra.tsx`, cliente) el total de construcción se muestra
-en vivo mientras se carga el desglose. El viejo `superficie_m2` se migró a
-cubierta, así que las obras cargadas no cambiaron. La incidencia del lote y el
-gastado/m² se muestran sobre las dos superficies; el objetivo y el desvío siguen
-sobre la de construcción.
+`lib/superficies.ts` (puro, sin base) devuelve las dos. Con ellas —más el valor
+del lote— salen: incidencia del lote (valor lote / m²), valor del m² de obra
+(gastado / construcción) y valor del m² de venta (gastado / venta). La incidencia
+y el gastado/m² se muestran sobre las dos superficies; el objetivo y el desvío
+siguen sobre la de construcción.
 
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
