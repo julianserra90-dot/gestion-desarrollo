@@ -207,6 +207,14 @@ Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
   → Restore/Resume, tarda 1-2 min). Si el login falla y el CLI da timeout, es el
   primer sospechoso.
 
+### Buscar / filtrar gastos y pagos del lote
+Las listas grandes se filtran del lado del cliente (todo ya viene cargado, se
+filtra en JS). Gastos: `components/GastosLista.tsx` (buscador de texto que pega en
+concepto/proveedor/quién pagó/rubro/monto/fecha, filtro por rubro, y "ocultar
+anulados"). Lote: `components/PagosLoteLista.tsx` (buscador de texto). Las páginas
+(server components) traen los datos y se los pasan al componente cliente; la
+acción de borrar el pago del lote viaja como prop.
+
 ## Pendientes / decisiones abiertas
 
 - **Rubros tipo "Colocación de revestimientos"**: se pueden crear por obra, pero

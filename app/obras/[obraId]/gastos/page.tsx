@@ -1,9 +1,9 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import BotonDescarga from "@/components/BotonDescarga";
+import GastosLista, { type GastoFila } from "@/components/GastosLista";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -46,6 +46,25 @@ export default async function GastosPage({
     .filter((g) => g.tipo_pago === "Efectivo")
     .reduce((acc, g) => acc + Number(g.monto), 0);
 
+  const filas: GastoFila[] = lista.map((g) => ({
+    id: g.id,
+    fecha: g.fecha,
+    concepto: g.concepto,
+    monto: Number(g.monto),
+    montoCaja: Number(g.monto_caja),
+    iva: Number(g.iva ?? 0),
+    tipoFactura: g.tipo_factura,
+    tipoGasto: g.tipo_gasto,
+    tipoPago: g.tipo_pago,
+    estado: g.estado,
+    comprobanteDriveId: g.comprobante_drive_id,
+    rubro: g.rubros?.nombre ?? null,
+    proveedor: g.proveedores?.nombre ?? null,
+    pagadora: g.pagadora?.nombre ?? null,
+    receptora: g.receptora?.nombre ?? null,
+    compartido: false,
+  }));
+
   return (
     <AppShell>
       <ObraHeader obra={obra} activeSection="gastos" />
@@ -86,223 +105,7 @@ export default async function GastosPage({
         </Link>
       </div>
 
-      <section style={ui.panel}>
-        {lista.length === 0 ? (
-          <p style={ui.vacio}>
-            Todavía no hay gastos cargados en esta obra.
-          </p>
-        ) : (
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Rubro</th>
-                <th style={ui.th}>Tipo</th>
-                <th style={ui.th}>Proveedor / Contratista</th>
-                <th style={ui.th}>Detalle</th>
-                <th style={ui.th}>Comprobante</th>
-                <th style={ui.th}>Pagó</th>
-                <th style={ui.th}>Comprob.</th>
-                <th style={ui.thRight}>Monto</th>
-                <th style={ui.th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lista.map((gasto) => {
-                const anulado = gasto.estado === "Anulado";
-                const ajuste = gasto.tipo_gasto === "Ajuste de saldo";
-                const celda = anulado
-                  ? tdAnulado
-                  : ajuste
-                    ? tdAjuste
-                    : ui.td;
-
-                return (
-                <tr key={gasto.id} style={ajuste && !anulado ? filaAjuste : undefined}>
-                  <td style={celda}>{formatDate(gasto.fecha)}</td>
-                  <td style={celda}>{gasto.rubros?.nombre ?? "—"}</td>
-                  <td style={celda}>
-                    {ajuste ? (
-                      <span style={tagAjuste}>Ajuste de saldo</span>
-                    ) : (
-                      gasto.tipo_gasto
-                    )}
-                  </td>
-                  <td style={celda}>
-                    {ajuste
-                      ? `→ ${gasto.receptora?.nombre ?? "—"}`
-                      : (gasto.proveedores?.nombre ?? "—")}
-                  </td>
-                  <td style={celda}>
-                    {gasto.concepto}
-                    {anulado && <span style={tagAnulado}>Anulado</span>}
-                  </td>
-                  <td style={celda}>
-                    {ajuste ? (
-                      "—"
-                    ) : (
-                      <span
-                        style={
-                          gasto.tipo_pago === "Efectivo" ? tagEfectivo : tagFacturado
-                        }
-                      >
-                        {gasto.tipo_factura
-                          ? `Factura ${gasto.tipo_factura}`
-                          : "Efectivo"}
-                      </span>
-                    )}
-                  </td>
-                  <td style={celda}>
-                    {/* Un gasto puede salir de la caja, de una socia, o de
-                        las dos cuando la caja no alcanzaba. */}
-                    {Number(gasto.monto_caja) >= Number(gasto.monto) ? (
-                      <span style={tagCuenta}>Dinero en cuenta</span>
-                    ) : Number(gasto.monto_caja) > 0 ? (
-                      <>
-                        {gasto.pagadora?.nombre ?? "—"}
-                        <div style={aporteCuenta}>
-                          + {formatMoney(gasto.monto_caja)} de la cuenta
-                        </div>
-                      </>
-                    ) : (
-                      (gasto.pagadora?.nombre ?? "—")
-                    )}
-                  </td>
-                  <td style={celda}>
-                    {gasto.comprobante_drive_id ? (
-                      <div style={accionesArchivo}>
-                        <Link
-                          href={`/ver/${gasto.comprobante_drive_id}?volver=${encodeURIComponent(
-                            `/obras/${obra.slug}/gastos`
-                          )}`}
-                          style={comprobanteLink}
-                        >
-                          Ver
-                        </Link>
-                        <BotonDescarga
-                          fileId={gasto.comprobante_drive_id}
-                          variante="icono"
-                          etiqueta={`Descargar comprobante de ${gasto.concepto}`}
-                        />
-                      </div>
-                    ) : (
-                      <span style={{ color: "#bbbbbb" }}>—</span>
-                    )}
-                  </td>
-                  <td style={anulado ? tdAnuladoRight : ui.tdRight}>
-                    <strong>{formatMoney(gasto.monto)}</strong>
-                    {Number(gasto.iva ?? 0) > 0 && (
-                      <div style={ivaChico}>IVA {formatMoney(gasto.iva)}</div>
-                    )}
-                  </td>
-                  <td style={celda}>
-                    <Link
-                      href={`/obras/${obra.slug}/gastos/${gasto.id}/editar`}
-                      style={editarLink}
-                    >
-                      Editar
-                    </Link>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <GastosLista gastos={filas} slug={obra.slug} />
     </AppShell>
   );
 }
-
-const accionesArchivo = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-};
-
-// El ajuste se distingue con un fondo apenas gris y un borde negro al costado:
-// se nota que es distinto sin gritar.
-const filaAjuste = {
-  background: "#fafafa",
-};
-
-const tdAjuste = {
-  ...ui.td,
-  borderBottom: "1px solid #e0e0e0",
-};
-
-const tagAjuste = {
-  border: "1px solid #111111",
-  background: "#111111",
-  color: "#ffffff",
-  padding: "3px 8px",
-  fontSize: "12px",
-  whiteSpace: "nowrap" as const,
-};
-
-const tagCuenta = {
-  border: "1px solid #dcdcdc",
-  padding: "3px 8px",
-  fontSize: "12px",
-  whiteSpace: "nowrap" as const,
-};
-
-const aporteCuenta = {
-  fontSize: "13px",
-  color: "#999999",
-  marginTop: "4px",
-};
-
-const tdAnulado = {
-  ...ui.td,
-  color: "#aaaaaa",
-  textDecoration: "line-through" as const,
-};
-
-const tdAnuladoRight = {
-  ...tdAnulado,
-  textAlign: "right" as const,
-};
-
-const tagAnulado = {
-  marginLeft: "8px",
-  border: "1px solid #aaaaaa",
-  color: "#aaaaaa",
-  padding: "2px 6px",
-  fontSize: "11px",
-  textDecoration: "none" as const,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-};
-
-const editarLink = {
-  color: "#111111",
-  fontSize: "14px",
-  textDecoration: "underline",
-};
-
-const ivaChico = {
-  fontSize: "12px",
-  color: "#999999",
-  marginTop: "4px",
-};
-
-const tagFacturado = {
-  border: "1px solid #dcdcdc",
-  padding: "3px 8px",
-  fontSize: "12px",
-  whiteSpace: "nowrap" as const,
-};
-
-const tagEfectivo = {
-  ...tagFacturado,
-  border: "1px solid #111111",
-  background: "#111111",
-  color: "#ffffff",
-};
-
-const comprobanteLink = {
-  color: "#111111",
-  textDecoration: "underline",
-  fontSize: "14px",
-};

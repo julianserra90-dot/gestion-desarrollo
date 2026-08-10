@@ -1,9 +1,9 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import PagoLoteForm from "@/components/PagoLoteForm";
+import PagosLoteLista from "@/components/PagosLoteLista";
 import * as ui from "@/components/ui";
-import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { formatUSD } from "@/lib/format";
 import { getLote, incidenciaPorM2 } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
 import {
@@ -291,69 +291,22 @@ export default async function LotePage({
       <section style={ui.panelConMargen}>
         <h3 style={ui.sectionTitle}>Pagos</h3>
 
-        {lote.pagos.length === 0 ? (
-          <p style={ui.vacio}>
-            Todavía no se cargó ningún pago del lote.
-          </p>
-        ) : (
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Tipo</th>
-                <th style={ui.th}>Concepto</th>
-                <th style={ui.th}>Pagó</th>
-                <th style={ui.th}>Monto</th>
-                <th style={ui.th}>En USD</th>
-                <th style={ui.th} />
-              </tr>
-            </thead>
-            <tbody>
-              {lote.pagos.map((pago) => (
-                <tr key={pago.id}>
-                  <td style={ui.td}>{formatDate(pago.fecha)}</td>
-                  <td style={ui.td}>{pago.categoria}</td>
-                  <td style={ui.td}>{pago.concepto}</td>
-                  <td style={ui.td}>
-                    {pago.compartido ? (
-                      "Entre las socias"
-                    ) : (
-                      pago.empresa ?? (
-                        <span style={{ color: "#b00020" }}>Sin asignar</span>
-                      )
-                    )}
-                  </td>
-                  <td style={ui.td}>
-                    {pago.moneda === "USD"
-                      ? formatUSD(pago.monto)
-                      : formatMoney(pago.monto)}
-                  </td>
-                  <td style={ui.td}>
-                    {pago.usd === null ? "—" : formatUSD(pago.usd)}
-                  </td>
-                  <td style={ui.td}>
-                    <div style={accionesFila}>
-                      <Link
-                        href={`/obras/${obra.slug}/lote/${pago.id}/editar`}
-                        style={enlace}
-                      >
-                        Editar
-                      </Link>
-                      <form action={eliminarPagoLote}>
-                        <input type="hidden" name="obra_id" value={obra.id} />
-                        <input type="hidden" name="slug" value={obra.slug} />
-                        <input type="hidden" name="pago_id" value={pago.id} />
-                        <button type="submit" style={botonQuitar}>
-                          Quitar
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <PagosLoteLista
+          pagos={lote.pagos.map((p) => ({
+            id: p.id,
+            fecha: p.fecha,
+            categoria: p.categoria,
+            concepto: p.concepto,
+            monto: p.monto,
+            moneda: p.moneda,
+            usd: p.usd,
+            empresa: p.empresa,
+            compartido: p.compartido,
+          }))}
+          slug={obra.slug}
+          obraId={obra.id}
+          eliminar={eliminarPagoLote}
+        />
       </section>
     </AppShell>
   );
@@ -436,28 +389,6 @@ const accionesFicha = {
   display: "flex",
   justifyContent: "flex-end",
   marginTop: "20px",
-};
-
-const accionesFila = {
-  display: "flex",
-  gap: "14px",
-  alignItems: "center",
-};
-
-const enlace = {
-  color: "#111111",
-  textDecoration: "underline",
-  fontSize: "14px",
-};
-
-const botonQuitar = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "#111111",
-  textDecoration: "underline",
-  fontSize: "14px",
-  cursor: "pointer",
 };
 
 const errorBox = {
