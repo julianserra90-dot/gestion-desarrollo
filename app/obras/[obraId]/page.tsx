@@ -45,7 +45,7 @@ export default async function ObraDetalle({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, empresa_factura_id, estado, tipo_gasto, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, empresa_factura_id, estado, tipo_gasto, compartido, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
@@ -510,8 +510,12 @@ export default async function ObraDetalle({
                   <td style={td}>{gasto.rubros?.nombre ?? "—"}</td>
                   <td style={td}>{gasto.concepto}</td>
                   <td style={td}>
-                    {gasto.pagadora?.nombre ??
-                      (Number(gasto.monto_caja) > 0 ? "Dinero en cuenta" : "—")}
+                    {gasto.compartido
+                      ? "Entre las socias"
+                      : (gasto.pagadora?.nombre ??
+                        (Number(gasto.monto_caja) > 0
+                          ? "Dinero en cuenta"
+                          : "—"))}
                   </td>
                   <td style={td}>{gasto.estado}</td>
                   <td style={tdRight}>{formatMoney(gasto.monto)}</td>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import * as ui from "@/components/ui";
 import { formatMoney, formatUSD } from "@/lib/format";
-import { repartirPago } from "@/lib/reparto";
+import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
 
 type Socio = { empresa_id: string; nombre: string; porcentaje: number };
 type Rubro = {
@@ -79,6 +79,7 @@ export type GastoExistente = {
   monto_usd: number | null;
   observaciones: string | null;
   empresa_pagadora_id: string | null;
+  compartido: boolean;
   estado: string;
   comprobante_drive_id: string | null;
   comprobante_nombre: string | null;
@@ -154,8 +155,12 @@ export default function GastoForm({
   const [empresaFactura, setEmpresaFactura] = useState(
     gasto?.empresa_factura_id ?? ""
   );
+  // "Entre las socias" ocupa el lugar de una empresa en el desplegable: es otra
+  // respuesta a la misma pregunta de quién puso la plata.
   const [pagadora, setPagadora] = useState(
-    gasto?.empresa_pagadora_id ?? empresaFija ?? ""
+    gasto?.compartido
+      ? GASTO_COMPARTIDO
+      : (gasto?.empresa_pagadora_id ?? empresaFija ?? "")
   );
   const [reemplazar, setReemplazar] = useState(false);
   const [tipoGasto, setTipoGasto] = useState(gasto?.tipo_gasto ?? "Materiales");
@@ -186,6 +191,8 @@ export default function GastoForm({
   // Un ajuste de saldo no compra nada: es plata que pasa de una socia a otra.
   const esAjuste = tipoGasto === AJUSTE;
   const pagaCaja = usarCaja && !esAjuste;
+  // Lo pusieron todas juntas: no hay una socia que lo haya adelantado.
+  const esCompartido = pagadora === GASTO_COMPARTIDO;
 
   // La cotización cargada a mano manda sobre todo el gasto, no sólo sobre los
   // dólares que salen de la cuenta: si conseguiste otro cambio, ese es el valor
@@ -241,8 +248,11 @@ export default function GastoForm({
   const neto = total - iva;
 
   // El crédito fiscal es de la empresa de la factura. Mientras no se elija una,
-  // sigue a la que pagó (o a la del usuario si tiene empresa fija).
-  const titularEfectivo = empresaFactura || pagadora || empresaFija || "";
+  // sigue a la que pagó (o a la del usuario si tiene empresa fija). Un gasto
+  // entre todas no tiene a quién seguir: la factura está a nombre de una sola,
+  // y hay que decir cuál.
+  const titularEfectivo =
+    empresaFactura || (esCompartido ? "" : pagadora || empresaFija || "");
   const nombreTitular = socios.find((s) => s.empresa_id === titularEfectivo)?.nombre;
 
   function cambiarUsarCaja(activo: boolean) {
@@ -268,6 +278,9 @@ export default function GastoForm({
     // Los campos del tipo anterior dejan de valer.
     setProveedorId("");
     setReceptora("");
+    // Un ajuste va de una socia puntual a otra: "entre las socias" deja de
+    // tener sentido y hay que volver a elegir quién transfiere.
+    if (nuevoTipo === AJUSTE && pagadora === GASTO_COMPARTIDO) setPagadora("");
   }
 
   /**
@@ -313,6 +326,14 @@ export default function GastoForm({
   });
 
   const nombrePagadora = socios.find((s) => s.empresa_id === pagadora)?.nombre;
+
+  // Un gasto entre todas se divide por igual, sin mirar el porcentaje. Si las
+  // participaciones son parejas los saldos quedan quietos; si no, la diferencia
+  // contra lo que le toca a cada una se ve en el balance.
+  const porSocia = socios.length > 0 ? deEmpresa / socios.length : 0;
+  const repartoParejo =
+    socios.length > 0 &&
+    socios.every((s) => s.porcentaje === socios[0].porcentaje);
 
   // Si el rubro tiene una cotización aprobada, se avisa cuando este gasto hace
   // que se pase. Es un aviso, no un freno: puede haber una compra de urgencia
@@ -480,11 +501,13 @@ export default function GastoForm({
                           <input
                             type="hidden"
                             name="empresa_pagadora_id"
-                            value={empresaFija}
+                            value={esCompartido ? GASTO_COMPARTIDO : empresaFija}
                           />
                           <div style={campoFijo}>
-                            {socios.find((s) => s.empresa_id === empresaFija)
-                              ?.nombre ?? "Tu empresa"}
+                            {esCompartido
+                              ? "Entre las socias (partes iguales)"
+                              : (socios.find((s) => s.empresa_id === empresaFija)
+                                  ?.nombre ?? "Tu empresa")}
                           </div>
                         </>
                       ) : (
@@ -501,6 +524,9 @@ export default function GastoForm({
                               {socio.nombre}
                             </option>
                           ))}
+                          <option value={GASTO_COMPARTIDO}>
+                            Entre las socias (partes iguales)
+                          </option>
                         </select>
                       )}
                     </div>
@@ -523,18 +549,25 @@ export default function GastoForm({
                 <div style={campoFijo}>Lo cubre el dinero en cuenta</div>
               ) : empresaFija ? (
                 <>
+                  {/* Un gasto que pusieron todas se conserva al editarlo: si el
+                      campo fijo lo pisara con la empresa del usuario, dejaría de
+                      ser compartido sin que nadie lo haya pedido. */}
                   <input
                     type="hidden"
                     name="empresa_pagadora_id"
-                    value={empresaFija}
+                    value={esCompartido ? GASTO_COMPARTIDO : empresaFija}
                   />
                   <div style={campoFijo}>
-                    {socios.find((s) => s.empresa_id === empresaFija)?.nombre ??
-                      "Tu empresa"}
+                    {esCompartido
+                      ? "Entre las socias (partes iguales)"
+                      : (socios.find((s) => s.empresa_id === empresaFija)
+                          ?.nombre ?? "Tu empresa")}
                   </div>
-                  <span style={ayudaCampo}>
-                    Los gastos que cargás quedan a nombre de tu empresa.
-                  </span>
+                  {!esCompartido && (
+                    <span style={ayudaCampo}>
+                      Los gastos que cargás quedan a nombre de tu empresa.
+                    </span>
+                  )}
                 </>
               ) : (
                 <select
@@ -550,6 +583,13 @@ export default function GastoForm({
                       {socio.nombre}
                     </option>
                   ))}
+                  {/* Un ajuste de saldo va de una socia puntual a otra: ahí no
+                      hay nada que poner entre todas. */}
+                  {!esAjuste && (
+                    <option value={GASTO_COMPARTIDO}>
+                      Entre las socias (partes iguales)
+                    </option>
+                  )}
                 </select>
               )}
             </label>
@@ -995,7 +1035,11 @@ export default function GastoForm({
             )}
             {deEmpresa > 0 && (
               <div style={filaDesglose}>
-                <span>Lo pone {nombrePagadora ?? "una socia"}</span>
+                <span>
+                  {esCompartido
+                    ? "Lo ponen las socias"
+                    : `Lo pone ${nombrePagadora ?? "una socia"}`}
+                </span>
                 <span>{formatMoney(deEmpresa)}</span>
               </div>
             )}
@@ -1089,6 +1133,16 @@ export default function GastoForm({
               Lo paga entero el dinero en cuenta, así que{" "}
               <strong>no cambia lo que puso ninguna socia</strong>. El gasto sí
               se reparte entre todas según su participación.
+            </p>
+          ) : esCompartido ? (
+            <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.6 }}>
+              Lo ponen todas en partes iguales:{" "}
+              <strong>{formatMoney(porSocia)}</strong> cada una.
+              {deCaja > 0 &&
+                ` Los otros ${formatMoney(deCaja)} salen del dinero en cuenta y no se le suman a ninguna.`}
+              {repartoParejo
+                ? " Como participan por partes iguales, los saldos entre ellas no se mueven."
+                : " Como las participaciones no son iguales, la diferencia contra lo que le toca a cada una queda en su saldo."}
             </p>
           ) : deCaja > 0 ? (
             // Con la caja de por medio no se puede decir "A le debe X a B": la

@@ -23,25 +23,31 @@ export default async function DolaresPage({
 
   const supabase = await createClient();
 
-  const [{ data: gastos }, { data: ingresos }, caja, lote] = await Promise.all([
-    supabase
-      .from("gastos")
-      .select(
-        "id, fecha, concepto, monto, caja_ars, caja_usd, monto_caja, monto_usd, cotizacion, cotizacion_manual, moneda, tipo_gasto, estado, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
-      )
-      .eq("obra_id", obra.id)
-      .order("fecha", { ascending: false }),
-    supabase
-      .from("ingresos")
-      .select(
-        "id, fecha, origen, aportante, concepto, monto, monto_usd, cotizacion, moneda, empresas(nombre)"
-      )
-      .eq("obra_id", obra.id)
-      .order("fecha", { ascending: false }),
-    getCaja(obra.id),
-    // El lote, en dólares, para reflejarlo también en el resumen en USD.
-    getLote(obra.id, null, null, null, null),
-  ]);
+  const [{ data: gastos }, { data: ingresos }, { data: socias }, caja, lote] =
+    await Promise.all([
+      supabase
+        .from("gastos")
+        .select(
+          "id, fecha, concepto, monto, caja_ars, caja_usd, monto_caja, monto_usd, cotizacion, cotizacion_manual, moneda, tipo_gasto, estado, compartido, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        )
+        .eq("obra_id", obra.id)
+        .order("fecha", { ascending: false }),
+      supabase
+        .from("ingresos")
+        .select(
+          "id, fecha, origen, aportante, concepto, monto, monto_usd, cotizacion, moneda, empresas(nombre)"
+        )
+        .eq("obra_id", obra.id)
+        .order("fecha", { ascending: false }),
+      // Para repartir entre todas lo que pusieron juntas.
+      supabase
+        .from("obra_socios")
+        .select("empresas(nombre)")
+        .eq("obra_id", obra.id),
+      getCaja(obra.id),
+      // El lote, en dólares, para reflejarlo también en el resumen en USD.
+      getLote(obra.id, null, null, null, null),
+    ]);
 
   // Los ajustes de saldo no son gasto de obra, así que quedan afuera.
   const vigentes = (gastos ?? []).filter(
@@ -100,8 +106,10 @@ export default async function DolaresPage({
       usdDeCaja: usd === null ? null : usd * proporcion,
       usdDeEmpresa: usd === null ? null : usd * (1 - proporcion),
       cargadoEnDolares: gasto.moneda === "USD",
-      empresa:
-        gasto.pagadora?.nombre ?? (montoCaja > 0 ? "Dinero en cuenta" : "—"),
+      empresa: gasto.compartido
+        ? "Entre las socias"
+        : (gasto.pagadora?.nombre ??
+          (montoCaja > 0 ? "Dinero en cuenta" : "—")),
     };
   });
 
@@ -194,8 +202,18 @@ export default async function DolaresPage({
     porEmpresa.set(empresa, actual);
   };
 
+  // Los nombres de las socias, para repartir entre todas lo que pusieron juntas.
+  const nombresSocias = (socias ?? [])
+    .map((s) => s.empresas?.nombre)
+    .filter((nombre): nombre is string => Boolean(nombre));
+
   for (const g of convertidos) {
-    if (g.pagadora?.nombre) {
+    // Lo que pusieron entre todas se divide en partes iguales, igual que en el
+    // balance de obra.
+    if (g.compartido && nombresSocias.length > 0) {
+      const porSocia = (g.usdDeEmpresa ?? 0) / nombresSocias.length;
+      for (const nombre of nombresSocias) sumar(nombre, "bolsillo", porSocia);
+    } else if (g.pagadora?.nombre) {
       sumar(g.pagadora.nombre, "bolsillo", g.usdDeEmpresa ?? 0);
     }
   }
@@ -432,11 +450,12 @@ export default async function DolaresPage({
                   <td style={ui.td}>{gasto.concepto}</td>
                   <td style={ui.td}>
                     {gasto.empresa}
-                    {gasto.pagadora?.nombre && gasto.montoCaja > 0 && (
-                      <span style={tagMoneda}>
-                        + {formatUSD(gasto.usdDeCaja)} de la cuenta
-                      </span>
-                    )}
+                    {(gasto.pagadora?.nombre || gasto.compartido) &&
+                      gasto.montoCaja > 0 && (
+                        <span style={tagMoneda}>
+                          + {formatUSD(gasto.usdDeCaja)} de la cuenta
+                        </span>
+                      )}
                   </td>
                   <td style={ui.tdRight}>
                     {formatMoney(gasto.montoArs)}

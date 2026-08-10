@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -410,6 +410,7 @@ export type Database = {
           caja_ars: number
           caja_usd: number
           cargado_por: string | null
+          compartido: boolean
           comprobante_drive_id: string | null
           comprobante_mime: string | null
           comprobante_nombre: string | null
@@ -443,6 +444,7 @@ export type Database = {
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
+          compartido?: boolean
           comprobante_drive_id?: string | null
           comprobante_mime?: string | null
           comprobante_nombre?: string | null
@@ -476,6 +478,7 @@ export type Database = {
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
+          compartido?: boolean
           comprobante_drive_id?: string | null
           comprobante_mime?: string | null
           comprobante_nombre?: string | null

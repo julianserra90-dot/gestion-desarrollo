@@ -91,6 +91,27 @@ Proveedor y Contratista); ahí se cargan los ABL, AFIP, agrimensores, etc.
 Economía lo muestra como una tercera fila en "En qué se gastó", pero sólo si la
 obra tiene alguno.
 
+### Gastos entre las socias
+Un gasto común lo puede poner **una socia, todas en partes iguales, o el dinero
+en cuenta**. "Entre las socias (partes iguales)" es una opción más del
+desplegable "Empresa que pagó": guarda `gastos.compartido = true` y deja
+`empresa_pagadora_id` en null, igual que el pago compartido del lote. El
+centinela del desplegable es `GASTO_COMPARTIDO` en `lib/reparto.ts` (el módulo
+puro que comparten el form cliente y el server action).
+
+El balance (`obra_balance`) le acredita a cada socia **la misma parte** de lo que
+salió de los bolsillos (`monto - monto_caja`), sin mirar el porcentaje. Con
+socias 50/50 los saldos no se mueven; con 60/40 la del 40 queda poniendo de más y
+aparece en la liquidación —que es lo correcto: puso más de lo que le tocaba—. Lo
+que se sigue repartiendo por porcentaje es el gasto (`le_corresponde`): eso no
+cambió.
+
+Tres bordes que ya están resueltos: no aplica al **ajuste de saldo** (ese va de
+una socia puntual a otra); si la cuenta cubre el gasto entero **no queda
+compartido**, porque no lo puso nadie de su bolsillo; y la **factura sigue siendo
+de una sola empresa** —el crédito fiscal no se divide—, así que el titular hay
+que elegirlo a mano en vez de heredarlo de la pagadora, que no existe.
+
 ### Lote (la compra del terreno)
 El terreno se lleva **aparte** de los gastos de construcción: es una compra de
 inmueble en dólares, y su valor no debe inflar el m² de obra. Decisión de diseño

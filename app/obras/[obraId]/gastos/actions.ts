@@ -6,7 +6,7 @@ import type { Database } from "@/lib/database.types";
 import { convertirMonto, getCotizacionDeFecha } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { getCaja } from "@/lib/caja";
-import { centavos, repartirPago } from "@/lib/reparto";
+import { GASTO_COMPARTIDO, centavos, repartirPago } from "@/lib/reparto";
 import type { Reparto } from "@/lib/reparto";
 import type { MontoConvertido } from "@/lib/dolar";
 import { createClient } from "@/lib/supabase/server";
@@ -194,14 +194,30 @@ function leerComprobante(formData: FormData, esAjuste: boolean) {
   };
 }
 
+/**
+ * Quién puso la plata: una socia puntual o todas en partes iguales.
+ *
+ * "Entre las socias" viaja por el mismo campo que la empresa porque es otra
+ * respuesta a la misma pregunta. Un ajuste de saldo va de una socia a otra, así
+ * que ahí no vale: queda sin pagadora y el formulario la vuelve a pedir.
+ */
+function leerQuienPago(formData: FormData, esAjuste: boolean) {
+  const elegido = String(formData.get("empresa_pagadora_id") ?? "");
+
+  return {
+    compartido: !esAjuste && elegido === GASTO_COMPARTIDO,
+    empresaPagadora: elegido === GASTO_COMPARTIDO ? "" : elegido,
+  };
+}
+
 export async function crearGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const obraId = String(formData.get("obra_id") ?? "");
-  const empresaPagadora = String(formData.get("empresa_pagadora_id") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
   const rubro = String(formData.get("rubro_id") ?? "");
   const tipoGasto = String(formData.get("tipo_gasto") ?? "Materiales");
   const esAjuste = tipoGasto === "Ajuste de saldo";
+  const { compartido, empresaPagadora } = leerQuienPago(formData, esAjuste);
   const factura = leerComprobante(formData, esAjuste);
   // Todos los ajustes llevan el mismo detalle, venga lo que venga del form.
   const concepto = esAjuste
@@ -221,7 +237,9 @@ export async function crearGasto(formData: FormData) {
   if (!concepto) volver("Poné un detalle para el gasto.");
   // Con dinero en cuenta puede no hacer falta ninguna: se pide más abajo, sólo
   // si una empresa agregó algo de su bolsillo.
-  if (!usarCaja && !empresaPagadora) volver("Elegí qué empresa pagó el gasto.");
+  if (!usarCaja && !empresaPagadora && !compartido) {
+    volver("Elegí qué empresa pagó el gasto.");
+  }
   if (!fecha) volver("Poné la fecha del gasto.");
   if (esAjuste && !receptora) {
     volver("Elegí a qué empresa se le transfiere.");
@@ -280,8 +298,11 @@ export async function crearGasto(formData: FormData) {
   const moneda = montos.moneda ?? "ARS";
   const reparto = montos.reparto;
   const faltante = reparto ? reparto.deEmpresa : 0;
+  // Si la cuenta se hizo cargo de todo, el gasto no lo puso nadie de su
+  // bolsillo: ni una socia ni todas.
+  const loPoneAlguien = !usarCaja || faltante > 0;
 
-  if (faltante > 0 && !empresaPagadora) {
+  if (faltante > 0 && !empresaPagadora && !compartido) {
     await limpiar();
     volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
   }
@@ -295,8 +316,9 @@ export async function crearGasto(formData: FormData) {
     tipo_gasto: tipoGasto,
     proveedor_id: esAjuste ? null : proveedor.id,
     empresa_receptora_id: esAjuste ? receptora : null,
-    // Si la cuenta se hizo cargo de todo no hay empresa que lo haya pagado.
-    empresa_pagadora_id: !usarCaja || faltante > 0 ? empresaPagadora : null,
+    empresa_pagadora_id:
+      compartido || !loPoneAlguien ? null : empresaPagadora,
+    compartido: compartido && loPoneAlguien,
     caja_ars: reparto?.ars ?? 0,
     caja_usd: reparto?.usd ?? 0,
     cotizacion_manual: caja.cotizacionManual !== null,
@@ -333,11 +355,11 @@ export async function crearGasto(formData: FormData) {
 export async function actualizarGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const gastoId = String(formData.get("gasto_id") ?? "");
-  const empresaPagadora = String(formData.get("empresa_pagadora_id") ?? "");
   const fecha = String(formData.get("fecha") ?? "").trim();
   const rubro = String(formData.get("rubro_id") ?? "");
   const tipoGasto = String(formData.get("tipo_gasto") ?? "Materiales");
   const esAjuste = tipoGasto === "Ajuste de saldo";
+  const { compartido, empresaPagadora } = leerQuienPago(formData, esAjuste);
   const factura = leerComprobante(formData, esAjuste);
   // Todos los ajustes llevan el mismo detalle, venga lo que venga del form.
   const concepto = esAjuste
@@ -356,7 +378,9 @@ export async function actualizarGasto(formData: FormData) {
     );
 
   if (!concepto) volver("Poné un detalle para el gasto.");
-  if (!usarCaja && !empresaPagadora) volver("Elegí qué empresa pagó el gasto.");
+  if (!usarCaja && !empresaPagadora && !compartido) {
+    volver("Elegí qué empresa pagó el gasto.");
+  }
   if (!fecha) volver("Poné la fecha del gasto.");
   if (esAjuste && !receptora) {
     volver("Elegí a qué empresa se le transfiere.");
@@ -401,8 +425,11 @@ export async function actualizarGasto(formData: FormData) {
   const moneda = montos.moneda ?? "ARS";
   const reparto = montos.reparto;
   const faltante = reparto ? reparto.deEmpresa : 0;
+  // Si la cuenta se hizo cargo de todo, el gasto no lo puso nadie de su
+  // bolsillo: ni una socia ni todas.
+  const loPoneAlguien = !usarCaja || faltante > 0;
 
-  if (faltante > 0 && !empresaPagadora) {
+  if (faltante > 0 && !empresaPagadora && !compartido) {
     volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
   }
 
@@ -414,7 +441,9 @@ export async function actualizarGasto(formData: FormData) {
     tipo_gasto: tipoGasto,
     proveedor_id: esAjuste ? null : proveedor.id,
     empresa_receptora_id: esAjuste ? receptora : null,
-    empresa_pagadora_id: !usarCaja || faltante > 0 ? empresaPagadora : null,
+    empresa_pagadora_id:
+      compartido || !loPoneAlguien ? null : empresaPagadora,
+    compartido: compartido && loPoneAlguien,
     caja_ars: reparto?.ars ?? 0,
     caja_usd: reparto?.usd ?? 0,
     cotizacion_manual: caja.cotizacionManual !== null,

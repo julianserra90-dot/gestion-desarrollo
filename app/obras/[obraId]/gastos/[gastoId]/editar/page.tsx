@@ -35,7 +35,7 @@ export default async function EditarGastoPage({
   const { data: gasto } = await supabase
     .from("gastos")
     .select(
-      "id, fecha, rubro_id, proveedor_id, empresa_receptora_id, tipo_gasto, concepto, tipo_pago, tipo_factura, alicuota_iva, empresa_factura_id, monto, caja_ars, caja_usd, cotizacion, cotizacion_manual, monto_usd, moneda, observaciones, empresa_pagadora_id, comprobante_drive_id, comprobante_nombre, estado"
+      "id, fecha, rubro_id, proveedor_id, empresa_receptora_id, tipo_gasto, concepto, tipo_pago, tipo_factura, alicuota_iva, empresa_factura_id, monto, caja_ars, caja_usd, cotizacion, cotizacion_manual, monto_usd, moneda, observaciones, empresa_pagadora_id, compartido, comprobante_drive_id, comprobante_nombre, estado"
     )
     .eq("id", gastoId)
     .eq("obra_id", obra.id)

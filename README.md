@@ -126,6 +126,21 @@ completa, y la **incidencia del terreno por m² construido** —un terreno caro
 sube el piso de toda la obra—. En Estado se ve el lote y la construcción sumados
 como inversión total.
 
+### Gastos
+
+Cada gasto se carga **por el total** y se reparte entre las socias según su
+participación. Lo que cambia de un gasto a otro es quién puso la plata: una
+socia, **todas en partes iguales**, o el dinero en cuenta de la obra.
+
+"Entre las socias" existe porque hay compras que se pagan juntas en el momento
+—una entrega grande de material, mitad y mitad— y cargarlas como dos gastos
+parte en dos el mismo comprobante. A cada una se le acredita la misma parte de lo
+que salió de los bolsillos: con participaciones iguales los saldos no se mueven,
+y si no lo son, la que puso más de lo que le tocaba lo ve en su saldo.
+
+La factura, en cambio, es de una sola empresa: el crédito fiscal no se divide,
+así que hay que decir a nombre de quién está.
+
 ### Dinero en cuenta
 
 La cuenta de la obra tiene **dos lados que no se mezclan**: los pesos que entran

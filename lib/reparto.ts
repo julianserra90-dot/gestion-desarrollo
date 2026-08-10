@@ -11,6 +11,13 @@ export function centavos(valor: number) {
   return Math.round(valor * 100) / 100;
 }
 
+/**
+ * Valor del desplegable "Empresa que pagó" cuando el gasto lo ponen todas las
+ * socias en partes iguales. No es un id de empresa: al guardar se traduce a
+ * `compartido` y la pagadora queda en null.
+ */
+export const GASTO_COMPARTIDO = "__todas__";
+
 export type Reparto = {
   /** Pesos que salen de la cuenta. */
   ars: number;
