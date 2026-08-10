@@ -169,6 +169,12 @@ Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
   `HEAD@{1}`. Usar archivos explícitos y hashes de commit.
 - La MCP de Supabase de esta sesión **no tiene permiso** para consultar/escribir
   la base. Las migraciones las corre el usuario con `db push`.
+- **Supabase (plan gratuito) se pausa por inactividad** (~1 semana sin uso). Con
+  la base dormida no se puede ingresar (el login queda en "Email o contraseña
+  incorrectos" aunque sean correctos) y `supabase db push` da "Connection
+  terminated due to connection timeout". Se reactiva desde el dashboard (Project
+  → Restore/Resume, tarda 1-2 min). Si el login falla y el CLI da timeout, es el
+  primer sospechoso.
 
 ## Pendientes / decisiones abiertas
 
