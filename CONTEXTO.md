@@ -149,6 +149,29 @@ cantidad de socias). Sirve para las cuotas del terreno que ponen las dos juntas
 sin tener que cargar dos pagos. El centinela del desplegable es
 `PAGO_COMPARTIDO` en `lib/lote-tipos.ts`.
 
+### Terreno y total por empresa (en Economía)
+Economía tiene tres tablas encadenadas: **Balance entre empresas** (la obra),
+**Terreno** (el lote) y **Total por empresa** (los dos sumados). Las dos primeras
+no se cruzan —es la decisión de siempre: el lote no entra en el balance de obra
+ni en el m² construido—, y la tercera existe porque hacía falta una lectura que
+ninguna de las dos daba.
+
+El caso que la motiva: una socia pone el terreno entero y la otra compensa
+pagando más de la obra diaria. Ahí las dos liquidaciones apuntan en direcciones
+opuestas ("A le transfiere a B" en una, "B le transfiere a A" en la otra) y
+mirándolas por separado no se sabe si la compensación cierra. La consolidada las
+resuelve en una sola transferencia.
+
+Para poder sumarlas hay que salvar que están en monedas distintas: la obra se
+lleva en pesos y el lote en dólares. `SocioLote` (en `lib/lote.ts`) devuelve el
+reparto **en las dos monedas**; los pesos salen de valuar cada pago al dólar de
+su fecha, igual que `totalArs` y que el gráfico de torta. La tabla Terreno se
+muestra en dólares (que es como se compra un inmueble) y la consolidada en pesos
+(que es la moneda de Economía).
+
+Ojo: `getPagoLote` —el que alimenta el formulario de edición— no convierte nada,
+así que devuelve `usd: null` y `ars: 0`. No es un dato, es "no calculado".
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance
@@ -259,10 +282,6 @@ acción de borrar el pago del lote viaja como prop.
   Factura A; se van marcando A/B/C a medida que se tocan.
 - Ver la nota de "queda margen" (gasto por debajo de lo cotizado) en vivo — nunca
   se dio con datos reales.
-- **Resumen por empresa que sume obra + lote**: la idea es que sigan sin
-  cruzarse (gastos de obra por un lado, gastos de lote por otro, cada uno con su
-  liquidación) y que además haya una lectura consolidada de lo que puso cada
-  empresa entre los dos. Falta hacerla.
 - **Datos de prueba en 3 De Febrero**: el valor pactado del lote, las cuotas y la
   superficie (160 m²) son de prueba. Reemplazarlos por los reales cuando se
   cargue la obra en serio.

@@ -70,6 +70,7 @@ export default async function ObraDetalle({
   }
 
   const socios = (balance ?? []).map((item) => ({
+    empresaId: item.empresa_id,
     empresa: item.empresa ?? "—",
     porcentaje: Number(item.porcentaje ?? 0),
     pagado: Number(item.pagado ?? 0),
@@ -101,6 +102,39 @@ export default async function ObraDetalle({
   const aprobado = Number(resumen?.presupuesto_aprobado ?? 0);
 
   const liquidacion = calcularLiquidacion(socios);
+
+  // --------------------------- Terreno y obra juntos -------------------------
+  // El lote no se cruza con los gastos de obra: no entra en el m² construido ni
+  // en el balance de arriba, y tiene su propia liquidación. Pero una socia puede
+  // haber puesto el terreno entero y compensarse pagando menos de la obra
+  // diaria. Con las dos liquidaciones separadas eso no se ve: hay que mirarlas
+  // juntas para saber si la compensación cierra.
+  const hayLote = lote.pagos.length > 0;
+
+  const consolidado = socios.map((socio) => {
+    const enLote = lote.socios.find((s) => s.empresaId === socio.empresaId);
+
+    return {
+      empresa: socio.empresa,
+      porcentaje: socio.porcentaje,
+      obraPuesto: socio.pagado,
+      // El lote se valúa al dólar de cada pago, igual que en "en qué se gastó":
+      // es la única forma de sumarlo con la obra, que se lleva en pesos.
+      lotePuesto: enLote?.puestoArs ?? 0,
+      totalPuesto: socio.pagado + (enLote?.puestoArs ?? 0),
+      totalSaldo: socio.saldo + (enLote?.saldoArs ?? 0),
+    };
+  });
+
+  const liquidacionTotal = calcularLiquidacion(
+    consolidado.map((c) => ({ empresa: c.empresa, saldo: c.totalSaldo }))
+  );
+
+  const sumaLote = (campo: (s: (typeof lote.socios)[number]) => number) =>
+    lote.socios.reduce((acc, s) => acc + campo(s), 0);
+
+  const sumaTotal = (campo: (s: (typeof consolidado)[number]) => number) =>
+    consolidado.reduce((acc, s) => acc + campo(s), 0);
 
   const todos = gastos ?? [];
   const ultimos = todos.slice(0, 8);
@@ -379,6 +413,195 @@ export default async function ObraDetalle({
         </p>
       </section>
 
+      {/* El terreno va aparte de la obra a propósito: es una compra de inmueble
+          en dólares y su valor no debe inflar el m² construido. Pero es plata de
+          las mismas socias, así que necesita su propia lectura. */}
+      {hayLote && (
+        <section style={panelWithMargin}>
+          <h3 style={sectionTitle}>Terreno</h3>
+          <p style={text}>
+            La compra del lote no se cruza con los gastos de obra: no entra en el
+            balance de arriba ni en el m² construido. Se mide en dólares y tiene
+            su propia liquidación.
+          </p>
+
+          <table style={table}>
+            <thead>
+              <tr>
+                <th style={th}>Empresa</th>
+                <th style={th}>Particip.</th>
+                <th style={thRight}>Puso</th>
+                <th style={thRight}>Le corresponde</th>
+                <th style={thRight}>Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lote.socios.map((socio) => (
+                <tr key={socio.empresaId}>
+                  <td style={td}>{socio.empresa}</td>
+                  <td style={td}>{socio.porcentaje}%</td>
+                  <td style={tdRight}>
+                    <strong>
+                      {socio.puestoUsd > 0 ? formatUSD(socio.puestoUsd) : "—"}
+                    </strong>
+                  </td>
+                  <td style={tdRight}>{formatUSD(socio.leCorrespondeUsd)}</td>
+                  <td style={tdRight}>
+                    <strong style={estiloSaldo(socio.saldoUsd)}>
+                      {socio.saldoUsd > 0 ? "+" : ""}
+                      {formatUSD(socio.saldoUsd)}
+                    </strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={tdTotal} colSpan={2}>
+                  Puesto por las socias
+                </td>
+                <td style={tdTotalRight}>
+                  {formatUSD(sumaLote((s) => s.puestoUsd))}
+                </td>
+                <td style={tdTotalRight}>
+                  {formatUSD(sumaLote((s) => s.leCorrespondeUsd))}
+                </td>
+                <td style={tdTotalRight}>
+                  {formatUSD(sumaLote((s) => s.saldoUsd))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* Un pago sin socia no entra en el reparto: si no se avisa, el cuadro
+              parece decir que se puso menos de lo que se puso. */}
+          {lote.sinAsignarUsd > 0 && (
+            <p style={note}>
+              Hay <strong>{formatUSD(lote.sinAsignarUsd)}</strong> en pagos sin
+              socia asignada, que no entran en este reparto. Se les asigna una
+              editando el pago en la solapa{" "}
+              <Link href={`/obras/${obra.slug}/lote`} style={enlaceNota}>
+                Lote
+              </Link>
+              .
+            </p>
+          )}
+
+          <div style={resultBox}>
+            <p style={resultTitle}>Liquidación del terreno</p>
+
+            {lote.liquidacion.length === 0 ? (
+              <p style={resultText}>Las empresas están equilibradas.</p>
+            ) : (
+              <ul style={resultList}>
+                {lote.liquidacion.map((mov, i) => (
+                  <li key={i} style={resultText}>
+                    <strong>{mov.de}</strong> le transfiere{" "}
+                    <strong>{formatUSD(mov.monto)}</strong> a{" "}
+                    <strong>{mov.a}</strong>.
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* La lectura que no daba ninguna de las dos tablas por separado: si una
+          socia puso el terreno y la otra viene pagando más de la obra, recién
+          sumadas se ve si la compensación cierra. */}
+      {hayLote && (
+        <section style={panelWithMargin}>
+          <h3 style={sectionTitle}>Total por empresa</h3>
+          <p style={text}>
+            Obra y terreno se llevan separados, pero la plata sale del mismo
+            bolsillo. Sumados muestran cómo queda cada empresa en el desarrollo
+            completo.
+          </p>
+
+          <table style={table}>
+            <thead>
+              <tr>
+                <th style={th}>Empresa</th>
+                <th style={th}>Particip.</th>
+                <th style={thRight}>En la obra</th>
+                <th style={thRight}>En el terreno</th>
+                <th style={thRight}>Total puesto</th>
+                <th style={thRight}>Saldo total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {consolidado.map((socio) => (
+                <tr key={socio.empresa}>
+                  <td style={td}>{socio.empresa}</td>
+                  <td style={td}>{socio.porcentaje}%</td>
+                  <td style={tdRight}>
+                    {socio.obraPuesto !== 0 ? formatMoney(socio.obraPuesto) : "—"}
+                  </td>
+                  <td style={tdRight}>
+                    {socio.lotePuesto > 0 ? formatMoney(socio.lotePuesto) : "—"}
+                  </td>
+                  <td style={tdRight}>
+                    <strong>{formatMoney(socio.totalPuesto)}</strong>
+                  </td>
+                  <td style={tdRight}>
+                    <strong style={estiloSaldo(socio.totalSaldo)}>
+                      {socio.totalSaldo > 0 ? "+" : ""}
+                      {formatMoney(socio.totalSaldo)}
+                    </strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={tdTotal} colSpan={2}>
+                  Puesto por las socias
+                </td>
+                <td style={tdTotalRight}>
+                  {formatMoney(sumaTotal((s) => s.obraPuesto))}
+                </td>
+                <td style={tdTotalRight}>
+                  {formatMoney(sumaTotal((s) => s.lotePuesto))}
+                </td>
+                <td style={tdTotalRight}>
+                  {formatMoney(sumaTotal((s) => s.totalPuesto))}
+                </td>
+                <td style={tdTotalRight}>
+                  {formatMoney(sumaTotal((s) => s.totalSaldo))}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div style={resultBox}>
+            <p style={resultTitle}>Liquidación de todo el desarrollo</p>
+
+            {liquidacionTotal.length === 0 ? (
+              <p style={resultText}>
+                Las empresas están equilibradas contando obra y terreno.
+              </p>
+            ) : (
+              <ul style={resultList}>
+                {liquidacionTotal.map((mov, i) => (
+                  <li key={i} style={resultText}>
+                    <strong>{mov.de}</strong> le transfiere{" "}
+                    <strong>{formatMoney(mov.monto)}</strong> a{" "}
+                    <strong>{mov.a}</strong>.
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <p style={note}>
+            El terreno está en dólares; acá se valúa en pesos al cambio de cada
+            pago para poder sumarlo con la obra. Esta liquidación reemplaza a las
+            dos de arriba: es la misma plata mirada entera.
+          </p>
+        </section>
+      )}
+
       <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "32px" }}>
         <div style={panel}>
           <h3 style={sectionTitle}>En qué se gastó</h3>
@@ -637,6 +860,11 @@ const note = {
   fontSize: "14px",
   lineHeight: 1.5,
   marginBottom: 0,
+};
+
+const enlaceNota = {
+  color: "#111111",
+  textDecoration: "underline",
 };
 
 const row = {

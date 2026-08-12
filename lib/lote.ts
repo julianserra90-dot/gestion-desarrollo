@@ -33,6 +33,8 @@ export type PagoLote = {
   moneda: "ARS" | "USD";
   /** El pago valuado en dólares al cambio de su fecha. */
   usd: number | null;
+  /** El mismo pago en pesos, para poder sumarlo con los gastos de obra. */
+  ars: number;
   observaciones: string | null;
   /** La socia que lo pagó. Null si es compartido o todavía no se asignó. */
   empresaId: string | null;
@@ -41,7 +43,13 @@ export type PagoLote = {
   compartido: boolean;
 };
 
-/** Lo que cada socia puso en el lote, contra lo que le toca por su porcentaje. */
+/**
+ * Lo que cada socia puso en el lote, contra lo que le toca por su porcentaje.
+ *
+ * Va en las dos monedas a propósito: el lote se piensa en dólares —así se compra
+ * un inmueble—, pero para sumarlo con el balance de obra, que se lleva en pesos,
+ * hace falta el mismo número valuado al cambio de cada pago.
+ */
 export type SocioLote = {
   empresaId: string;
   empresa: string;
@@ -52,6 +60,10 @@ export type SocioLote = {
   leCorrespondeUsd: number;
   /** Puesto menos lo que le corresponde: positivo puso de más. */
   saldoUsd: number;
+  /** Lo mismo, en pesos. */
+  puestoArs: number;
+  leCorrespondeArs: number;
+  saldoArs: number;
 };
 
 export type Lote = {
@@ -114,6 +126,14 @@ export async function getLote(
     return cotizacion ? monto / cotizacion : null;
   };
 
+  // El mismo pago en pesos: los dólares valuados al cambio de su fecha. Sirve
+  // para sumar el lote con los gastos, que están en pesos.
+  const aArs = (monto: number, moneda: string, fecha: string): number => {
+    if (moneda === "ARS") return monto;
+    const cotizacion = convertidor.cotizacionDe(fecha);
+    return cotizacion ? monto * cotizacion : 0;
+  };
+
   const pagos: PagoLote[] = filas.map((p) => ({
     id: p.id,
     fecha: p.fecha,
@@ -122,6 +142,7 @@ export async function getLote(
     monto: Number(p.monto),
     moneda: p.moneda === "ARS" ? "ARS" : "USD",
     usd: aUsd(Number(p.monto), p.moneda, p.fecha),
+    ars: aArs(Number(p.monto), p.moneda, p.fecha),
     observaciones: p.observaciones,
     empresaId: p.empresa_id,
     empresa: p.empresas?.nombre ?? null,
@@ -131,18 +152,10 @@ export async function getLote(
   const sumaUsd = (filtro: (p: PagoLote) => boolean) =>
     pagos.filter(filtro).reduce((total, p) => total + (p.usd ?? 0), 0);
 
-  // El mismo pago en pesos: los dólares valuados al cambio de su fecha. Sirve
-  // para sumar el lote con los gastos, que están en pesos.
-  const aArs = (monto: number, moneda: string, fecha: string): number => {
-    if (moneda === "ARS") return monto;
-    const cotizacion = convertidor.cotizacionDe(fecha);
-    return cotizacion ? monto * cotizacion : 0;
-  };
+  const sumaArs = (filtro: (p: PagoLote) => boolean) =>
+    pagos.filter(filtro).reduce((total, p) => total + p.ars, 0);
 
-  const totalArs = pagos.reduce(
-    (total, p) => total + aArs(p.monto, p.moneda, p.fecha),
-    0
-  );
+  const totalArs = sumaArs(() => true);
 
   const pagadoCompraUsd = sumaUsd((p) => p.categoria === "Compra");
   const asociadosUsd = sumaUsd((p) => p.categoria !== "Compra");
@@ -152,25 +165,35 @@ export async function getLote(
   // asignar —ni empresa ni compartido— no entra, así los saldos dan cero.
   const cantSocios = (socios ?? []).length;
   const compartidoUsd = sumaUsd((p) => p.compartido);
+  const compartidoArs = sumaArs((p) => p.compartido);
   const porSociaDelCompartido =
     cantSocios > 0 ? compartidoUsd / cantSocios : 0;
+  const porSociaDelCompartidoArs =
+    cantSocios > 0 ? compartidoArs / cantSocios : 0;
 
   const atribuidoUsd =
     sumaUsd((p) => p.empresaId !== null) + compartidoUsd;
+  const atribuidoArs =
+    sumaArs((p) => p.empresaId !== null) + compartidoArs;
 
   const listaSocios: SocioLote[] = (socios ?? [])
     .map((s) => {
-      const propio = sumaUsd((p) => p.empresaId === s.empresa_id);
-      const puestoUsd = propio + porSociaDelCompartido;
-      const leCorrespondeUsd = (Number(s.porcentaje) / 100) * atribuidoUsd;
+      const propioUsd = sumaUsd((p) => p.empresaId === s.empresa_id);
+      const propioArs = sumaArs((p) => p.empresaId === s.empresa_id);
+      const puestoUsd = propioUsd + porSociaDelCompartido;
+      const puestoArs = propioArs + porSociaDelCompartidoArs;
+      const porcentaje = Number(s.porcentaje);
 
       return {
         empresaId: s.empresa_id,
         empresa: s.empresas?.nombre ?? "—",
-        porcentaje: Number(s.porcentaje),
+        porcentaje,
         puestoUsd,
-        leCorrespondeUsd,
-        saldoUsd: puestoUsd - leCorrespondeUsd,
+        leCorrespondeUsd: (porcentaje / 100) * atribuidoUsd,
+        saldoUsd: puestoUsd - (porcentaje / 100) * atribuidoUsd,
+        puestoArs,
+        leCorrespondeArs: (porcentaje / 100) * atribuidoArs,
+        saldoArs: puestoArs - (porcentaje / 100) * atribuidoArs,
       };
     })
     .sort((a, b) => a.empresa.localeCompare(b.empresa));
@@ -220,7 +243,10 @@ export async function getPagoLote(
     concepto: data.concepto,
     monto: Number(data.monto),
     moneda: data.moneda === "ARS" ? "ARS" : "USD",
+    // El formulario de edición muestra el monto tal como se cargó: no necesita
+    // las conversiones, así que acá no se piden cotizaciones.
     usd: null,
+    ars: 0,
     observaciones: data.observaciones,
     empresaId: data.empresa_id,
     empresa: data.empresas?.nombre ?? null,

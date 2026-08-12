@@ -20,7 +20,7 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 
 | Solapa | Para qué |
 | --- | --- |
-| **Economía** | Balance entre socias, liquidación sugerida, en qué se gastó |
+| **Economía** | Balance entre socias, terreno, total por empresa, en qué se gastó |
 | **Presupuestos** | Cotizaciones por rubro; se aprueba la elegida |
 | **Gastos** | Cada gasto por el 100%, repartido según participación |
 | **Ingresos** | Plata que entra: aportes de socias, inversores, compradores |
@@ -125,6 +125,27 @@ De ahí salen tres lecturas: cuánto falta de la compra, cuánto salió la opera
 completa, y la **incidencia del terreno por m² construido** —un terreno caro
 sube el piso de toda la obra—. En Estado se ve el lote y la construcción sumados
 como inversión total.
+
+#### Cómo queda cada empresa
+
+En **Economía** hay tres tablas, en este orden: el balance de la obra, el del
+terreno, y las dos sumadas.
+
+Que estén separadas no es cosmético —el terreno no entra en el costo de
+construir— pero tampoco alcanza con verlas por separado, porque la plata sale del
+mismo bolsillo. El caso típico: **una socia pone el terreno entero y la otra
+compensa pagando más de la obra**. Ahí cada tabla sugiere una transferencia en
+sentido contrario, y sólo sumadas se sabe quién le debe a quién de verdad:
+
+```
+Obra       Baffic le transfiere $ 500.000 a Estudio TAG
+Terreno    Estudio TAG le transfiere US$ 500 a Baffic
+Total      Estudio TAG le transfiere $ 245.592,50 a Baffic
+```
+
+La última es la que vale: las otras dos son la misma plata mirada por partes. El
+terreno se valúa en pesos al dólar de cada pago para poder sumarlo, que es el
+mismo criterio de la inversión total.
 
 ### Gastos
 
