@@ -45,7 +45,7 @@ export default async function ObraDetalle({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, empresa_factura_id, estado, tipo_gasto, compartido, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, empresa_factura_id, estado, tipo_gasto, compartido, rubro_id, rubros(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
@@ -147,10 +147,23 @@ export default async function ObraDetalle({
   // sea factura A, así que alcanza con sumarla.
   const creditoFiscal = vigentes.reduce((acc, g) => acc + Number(g.iva ?? 0), 0);
 
-  const porRubro = new Map<string, number>();
+  // Cada rubro se guarda con su id para poder entrar al detalle desde la
+  // leyenda. Los gastos sin rubro se juntan aparte y no llevan enlace: no hay
+  // adónde ir.
+  const porRubro = new Map<
+    string,
+    { nombre: string; id: string | null; total: number }
+  >();
+
   for (const gasto of vigentes) {
-    const nombre = gasto.rubros?.nombre ?? "Sin rubro";
-    porRubro.set(nombre, (porRubro.get(nombre) ?? 0) + Number(gasto.monto));
+    const clave = gasto.rubro_id ?? "sin-rubro";
+    const actual = porRubro.get(clave) ?? {
+      nombre: gasto.rubros?.nombre ?? "Sin rubro",
+      id: gasto.rubro_id,
+      total: 0,
+    };
+
+    porRubro.set(clave, { ...actual, total: actual.total + Number(gasto.monto) });
   }
 
   // Sin presupuesto cargado no hay contra qué comparar: mostrar "0% consumido"
@@ -168,8 +181,20 @@ export default async function ObraDetalle({
     totalConLote > 0 ? Math.round((total / totalConLote) * 100) : 0;
 
   const gastoPorRubro = [
-    ...[...porRubro.entries()].map(([rubro, total]) => ({ rubro, total })),
-    ...(loteArs > 0 ? [{ rubro: "Lote / Terreno", total: loteArs }] : []),
+    ...[...porRubro.values()].map((r) => ({
+      rubro: r.nombre,
+      total: r.total,
+      href: r.id ? `/obras/${obra.slug}/rubro/${r.id}` : undefined,
+    })),
+    ...(loteArs > 0
+      ? [
+          {
+            rubro: "Lote / Terreno",
+            total: loteArs,
+            href: `/obras/${obra.slug}/lote`,
+          },
+        ]
+      : []),
   ]
     .map((r) => ({ ...r, porcentaje: porcentajeDe(r.total) }))
     .sort((a, b) => b.total - a.total);
@@ -177,6 +202,7 @@ export default async function ObraDetalle({
   const torta = gastoPorRubro.map((r) => ({
     etiqueta: r.rubro,
     valor: r.total,
+    href: r.href,
   }));
 
   // Materiales vs mano de obra: la otra lectura útil de en qué se va la plata.

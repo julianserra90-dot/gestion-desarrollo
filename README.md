@@ -163,6 +163,11 @@ y si no lo son, la que puso más de lo que le tocaba lo ve en su saldo.
 La factura, en cambio, es de una sola empresa: el crédito fiscal no se divide,
 así que hay que decir a nombre de quién está.
 
+En **Economía**, "en qué se gastó" lista los rubros por su total —material y mano
+de obra juntos, que es como se piensa el costo de un rubro—. Tocando el rubro se
+entra al detalle: cuánto fue material, cuánto mano de obra, y cada gasto con su
+proveedor, quién lo pagó y contra qué comprobante.
+
 ### Dinero en cuenta
 
 La cuenta de la obra tiene **dos lados que no se mezclan**: los pesos que entran

@@ -183,6 +183,18 @@ contra el total: por eso el aviso debajo de la tabla.
 Ojo: `getPagoLote` —el que alimenta el formulario de edición— no convierte nada,
 así que devuelve `usd: null` y `ars: 0`. No es un dato, es "no calculado".
 
+### Detalle por rubro
+En "En qué se gastó", cada rubro es un enlace a `/obras/<slug>/rubro/<rubroId>`:
+el total del rubro arriba y abajo los gastos separados en **Materiales / Mano de
+obra / Administrativo**, un bloque por tipo y sólo los que tienen algo. La
+porción "Lote / Terreno" lleva a la solapa Lote; los gastos sin rubro no llevan a
+ningún lado, porque no hay adónde ir.
+
+La ruta es `rubro/[rubroId]`, en singular, para no confundirla con la solapa
+`rubros`, que es otra cosa (qué rubros usa la obra). `GraficoTorta` acepta un
+`href` opcional por porción: así el mismo componente sigue sirviendo en Dólares,
+donde no hay enlaces.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance

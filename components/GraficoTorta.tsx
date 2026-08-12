@@ -4,7 +4,13 @@
  *
  * Recibe los datos ya sumados; asigna los colores de una paleta por orden. El
  * formato del monto lo pone quien lo usa (pesos o dólares).
+ *
+ * Una porción puede llevar `href`: ahí la leyenda se vuelve la puerta de entrada
+ * al detalle de ese rubro. Sin `href` es texto y listo —hay porciones que no
+ * tienen adónde llevar, como los gastos sin rubro—.
  */
+
+import Link from "next/link";
 
 const PALETA = [
   "#111827",
@@ -19,7 +25,12 @@ const PALETA = [
   "#6b7280",
 ];
 
-export type PorcionTorta = { etiqueta: string; valor: number };
+export type PorcionTorta = {
+  etiqueta: string;
+  valor: number;
+  /** Adónde lleva la etiqueta, si tiene detalle para mostrar. */
+  href?: string;
+};
 
 export default function GraficoTorta({
   datos,
@@ -79,7 +90,15 @@ export default function GraficoTorta({
         {porciones.map((p, i) => (
           <li key={i} style={item}>
             <span style={{ ...swatch, background: p.color }} />
-            <span style={etiqueta}>{p.etiqueta}</span>
+            <span style={etiqueta}>
+              {p.href ? (
+                <Link href={p.href} style={enlace}>
+                  {p.etiqueta}
+                </Link>
+              ) : (
+                p.etiqueta
+              )}
+            </span>
             <span style={valor}>
               {formato(p.valor)} <span style={pct}>{p.porcentaje}%</span>
             </span>
@@ -123,6 +142,11 @@ const swatch = {
 const etiqueta = {
   flex: "1 1 auto",
   color: "#333333",
+};
+
+const enlace = {
+  color: "#333333",
+  textDecoration: "underline",
 };
 
 const valor = {
