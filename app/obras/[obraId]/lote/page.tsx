@@ -1,6 +1,6 @@
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
-import PagoLoteForm from "@/components/PagoLoteForm";
 import PagosLoteLista from "@/components/PagosLoteLista";
 import * as ui from "@/components/ui";
 import { formatUSD } from "@/lib/format";
@@ -11,7 +11,7 @@ import {
   superficieVenta,
 } from "@/lib/superficies";
 import { getTotalesUsd } from "@/lib/totales-usd";
-import { crearPagoLote, eliminarPagoLote, guardarDatosLote } from "./actions";
+import { eliminarPagoLote } from "./actions";
 
 export default async function LotePage({
   params,
@@ -46,25 +46,56 @@ export default async function LotePage({
   const incidenciaVenta = incidenciaPorM2(lote.valorUsd, superficieVenta(obra));
   const inversionTotal = construccion.gastadoUsd + lote.totalUsd;
 
-  // Para el desplegable del formulario: las socias de la obra.
-  const socios = lote.socios.map((s) => ({ id: s.empresaId, nombre: s.empresa }));
-
-  const hoy = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires",
-  });
-
   const hayDatos = lote.valorUsd !== null || lote.pagos.length > 0;
+
+  // La nomenclatura catastral se guarda desglosada pero se lee entera: sueltas,
+  // "II" y "B" no dicen nada.
+  const nomenclatura = [
+    obra.lote_circunscripcion && `Circ. ${obra.lote_circunscripcion}`,
+    obra.lote_seccion && `Secc. ${obra.lote_seccion}`,
+    obra.lote_manzana && `Mz. ${obra.lote_manzana}`,
+    obra.lote_parcela && `Parc. ${obra.lote_parcela}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  // Sólo se listan los datos cargados: una ficha llena de guiones no informa.
+  const ficha = [
+    {
+      etiqueta: "Superficie del terreno",
+      valor:
+        obra.lote_superficie_m2 === null
+          ? null
+          : `${obra.lote_superficie_m2} m²`,
+    },
+    { etiqueta: "Vendedor", valor: obra.lote_vendedor },
+    { etiqueta: "Propietario", valor: obra.lote_propietario },
+    { etiqueta: "Partida inmobiliaria", valor: obra.lote_partida },
+    { etiqueta: "Nomenclatura catastral", valor: nomenclatura || null },
+    { etiqueta: "Detalle", valor: obra.lote_detalle },
+  ].filter((dato) => dato.valor);
 
   return (
     <AppShell>
       <ObraHeader obra={obra} activeSection="lote" />
 
+      {/* La acción va arriba y no al pie: esta pantalla se abre para mirar cómo
+          viene la compra, y cargar un pago no debería costar un scroll. */}
       <section style={ui.sectionHeader}>
-        <p style={ui.eyebrow}>Economía</p>
-        <h2 style={ui.pageTitle}>Lote</h2>
-        <p style={ui.subtitle}>
-          La compra del terreno, aparte del costo de construir. Todo en dólares.
-        </p>
+        <div style={encabezado}>
+          <div>
+            <p style={ui.eyebrow}>Economía</p>
+            <h2 style={ui.pageTitle}>Lote</h2>
+            <p style={ui.subtitle}>
+              La compra del terreno, aparte del costo de construir. Todo en
+              dólares.
+            </p>
+          </div>
+
+          <Link href={`/obras/${obra.slug}/lote/nuevo`} style={ui.button}>
+            Agregar pago
+          </Link>
+        </div>
       </section>
 
       {error && <p style={errorBox}>{error}</p>}
@@ -207,83 +238,33 @@ export default async function LotePage({
       )}
 
       {/* --- Ficha del lote ------------------------------------------------ */}
+      {/* Sólo lectura. Estos datos se cargan al comprar y después casi no se
+          tocan, así que se editan en Editar obra → Datos lote. Acá se muestran
+          porque son la identidad del terreno. */}
 
       <section style={ui.panelConMargen}>
-        <h3 style={ui.sectionTitle}>Datos del lote</h3>
+        <div style={ui.toolbar}>
+          <h3 style={ui.sectionTitle}>Datos del lote</h3>
 
-        <form action={guardarDatosLote}>
-          <input type="hidden" name="obra_id" value={obra.id} />
-          <input type="hidden" name="slug" value={obra.slug} />
+          <Link href={`/obras/${obra.slug}/editar/lote`} style={enlaceEditar}>
+            Editar datos del lote
+          </Link>
+        </div>
 
-          <div style={grid}>
-            <label style={field}>
-              <span style={labelCampo}>Valor de compra (USD)</span>
-              <input
-                type="number"
-                name="lote_valor_usd"
-                min="0"
-                step="0.01"
-                defaultValue={obra.lote_valor_usd ?? ""}
-                placeholder="Ej: 200000"
-                style={ui.input}
-              />
-            </label>
-
-            <label style={field}>
-              <span style={labelCampo}>Superficie del terreno (m²)</span>
-              <input
-                type="number"
-                name="lote_superficie_m2"
-                min="0"
-                step="0.01"
-                defaultValue={obra.lote_superficie_m2 ?? ""}
-                placeholder="Ej: 300"
-                style={ui.input}
-              />
-            </label>
-
-            <label style={field}>
-              <span style={labelCampo}>Vendedor</span>
-              <input
-                type="text"
-                name="lote_vendedor"
-                defaultValue={obra.lote_vendedor ?? ""}
-                placeholder="Quién vende"
-                style={ui.input}
-              />
-            </label>
-
-            <label style={fieldAncho}>
-              <span style={labelCampo}>Detalle</span>
-              <input
-                type="text"
-                name="lote_detalle"
-                defaultValue={obra.lote_detalle ?? ""}
-                placeholder="Nomenclatura catastral, partida, notas"
-                style={ui.input}
-              />
-            </label>
+        {ficha.length === 0 ? (
+          <p style={ui.vacio}>
+            Todavía no se cargaron los datos del terreno.
+          </p>
+        ) : (
+          <div style={dosColumnas}>
+            {ficha.map((dato) => (
+              <div key={dato.etiqueta} style={filaResumen}>
+                <span>{dato.etiqueta}</span>
+                <strong>{dato.valor}</strong>
+              </div>
+            ))}
           </div>
-
-          <div style={accionesFicha}>
-            <button type="submit" style={ui.button}>
-              Guardar datos
-            </button>
-          </div>
-        </form>
-      </section>
-
-      {/* --- Alta de pago -------------------------------------------------- */}
-
-      <section style={ui.panelConMargen}>
-        <h3 style={ui.sectionTitle}>Agregar pago</h3>
-        <PagoLoteForm
-          action={crearPagoLote}
-          obraId={obra.id}
-          slug={obra.slug}
-          hoy={hoy}
-          socios={socios}
-        />
+        )}
       </section>
 
       {/* --- Historial de pagos -------------------------------------------- */}
@@ -311,6 +292,13 @@ export default async function LotePage({
     </AppShell>
   );
 }
+
+const encabezado = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "24px",
+};
 
 const dosColumnas = {
   display: "grid",
@@ -363,32 +351,10 @@ const liquidacionTitulo = {
   margin: "0 0 10px",
 };
 
-const grid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
-  gap: "20px",
-};
-
-const field = {
-  display: "grid",
-  gap: "8px",
-  alignContent: "start" as const,
-};
-
-const fieldAncho = {
-  ...field,
-  gridColumn: "1 / -1",
-};
-
-const labelCampo = {
-  fontSize: "13px",
-  color: "#555555",
-};
-
-const accionesFicha = {
-  display: "flex",
-  justifyContent: "flex-end",
-  marginTop: "20px",
+const enlaceEditar = {
+  color: "#111111",
+  textDecoration: "underline",
+  fontSize: "14px",
 };
 
 const errorBox = {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import EditarNav from "@/components/EditarNav";
 import ObraForm from "@/components/ObraForm";
 import { createClient } from "@/lib/supabase/server";
 import { crearEmpresa } from "@/app/empresas/actions";
@@ -78,6 +79,8 @@ export default async function EditarObraPage({
           Volver a la obra
         </Link>
       </header>
+
+      <EditarNav slug={obra.slug} activa="obra" />
 
       {obra.archivada_en && (
         <section style={avisoArchivada}>

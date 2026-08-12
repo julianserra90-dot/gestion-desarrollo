@@ -138,6 +138,25 @@ La vista Lote (solapa bajo Economía) muestra valor lote / pago a la fecha /
 saldo pendiente / gastos administrativos / total desembolsado / incidencia por m²
 construido / inversión total (lote + construcción).
 
+**Qué se edita dónde.** La solapa Lote quedó para lo que se consulta y lo que
+pasa todos los meses: los números, el reparto y los pagos. Lo demás se fue:
+
+- La **ficha del terreno** se edita en **Editar obra → Datos lote** (esa pantalla
+  tiene dos solapas: *Datos obra* y *Datos lote*). Son datos que se cargan al
+  comprar y después casi no se tocan. En la solapa Lote se muestran en sólo
+  lectura, con enlace a editarlos, porque son la identidad del terreno.
+- El **alta de un pago** tiene su propia pantalla (`lote/nuevo`), a la que se
+  entra por el botón de arriba, igual que "Nuevo gasto" en Gastos. Antes el
+  formulario vivía desplegado al pie y era lo más largo de la página.
+
+La ficha incluye, además de valor/superficie/vendedor: **propietario** (titular
+registral, que puede no ser quien vende), **partida inmobiliaria** y la
+nomenclatura catastral desglosada en **circunscripción / sección / manzana /
+parcela**. Va desglosada porque así figura en la escritura y así la pide el
+municipio; en la solapa Lote se muestra armada (`Circ. II · Secc. B · Mz. 45`).
+Todo se guarda como texto, incluso lo que parece número: una parcela puede ser
+"12a" y una sección "B".
+
 En la tabla de pagos cada uno ocupa **una sola columna de moneda: la que se
 cargó**. Un pago en dólares deja "Monto en $" vacío; uno en pesos muestra los
 pesos ahí y su dolarización al cambio de esa fecha en "Monto en U$D". Antes las

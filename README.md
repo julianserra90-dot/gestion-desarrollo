@@ -125,6 +125,12 @@ La categoría es lo único que define de qué lado cae un pago, así que convien
 mirarla: una comisión cargada como "Compra" termina abonando el terreno en vez
 de sumar a los gastos administrativos.
 
+Además del precio, el terreno se identifica: **propietario** (el titular
+registral, que no siempre es quien vende), **partida inmobiliaria** y la
+nomenclatura catastral —circunscripción, sección, manzana y parcela—. Eso se
+carga una vez, al comprar, así que se edita en **Editar obra → Datos lote** y no
+en la solapa, que queda para lo que pasa todos los meses: los pagos.
+
 De ahí salen tres lecturas: cuánto falta de la compra, cuánto salió la operación
 completa, y la **incidencia del terreno por m² construido** —un terreno caro
 sube el piso de toda la obra—. En Estado se ve el lote y la construcción sumados

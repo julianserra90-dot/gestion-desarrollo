@@ -806,7 +806,13 @@ export type Database = {
           fecha_fin_estimada: string | null
           fecha_inicio: string | null
           id: string
+          lote_circunscripcion: string | null
           lote_detalle: string | null
+          lote_manzana: string | null
+          lote_parcela: string | null
+          lote_partida: string | null
+          lote_propietario: string | null
+          lote_seccion: string | null
           lote_superficie_m2: number | null
           lote_valor_usd: number | null
           lote_vendedor: string | null
@@ -828,7 +834,13 @@ export type Database = {
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
+          lote_circunscripcion?: string | null
           lote_detalle?: string | null
+          lote_manzana?: string | null
+          lote_parcela?: string | null
+          lote_partida?: string | null
+          lote_propietario?: string | null
+          lote_seccion?: string | null
           lote_superficie_m2?: number | null
           lote_valor_usd?: number | null
           lote_vendedor?: string | null
@@ -850,7 +862,13 @@ export type Database = {
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
+          lote_circunscripcion?: string | null
           lote_detalle?: string | null
+          lote_manzana?: string | null
+          lote_parcela?: string | null
+          lote_partida?: string | null
+          lote_propietario?: string | null
+          lote_seccion?: string | null
           lote_superficie_m2?: number | null
           lote_valor_usd?: number | null
           lote_vendedor?: string | null
