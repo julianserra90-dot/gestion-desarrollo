@@ -217,8 +217,20 @@ así que devuelve `usd: null` y `ars: 0`. No es un dato, es "no calculado".
 
 ### Detalle por rubro
 En "En qué se gastó", cada rubro es un enlace a `/obras/<slug>/rubro/<rubroId>`:
-el total del rubro arriba y abajo los gastos separados en **Materiales / Mano de
-obra / Administrativo**, un bloque por tipo y sólo los que tienen algo. La
+arriba **cotizado / gastado / falta pagar** del rubro, y abajo los gastos
+separados en **Materiales / Mano de obra / Administrativo**, un bloque por tipo
+con su propia comparación contra lo cotizado (y quién cotizó).
+
+Lo cotizado sale de `getPresupuestosDeObra` —las cotizaciones **aprobadas**—. Sin
+cotización aprobada no se muestran ni "cotizado" ni "falta": un "falta" sin
+contra qué comparar sería el gasto cambiado de signo. Un tipo aparece si tiene
+gastos **o** si tiene cotización, para que un rubro cotizado y todavía sin gastar
+se pueda mirar.
+
+Ojo con eso último: hoy a esa pantalla se entra sólo desde el gráfico de torta,
+que lista los rubros **con gastos**. Un rubro cotizado y sin gastar no tiene
+puerta de entrada desde Economía; se llega por URL. Si molesta, hay que decidir
+si Economía los lista. La
 porción "Lote / Terreno" lleva a la solapa Lote; los gastos sin rubro no llevan a
 ningún lado, porque no hay adónde ir.
 

@@ -176,8 +176,12 @@ así que hay que decir a nombre de quién está.
 
 En **Economía**, "en qué se gastó" lista los rubros por su total —material y mano
 de obra juntos, que es como se piensa el costo de un rubro—. Tocando el rubro se
-entra al detalle: cuánto fue material, cuánto mano de obra, y cada gasto con su
-proveedor, quién lo pagó y contra qué comprobante.
+entra al detalle: cuánto se cotizó, cuánto se gastó y cuánto falta pagar, todo
+separado en material y mano de obra, y cada gasto con su proveedor, quién lo pagó
+y contra qué comprobante.
+
+Lo cotizado son las cotizaciones **aprobadas** en Presupuestos. Si un rubro no
+tiene ninguna, no se muestra "falta pagar": no habría contra qué compararlo.
 
 ### Dinero en cuenta
 
