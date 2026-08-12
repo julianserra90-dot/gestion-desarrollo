@@ -72,9 +72,9 @@ export default function PagosLoteLista({
               <th style={ui.th}>Fecha</th>
               <th style={ui.th}>Tipo</th>
               <th style={ui.th}>Concepto</th>
-              <th style={ui.th}>Pagó</th>
-              <th style={ui.th}>Monto</th>
-              <th style={ui.th}>En USD</th>
+              <th style={ui.th}>Pagado por</th>
+              <th style={ui.thRight}>Monto en $</th>
+              <th style={ui.thRight}>Monto en U$D</th>
               <th style={ui.th} />
             </tr>
           </thead>
@@ -93,12 +93,14 @@ export default function PagosLoteLista({
                     )
                   )}
                 </td>
-                <td style={ui.td}>
-                  {pago.moneda === "USD"
-                    ? formatUSD(pago.monto)
-                    : formatMoney(pago.monto)}
+                {/* Cada pago ocupa una sola columna de moneda: la que se cargó.
+                    Un pago en dólares repetido en las dos era el mismo número
+                    dos veces. La de dólares siempre tiene algo, porque el lote
+                    se mide en dólares. */}
+                <td style={ui.tdRight}>
+                  {pago.moneda === "ARS" ? formatMoney(pago.monto) : "—"}
                 </td>
-                <td style={ui.td}>
+                <td style={ui.tdRight}>
                   {pago.usd === null ? "—" : formatUSD(pago.usd)}
                 </td>
                 <td style={ui.td}>

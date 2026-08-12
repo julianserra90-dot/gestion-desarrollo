@@ -136,7 +136,13 @@ un inmueble.
 
 La vista Lote (solapa bajo Economía) muestra valor lote / pago a la fecha /
 saldo pendiente / gastos administrativos / total desembolsado / incidencia por m²
-construido / inversión total (lote + construcción). Estado repite un resumen compacto. `lib/lote-tipos.ts`
+construido / inversión total (lote + construcción).
+
+En la tabla de pagos cada uno ocupa **una sola columna de moneda: la que se
+cargó**. Un pago en dólares deja "Monto en $" vacío; uno en pesos muestra los
+pesos ahí y su dolarización al cambio de esa fecha en "Monto en U$D". Antes las
+dos columnas repetían el mismo número en los pagos en dólares, que son casi
+todos. La columna en dólares siempre tiene algo, porque el lote se mide así. Estado repite un resumen compacto. `lib/lote-tipos.ts`
 tiene las categorías puras (sin base), porque el form cliente las necesita y
 `lib/lote.ts` es sólo servidor —mismo patrón que `ambitos.ts`/`documentos.ts`—.
 
