@@ -254,10 +254,13 @@ campos.) La superficie del **lote** (terreno) va aparte, en la solapa Lote
 (`lote_superficie_m2`).
 
 `lib/superficies.ts` (puro, sin base) devuelve las dos. Con ellas —más el valor
-del lote— salen: incidencia del lote (valor lote / m²), valor del m² de obra
-(gastado / construcción) y valor del m² de venta (gastado / venta). La incidencia
-y el gastado/m² se muestran sobre las dos superficies; el objetivo y el desvío
-siguen sobre la de construcción.
+del lote— salen: incidencia del lote, valor del m² de obra (gastado /
+construcción) y valor del m² de venta (gastado / venta). El gastado/m² se muestra
+sobre las dos superficies; el objetivo y el desvío van sobre la de construcción.
+
+La **incidencia va siempre sobre la superficie de venta**, nunca sobre la de
+construcción: lo que se recupera es lo vendible, así que es contra eso que se
+mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,

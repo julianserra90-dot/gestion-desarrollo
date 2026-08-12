@@ -132,9 +132,10 @@ carga una vez, al comprar, así que se edita en **Editar obra → Datos lote** y
 en la solapa, que queda para lo que pasa todos los meses: los pagos.
 
 De ahí salen tres lecturas: cuánto falta de la compra, cuánto salió la operación
-completa, y la **incidencia del terreno por m² construido** —un terreno caro
-sube el piso de toda la obra—. En Estado se ve el lote y la construcción sumados
-como inversión total.
+completa, y la **incidencia del terreno por m² de venta** —un terreno caro sube
+el piso de todo el desarrollo—. La incidencia va sobre lo vendible y no sobre lo
+construido, porque lo que se recupera es lo que se vende. En Estado se ve el lote
+y la construcción sumados como inversión total.
 
 #### Cómo queda cada empresa
 

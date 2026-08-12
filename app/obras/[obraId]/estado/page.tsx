@@ -49,7 +49,6 @@ export default async function EstadoDeObraPage({
   const supVenta = superficieVenta(obra);
 
   const hayLote = lote.valorUsd !== null || lote.pagos.length > 0;
-  const incidenciaConstruccion = incidenciaPorM2(lote.valorUsd, supConstruccion);
   const incidenciaVenta = incidenciaPorM2(lote.valorUsd, supVenta);
   const inversionTotal = totales.gastadoUsd + lote.totalUsd;
 
@@ -404,15 +403,12 @@ export default async function EstadoDeObraPage({
               <span>Lote, pagado a hoy</span>
               <strong>
                 {formatUSD(lote.totalUsd)}
-                {(lote.valorUsd !== null || incidenciaConstruccion !== null) && (
+                {(lote.valorUsd !== null || incidenciaVenta !== null) && (
                   <span style={incidenciaTexto}>
                     {lote.valorUsd !== null &&
                       ` de ${formatUSD(lote.valorUsd)} pactado`}
-                    {incidenciaConstruccion !== null &&
-                      ` · incidencia ${formatUSD(incidenciaConstruccion)}/m² constr.`}
                     {incidenciaVenta !== null &&
-                      incidenciaVenta !== incidenciaConstruccion &&
-                      ` · ${formatUSD(incidenciaVenta)}/m² venta`}
+                      ` · incidencia ${formatUSD(incidenciaVenta)}/m² de venta`}
                   </span>
                 )}
               </strong>

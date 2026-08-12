@@ -255,15 +255,19 @@ export async function getPagoLote(
 }
 
 /**
- * La incidencia del terreno: cuánto del costo por m² construido es tierra. Es
- * la lectura de negocio del lote —un terreno caro sube el piso de toda la obra—.
+ * La incidencia del terreno: cuánto del m² que se vende es tierra.
+ *
+ * Va siempre sobre la superficie de **venta**, no sobre la de construcción: lo
+ * que se recupera es lo vendible, así que es contra eso que hay que medir
+ * cuánto pesa el terreno. Es la lectura de negocio del lote —uno caro sube el
+ * piso de todo el desarrollo—.
  */
 export function incidenciaPorM2(
   valorUsd: number | null,
-  superficieConstruidaM2: number | null
+  superficieVentaM2: number | null
 ): number | null {
-  if (!valorUsd || !superficieConstruidaM2 || superficieConstruidaM2 <= 0) {
+  if (!valorUsd || !superficieVentaM2 || superficieVentaM2 <= 0) {
     return null;
   }
-  return valorUsd / superficieConstruidaM2;
+  return valorUsd / superficieVentaM2;
 }
