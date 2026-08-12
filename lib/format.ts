@@ -12,10 +12,15 @@ export function formatMoney(value: number | null | undefined) {
 export function formatUSD(valor: number | null | undefined) {
   if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
 
+  // Dos decimales, igual que los pesos. Un gasto convertido rara vez da un
+  // número redondo: $ 1.200.000 al cambio de 1.433,90 son US$ 836,88, y mostrar
+  // US$ 837 inventa doce centavos que nadie pagó. La conversión se guarda al
+  // centavo desde siempre; lo que redondeaba era esto.
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(valor);
 }
 

@@ -31,7 +31,10 @@ Convenciones de código:
 - Server actions en `app/**/actions.ts`.
 - Estilos inline en objetos al final de cada archivo (no hay CSS aparte).
 - Los comentarios explican el **porqué**, no el qué. Mantener ese estilo.
-- `formatMoney` muestra **dos decimales** (los gastos se cargan al centavo).
+- `formatMoney` y `formatUSD` muestran **dos decimales** (los gastos se cargan al
+  centavo). En dólares importa igual o más: $ 1.200.000 al cambio de 1.433,90 son
+  US$ 836,88, y mostrar US$ 837 inventa doce centavos. La conversión se guarda al
+  centavo desde siempre —`convertirMonto`—; lo que redondeaba era el formato.
 
 ## Modelo de dominio y decisiones (lo que no es obvio del código)
 
