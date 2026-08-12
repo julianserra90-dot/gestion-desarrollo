@@ -72,13 +72,13 @@ export default async function LotePage({
       {hayDatos && (
         <section style={ui.statsGrid}>
           <div style={ui.statCard}>
-            <p style={ui.label}>Valor pactado</p>
+            <p style={ui.label}>Valor lote</p>
             <h3 style={ui.statNumber}>
               {lote.valorUsd === null ? "—" : formatUSD(lote.valorUsd)}
             </h3>
           </div>
           <div style={ui.statCard}>
-            <p style={ui.label}>Pagado de la compra</p>
+            <p style={ui.label}>Pago a la fecha</p>
             <h3 style={ui.statNumber}>{formatUSD(lote.pagadoCompraUsd)}</h3>
           </div>
           <div style={ui.statCard}>
@@ -91,7 +91,7 @@ export default async function LotePage({
             )}
           </div>
           <div style={ui.statCard}>
-            <p style={ui.label}>Gastos de la operación</p>
+            <p style={ui.label}>Gastos administrativos</p>
             <h3 style={ui.statNumber}>{formatUSD(lote.asociadosUsd)}</h3>
             <p style={{ ...ui.note, margin: "6px 0 0" }}>
               Escribanía, sellos, comisión.

@@ -124,15 +124,19 @@ diferencia se lleva por afuera por ahora). Vive en columnas de la obra
 (`lote_valor_usd`, `lote_superficie_m2`, `lote_vendedor`, `lote_detalle`) más una
 tabla `lote_pagos`. Una obra, un lote.
 
-Cada pago tiene una `categoria`: **Compra** abona el precio pactado (baja el
-saldo), y Escribanía/Sellos/Comisión/Otro son gastos de la operación (aparte del
-saldo). Los montos se guardan en su moneda (`monto` + `moneda`); la conversión a
-USD se hace **en la lectura** con `getConvertidor` (al dólar de la fecha de cada
-pago), no se persiste. Todo se mide en dólares porque así se compra un inmueble.
+Cada pago tiene una `categoria`: **Compra** abona el valor del lote (baja el
+saldo), y Escribanía/Sellos/Comisión/Otro son gastos administrativos de la
+operación (aparte del saldo). La categoría es lo único que decide de qué lado
+cae un pago: una comisión cargada como "Compra" abona el terreno y no aparece en
+administrativos —pasó con una comisión inmobiliaria, y desde afuera parece un
+error de suma—. Los montos se guardan en su moneda (`monto` + `moneda`); la
+conversión a USD se hace **en la lectura** con `getConvertidor` (al dólar de la
+fecha de cada pago), no se persiste. Todo se mide en dólares porque así se compra
+un inmueble.
 
-La vista Lote (solapa bajo Economía) muestra pactado / pagado / saldo / gastos
-asociados / total desembolsado / incidencia por m² construido / inversión total
-(lote + construcción). Estado repite un resumen compacto. `lib/lote-tipos.ts`
+La vista Lote (solapa bajo Economía) muestra valor lote / pago a la fecha /
+saldo pendiente / gastos administrativos / total desembolsado / incidencia por m²
+construido / inversión total (lote + construcción). Estado repite un resumen compacto. `lib/lote-tipos.ts`
 tiene las categorías puras (sin base), porque el form cliente las necesita y
 `lib/lote.ts` es sólo servidor —mismo patrón que `ambitos.ts`/`documentos.ts`—.
 

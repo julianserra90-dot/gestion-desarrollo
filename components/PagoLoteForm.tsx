@@ -59,8 +59,8 @@ export default function PagoLoteForm({
             ))}
           </select>
           <span style={ayuda}>
-            &quot;Compra&quot; abona el precio pactado; el resto son gastos de la
-            operación.
+            &quot;Compra&quot; abona el valor del lote y baja el saldo; el resto
+            son gastos administrativos de la operación, que van aparte.
           </span>
         </label>
 
