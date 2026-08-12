@@ -128,22 +128,23 @@ como inversión total.
 
 #### Cómo queda cada empresa
 
-En **Economía** hay tres tablas, en este orden: el balance de la obra, el del
-terreno, y las dos sumadas.
+Cada uno tiene su propio reparto: el de la obra en **Economía**, el del terreno
+en la solapa **Lote**. Que estén separados no es cosmético —el terreno no entra
+en el costo de construir— pero tampoco alcanza con verlos por separado, porque la
+plata sale del mismo bolsillo.
 
-Que estén separadas no es cosmético —el terreno no entra en el costo de
-construir— pero tampoco alcanza con verlas por separado, porque la plata sale del
-mismo bolsillo. El caso típico: **una socia pone el terreno entero y la otra
-compensa pagando más de la obra**. Ahí cada tabla sugiere una transferencia en
-sentido contrario, y sólo sumadas se sabe quién le debe a quién de verdad:
+El caso típico: **una socia pone el terreno entero y la otra compensa pagando más
+de la obra**. Ahí cada reparto sugiere una transferencia en sentido contrario, y
+sólo sumados se sabe quién le debe a quién de verdad:
 
 ```
-Obra       Baffic le transfiere $ 500.000 a Estudio TAG
-Terreno    Estudio TAG le transfiere US$ 500 a Baffic
-Total      Estudio TAG le transfiere $ 245.592,50 a Baffic
+Obra (Economía)   Baffic le transfiere $ 500.000 a Estudio TAG
+Terreno (Lote)    Estudio TAG le transfiere US$ 500 a Baffic
+Total             Estudio TAG le transfiere $ 245.592,50 a Baffic
 ```
 
-La última es la que vale: las otras dos son la misma plata mirada por partes. El
+Por eso Economía cierra con **Total por empresa**, que suma los dos: esa última
+liquidación es la que vale, las otras son la misma plata mirada por partes. El
 terreno se valúa en pesos al dólar de cada pago para poder sumarlo, que es el
 mismo criterio de la inversión total.
 

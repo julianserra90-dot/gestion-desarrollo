@@ -150,11 +150,19 @@ sin tener que cargar dos pagos. El centinela del desplegable es
 `PAGO_COMPARTIDO` en `lib/lote-tipos.ts`.
 
 ### Terreno y total por empresa (en Economía)
-Economía tiene tres tablas encadenadas: **Balance entre empresas** (la obra),
-**Terreno** (el lote) y **Total por empresa** (los dos sumados). Las dos primeras
-no se cruzan —es la decisión de siempre: el lote no entra en el balance de obra
-ni en el m² construido—, y la tercera existe porque hacía falta una lectura que
-ninguna de las dos daba.
+Economía muestra, en este orden: **Balance entre empresas** (la obra), **Terreno**
+(sólo cuánto salió el lote, en dólares y en pesos) y **Total por empresa** (los
+dos sumados, con su liquidación).
+
+El reparto del lote entre socias **no está en Economía**: vive en la solapa Lote.
+Se probó ponerlo acá y la pantalla quedó cargadísima —dos tablas de saldos
+seguidas—; además es donde uno lo va a buscar. En Economía quedó sólo el valor,
+que es lo que hace falta para entender la inversión. Por la misma razón se sacó
+la tarjeta "Presupuesto consumido" de arriba: el dato sigue en "Ejecución
+presupuestaria", que es donde tiene contra qué compararse.
+
+El "Total por empresa" existe porque hacía falta una lectura que ninguna de las
+dos partes daba.
 
 El caso que la motiva: una socia pone el terreno entero y la otra compensa
 pagando más de la obra diaria. Ahí las dos liquidaciones apuntan en direcciones
@@ -165,9 +173,12 @@ resuelve en una sola transferencia.
 Para poder sumarlas hay que salvar que están en monedas distintas: la obra se
 lleva en pesos y el lote en dólares. `SocioLote` (en `lib/lote.ts`) devuelve el
 reparto **en las dos monedas**; los pesos salen de valuar cada pago al dólar de
-su fecha, igual que `totalArs` y que el gráfico de torta. La tabla Terreno se
-muestra en dólares (que es como se compra un inmueble) y la consolidada en pesos
-(que es la moneda de Economía).
+su fecha, igual que `totalArs` y que el gráfico de torta. La solapa Lote muestra
+el reparto en dólares (que es como se compra un inmueble) y la consolidada de
+Economía en pesos (que es la moneda de esa pantalla).
+
+Si hay pagos del lote sin socia asignada, la columna "En el terreno" queda corta
+contra el total: por eso el aviso debajo de la tabla.
 
 Ojo: `getPagoLote` —el que alimenta el formulario de edición— no convierte nada,
 así que devuelve `usd: null` y `ars: 0`. No es un dato, es "no calculado".

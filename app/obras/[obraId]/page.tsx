@@ -130,9 +130,6 @@ export default async function ObraDetalle({
     consolidado.map((c) => ({ empresa: c.empresa, saldo: c.totalSaldo }))
   );
 
-  const sumaLote = (campo: (s: (typeof lote.socios)[number]) => number) =>
-    lote.socios.reduce((acc, s) => acc + campo(s), 0);
-
   const sumaTotal = (campo: (s: (typeof consolidado)[number]) => number) =>
     consolidado.reduce((acc, s) => acc + campo(s), 0);
 
@@ -232,10 +229,8 @@ export default async function ObraDetalle({
             {formatUSD(caja.usdSaldo)}
           </p>
         </Link>
-        <div style={card}>
-          <p style={label}>Presupuesto consumido</p>
-          <h3 style={number}>{consumido}</h3>
-        </div>
+        {/* El consumido no está acá a propósito: vive en "Ejecución
+            presupuestaria", que es donde tiene contra qué compararse. */}
         {creditoFiscal > 0 && (
           <div style={card}>
             <p style={label}>Crédito fiscal (IVA)</p>
@@ -414,95 +409,31 @@ export default async function ObraDetalle({
       </section>
 
       {/* El terreno va aparte de la obra a propósito: es una compra de inmueble
-          en dólares y su valor no debe inflar el m² construido. Pero es plata de
-          las mismas socias, así que necesita su propia lectura. */}
+          y su valor no debe inflar el m² construido. Acá va sólo cuánto salió;
+          el reparto entre socias vive en la solapa Lote, que es donde se lo va a
+          buscar. */}
       {hayLote && (
         <section style={panelWithMargin}>
           <h3 style={sectionTitle}>Terreno</h3>
           <p style={text}>
             La compra del lote no se cruza con los gastos de obra: no entra en el
-            balance de arriba ni en el m² construido. Se mide en dólares y tiene
-            su propia liquidación.
+            balance de arriba ni en el m² construido. Quién puso cuánto se ve en
+            la solapa{" "}
+            <Link href={`/obras/${obra.slug}/lote`} style={enlaceNota}>
+              Lote
+            </Link>
+            .
           </p>
 
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>Empresa</th>
-                <th style={th}>Particip.</th>
-                <th style={thRight}>Puso</th>
-                <th style={thRight}>Le corresponde</th>
-                <th style={thRight}>Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lote.socios.map((socio) => (
-                <tr key={socio.empresaId}>
-                  <td style={td}>{socio.empresa}</td>
-                  <td style={td}>{socio.porcentaje}%</td>
-                  <td style={tdRight}>
-                    <strong>
-                      {socio.puestoUsd > 0 ? formatUSD(socio.puestoUsd) : "—"}
-                    </strong>
-                  </td>
-                  <td style={tdRight}>{formatUSD(socio.leCorrespondeUsd)}</td>
-                  <td style={tdRight}>
-                    <strong style={estiloSaldo(socio.saldoUsd)}>
-                      {socio.saldoUsd > 0 ? "+" : ""}
-                      {formatUSD(socio.saldoUsd)}
-                    </strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td style={tdTotal} colSpan={2}>
-                  Puesto por las socias
-                </td>
-                <td style={tdTotalRight}>
-                  {formatUSD(sumaLote((s) => s.puestoUsd))}
-                </td>
-                <td style={tdTotalRight}>
-                  {formatUSD(sumaLote((s) => s.leCorrespondeUsd))}
-                </td>
-                <td style={tdTotalRight}>
-                  {formatUSD(sumaLote((s) => s.saldoUsd))}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {/* Un pago sin socia no entra en el reparto: si no se avisa, el cuadro
-              parece decir que se puso menos de lo que se puso. */}
-          {lote.sinAsignarUsd > 0 && (
-            <p style={note}>
-              Hay <strong>{formatUSD(lote.sinAsignarUsd)}</strong> en pagos sin
-              socia asignada, que no entran en este reparto. Se les asigna una
-              editando el pago en la solapa{" "}
-              <Link href={`/obras/${obra.slug}/lote`} style={enlaceNota}>
-                Lote
-              </Link>
-              .
-            </p>
-          )}
-
-          <div style={resultBox}>
-            <p style={resultTitle}>Liquidación del terreno</p>
-
-            {lote.liquidacion.length === 0 ? (
-              <p style={resultText}>Las empresas están equilibradas.</p>
-            ) : (
-              <ul style={resultList}>
-                {lote.liquidacion.map((mov, i) => (
-                  <li key={i} style={resultText}>
-                    <strong>{mov.de}</strong> le transfiere{" "}
-                    <strong>{formatUSD(mov.monto)}</strong> a{" "}
-                    <strong>{mov.a}</strong>.
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div style={desglose}>
+            <div style={filaDesglose}>
+              <span>Total desembolsado en el terreno</span>
+              <strong>{formatUSD(lote.totalUsd)}</strong>
+            </div>
+            <div style={filaDesglose}>
+              <span>En pesos, al dólar de cada pago</span>
+              <strong>{formatMoney(lote.totalArs)}</strong>
+            </div>
           </div>
         </section>
       )}
@@ -574,6 +505,20 @@ export default async function ObraDetalle({
             </tfoot>
           </table>
 
+          {/* Un pago de lote sin socia no se le atribuye a nadie: la columna del
+              terreno queda corta contra el total de arriba y hay que decirlo. */}
+          {lote.sinAsignarUsd > 0 && (
+            <p style={note}>
+              Hay <strong>{formatUSD(lote.sinAsignarUsd)}</strong> en pagos del
+              terreno sin socia asignada, que no se le suman a ninguna. Se les
+              asigna una editando el pago en la solapa{" "}
+              <Link href={`/obras/${obra.slug}/lote`} style={enlaceNota}>
+                Lote
+              </Link>
+              .
+            </p>
+          )}
+
           <div style={resultBox}>
             <p style={resultTitle}>Liquidación de todo el desarrollo</p>
 
@@ -596,8 +541,9 @@ export default async function ObraDetalle({
 
           <p style={note}>
             El terreno está en dólares; acá se valúa en pesos al cambio de cada
-            pago para poder sumarlo con la obra. Esta liquidación reemplaza a las
-            dos de arriba: es la misma plata mirada entera.
+            pago para poder sumarlo con la obra. Esta es la liquidación que vale:
+            la de arriba mira sólo la obra, y puede pedir una transferencia que el
+            terreno ya compensó.
           </p>
         </section>
       )}
