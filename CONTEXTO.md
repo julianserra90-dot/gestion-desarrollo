@@ -44,6 +44,15 @@ cargan por el 100% indicando quién pagó; el reparto sale del porcentaje. El
 "total gastado" no se guarda: se deriva.
 
 ### Ingresos de fondos y dinero en cuenta
+Van en **una sola solapa, Ingresos**: "Dinero en cuenta" se fusionó adentro. Eran
+dos pantallas de lo mismo —todo ingreso suma a la cuenta, y la lista de
+movimientos de la cuenta repetía el listado de ingresos entero—. Quedó: las
+tarjetas, los dos lados de la cuenta (entró / se usó / disponible, en pesos y
+dólares) y **una sola tabla de movimientos** con el saldo que dejó cada uno. Las
+entradas dicen su origen y las salidas son los gastos que tocaron la cuenta. La
+ruta vieja `dinero-en-cuenta` **redirige** a `ingresos`, para no romper enlaces
+guardados.
+
 La plata que **entra**: aportes de socias, inversores o compradores de unidades.
 La cuenta de la obra tiene **dos lados que no se mezclan**: pesos y dólares. Un
 aporte en dólares queda en dólares hasta que se use; recién al pagar un gasto se
@@ -64,9 +73,16 @@ gastos sigue mostrándolos. Cada rubro además dice qué se cotiza en él
 puro trabajo. Eso se marca en la solapa **Presupuestos**, al lado del rubro.
 
 ### Presupuestos
-Cotizaciones por rubro, separadas para materiales y mano de obra. De cada bloque
-se aprueba una (la elegida), que engancha con el proveedor/contratista de
-gastos. El gasto avisa si se pasa de lo cotizado, pero **no frena** (puede haber
+Cotizaciones por rubro, separadas para materiales y mano de obra. Cada tipo es
+un **acordeón a lo ancho** que arranca cerrado: con varias cotizaciones cargadas
+el bloque se hacía interminable. En el encabezado viven los números —monto
+aprobado **en verde**, gastado y diferencia, en columnas alineadas entre
+rubros— y la lista es el detalle que se abre. En el encabezado va **sólo el
+monto**: con el nombre de quien cotizó al lado se cortaba, y el nombre ya está
+en la ficha al abrir, donde la aprobada aparece primera y en verde.
+
+De cada bloque se aprueba una (la elegida), que engancha con el
+proveedor/contratista de gastos. El gasto avisa si se pasa de lo cotizado, pero **no frena** (puede haber
 compra de urgencia). Dos números conviven: presupuesto **estimado** (manual, en
 Editar obra) y **real** (suma de lo aprobado).
 
@@ -214,36 +230,29 @@ cantidad de socias). Sirve para las cuotas del terreno que ponen las dos juntas
 sin tener que cargar dos pagos. El centinela del desplegable es
 `PAGO_COMPARTIDO` en `lib/lote-tipos.ts`.
 
-### Terreno y total por empresa (en Economía)
-Economía muestra, en este orden: **Balance entre empresas** (la obra), **Terreno**
-(sólo cuánto salió el lote, en dólares y en pesos) y **Total por empresa** (los
-dos sumados, con su liquidación).
+### La solapa Balance (Economía), de arriba abajo
+En este orden, todo a lo ancho y **sin párrafos explicativos**: las cinco
+tarjetas en una línea (Total gastado · Facturado · En efectivo · Dinero en
+cuenta · Crédito fiscal), el gráfico de torta, la ejecución presupuestaria en
+cuatro columnas, el **balance entre empresas** con su liquidación, y el
+**terreno** reducido a qué puso cada socia y —si el precio pactado no está
+saldado— cuánto le resta según su porcentaje.
 
-El reparto del lote entre socias **no está en Economía**: vive en la solapa Lote.
-Se probó ponerlo acá y la pantalla quedó cargadísima —dos tablas de saldos
-seguidas—; además es donde uno lo va a buscar. En Economía quedó sólo el valor,
-que es lo que hace falta para entender la inversión. Por la misma razón se sacó
-la tarjeta "Presupuesto consumido" de arriba: el dato sigue en "Ejecución
-presupuestaria", que es donde tiene contra qué compararse.
+La pantalla mostraba lo mismo varias veces: dos tablas de saldos, dos
+liquidaciones, y el desglose de la torta repetido en tarjetas. Se fue todo lo
+duplicado, más Plazos (vive en Estado) y Últimos gastos (vive en Gastos).
 
-El "Total por empresa" existe porque hacía falta una lectura que ninguna de las
-dos partes daba.
+**Lo que se perdió a propósito**: la tabla "Total por empresa" —obra + terreno
+sumados— y su liquidación consolidada. Resolvía un caso real: una socia pone el
+terreno entero y la otra compensa pagando la obra diaria, y las dos
+liquidaciones por separado apuntan en direcciones opuestas. Si vuelve a hacer
+falta, `SocioLote` (en `lib/lote.ts`) ya devuelve el reparto **en las dos
+monedas** —los pesos salen de valuar cada pago al dólar de su fecha— justamente
+para poder sumarlo con la obra, que se lleva en pesos.
 
-El caso que la motiva: una socia pone el terreno entero y la otra compensa
-pagando más de la obra diaria. Ahí las dos liquidaciones apuntan en direcciones
-opuestas ("A le transfiere a B" en una, "B le transfiere a A" en la otra) y
-mirándolas por separado no se sabe si la compensación cierra. La consolidada las
-resuelve en una sola transferencia.
-
-Para poder sumarlas hay que salvar que están en monedas distintas: la obra se
-lleva en pesos y el lote en dólares. `SocioLote` (en `lib/lote.ts`) devuelve el
-reparto **en las dos monedas**; los pesos salen de valuar cada pago al dólar de
-su fecha, igual que `totalArs` y que el gráfico de torta. La solapa Lote muestra
-el reparto en dólares (que es como se compra un inmueble) y la consolidada de
-Economía en pesos (que es la moneda de esa pantalla).
-
-Si hay pagos del lote sin socia asignada, la columna "En el terreno" queda corta
-contra el total: por eso el aviso debajo de la tabla.
+El reparto del lote entre socias vive en la solapa Lote, que es donde se lo va a
+buscar. Si hay pagos sin socia asignada, lo puesto queda corto contra el total:
+por eso el aviso debajo de la tabla.
 
 Ojo: `getPagoLote` —el que alimenta el formulario de edición— no convierte nada,
 así que devuelve `usd: null` y `ars: 0`. No es un dato, es "no calculado".
@@ -288,7 +297,7 @@ columna queda igual—. Va en **rojo pleno**, igual que el falta: se probó con 
 rojo suave y quedaba desdibujado justo en el número que más se mira.
 
 La tabla de adentro tiene las columnas en **el mismo orden que Gastos** (fecha,
-proveedor, detalle, comprobante, pagó, monto), para no tener que releer el
+destino, detalle, comprobante, pagó, monto), para no tener que releer el
 encabezado al saltar de una pantalla a la otra. No están Rubro ni Tipo: acá
 serían la misma respuesta en todas las filas. El detalle **no es un enlace**: se
 probó llevando al gasto y sobra, porque a esta pantalla se entra a leer.
@@ -304,6 +313,67 @@ La ruta es `rubro/[rubroId]`, en singular, para no confundirla con la solapa
 `rubros`, que es otra cosa (qué rubros usa la obra). `GraficoTorta` acepta un
 `href` opcional por porción: así el mismo componente sigue sirviendo en Dólares,
 donde no hay enlaces.
+
+### Destino, comprobante y detalle por proveedor
+La columna del listado de gastos se llama **Destino**, no "Proveedor /
+Contratista": es adónde fue la plata, valga quien valga (proveedor, contratista
+o varios). Cada destino es un enlace a `proveedor/[proveedorId]`, **la cuenta
+corriente con esa persona en la obra**: cuánto cotizó, cuánto se le pagó, cuánto
+falta y la lista de pagos. Acá la comparación cierra porque los dos lados son
+del mismo destino —a diferencia de los totales por rubro, que mezclaban la
+cotización de uno con los gastos de todos y hubo que sacar—.
+
+El comprobante es **una sola columna** y la etiqueta es el comprobante entero
+(`components/EtiquetaComprobante.tsx`): gris para efectivo, celeste pastel para
+factura, y si el archivo está cargado la etiqueta misma abre el visor, que es
+donde se descarga. No hay "Ver" aparte ni renglón de IVA bajo el monto:
+"Factura A" ya dice que lo tiene. El verde y el rojo no se usan acá porque ya
+significan plata a favor o en contra en toda la app.
+
+Con el comprobante en una columna y las columnas cortas sin partirse
+(`white-space: nowrap`), el ancho que sobra se lo queda **Detalle**, que es lo
+único que se escribe largo.
+
+### Semanas de obra y flujo
+Cada gasto sabe en qué **semana de obra** cae: se calcula de la fecha, no se
+carga. `lib/semanas.ts` es puro (lo usan el listado y el formulario, que corren
+en el cliente) y no necesitó migración: sale de `obras.fecha_inicio`.
+
+Las semanas van de **lunes a domingo**, contadas desde el lunes de la semana en
+que arrancó la obra —no en bloques de siete días desde la fecha exacta—. En obra
+la semana es la del calendario y a los contratistas se les paga el viernes; con
+un inicio que cayó miércoles, contar de a siete días correría el número. Si la
+obra arrancó un miércoles, esos tres días son igual la semana 1.
+
+Ojo, esto ya nos pasó: **el número depende de `fecha_inicio`**, así que si ese
+campo está mal las semanas salen corridas y no se parecen a las que uno viene
+escribiendo a mano. En 3 De Febrero decía 02/02/2026 y la obra había arrancado
+el 20/02: daba dos semanas de más.
+
+Lo anterior al arranque —acopios de material, anticipos, señas— **no cae en
+ninguna semana**. En vez de dejar el lugar en blanco (que se lee como un dato
+que falta) va la etiqueta **"Previo al arranque"** en ámbar (`ui.tagPrevio`);
+el formulario lo avisa al elegir la fecha, y en el flujo tienen su propia fila,
+que entra al acumulado para que la columna cierre con el total.
+
+La semana se muestra debajo de la fecha, no en su propia columna: es la misma
+respuesta contada de otra manera. También la encuentra el buscador ("semana 22").
+
+La solapa **Flujo** contesta *cuándo* se gastó, que es lo que los totales no
+dicen: gráfico de barras por mes (gastos e ingresos, `GraficoBarras`, SVG sin
+librerías como el de torta), tabla mes a mes con el **gastado acumulado**, y un
+acordeón "semana a semana". Los meses sin movimiento aparecen igual: una obra
+parada es información y saltearlos deformaría el gráfico. El promedio por mes se
+calcula sobre los meses **con** gasto —dividir por los parados lo hunde y no
+dice nada del ritmo real—.
+
+Los ingresos de esa pantalla son lo que entró **a la cuenta**; muchos gastos los
+paga una socia de su bolsillo sin pasar por ahí, así que las dos columnas no se
+restan entre sí: el acumulado es de gastos, no un saldo de cuenta.
+
+Ojo con el `viewBox` de `GraficoBarras`: es de **ancho fijo** y los grupos se
+reparten adentro. Con un ancho proporcional a la cantidad de meses, dos meses
+estirados al ancho de la pantalla agrandaban la tipografía cuatro veces.
 
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
@@ -342,8 +412,8 @@ mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
-Ingresos, Dinero en cuenta, Lote, Dólares) y **Obra** (Estado, Presupuestos,
-Avances, Fotos, Documentos, Rubros).
+Ingresos, Flujo, Lote, Dólares) y **Obra** (Estado, Presupuestos, Avances,
+Fotos, Documentos, Rubros).
 
 ## Flujo de trabajo entre dos máquinas
 
@@ -422,9 +492,15 @@ lista y el orden, que antes repetían Economía, Dólares y el detalle del rubro
 
 ### Buscar / filtrar gastos y pagos del lote
 Las listas grandes se filtran del lado del cliente (todo ya viene cargado, se
-filtra en JS). Gastos: `components/GastosLista.tsx` (buscador de texto que pega en
-concepto/proveedor/quién pagó/rubro/monto/fecha, filtro por rubro, y "ocultar
-anulados"). Lote: `components/PagosLoteLista.tsx` (buscador de texto). Las páginas
+filtra en JS). Gastos: `components/GastosLista.tsx`, con **filtro estilo Excel**
+en cada columna corta (Rubro, Tipo, Destino, Comprobante, Pagó): el ▾ del
+encabezado abre un desplegable con una casilla por valor y un "Todos" para
+restaurar; el ▾ queda negro cuando esa columna filtra. El desplegable ofrece
+**exactamente el texto que muestra la celda** (`valorDe`), así lo que se ve es
+lo que se puede elegir. Sin filtro guardado todas las casillas están tildadas, y
+volver a tildarlas todas borra el filtro: "sin filtro" es el estado natural de
+la columna. Convive con el buscador de texto —el filtro acota, el buscador
+encuentra— y con "ocultar anulados". Lote: `components/PagosLoteLista.tsx` (buscador de texto). Las páginas
 (server components) traen los datos y se los pasan al componente cliente; la
 acción de borrar el pago del lote viaja como prop.
 
@@ -455,6 +531,14 @@ acción de borrar el pago del lote viaja como prop.
   las dos (el segundo no rehace lo que ya hizo el primero) ni sólo la primera.
   De eso dependen la ejecución presupuestaria, el detalle por rubro y el avance
   ponderado, que se apoyan todos en `obra_presupuesto`.
+- **Semana por contratista**: la semana que se muestra se cuenta desde el
+  arranque de la obra, pero en el detalle de los gastos está escrita a mano la
+  del contratista ("Semana 22" de Hugo, que empezó dos semanas después). Son dos
+  cuentas distintas y hoy conviven. Si conviene, se puede numerar desde el
+  primer gasto de cada proveedor.
+- **Acopios en el gráfico mensual**: lo previo al arranque está separado en la
+  tabla semanal, pero en el gráfico por mes suma como un gasto más de febrero.
+  Falta decidir si el mes también los distingue.
 - **Datos de prueba en 3 De Febrero**: el valor pactado del lote, las cuotas y la
   superficie (160 m²) son de prueba. Reemplazarlos por los reales cuando se
   cargue la obra en serio.
