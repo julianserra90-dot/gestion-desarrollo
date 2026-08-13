@@ -41,7 +41,7 @@ export default async function RubroDetalle({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, monto_caja, tipo_gasto, tipo_factura, tipo_pago, estado, compartido, proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, tipo_gasto, tipo_factura, tipo_pago, estado, compartido, proveedor_id, proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .eq("rubro_id", rubroId)
@@ -172,7 +172,7 @@ export default async function RubroDetalle({
                     <thead>
                       <tr>
                         <th style={ui.th}>Fecha</th>
-                        <th style={ui.th}>Proveedor / Contratista</th>
+                        <th style={ui.th}>Destino</th>
                         <th style={ui.th}>Detalle</th>
                         <th style={ui.th}>Comprobante</th>
                         <th style={ui.th}>Pagó</th>
@@ -184,7 +184,16 @@ export default async function RubroDetalle({
                         <tr key={gasto.id}>
                           <td style={ui.td}>{formatDate(gasto.fecha)}</td>
                           <td style={ui.td}>
-                            {gasto.proveedores?.nombre ?? "—"}
+                            {gasto.proveedor_id ? (
+                              <Link
+                                href={`/obras/${obra.slug}/proveedor/${gasto.proveedor_id}`}
+                                style={enlace}
+                              >
+                                {gasto.proveedores?.nombre ?? "—"}
+                              </Link>
+                            ) : (
+                              (gasto.proveedores?.nombre ?? "—")
+                            )}
                           </td>
                           <td style={ui.td}>{gasto.concepto}</td>
                           <td style={ui.td}>

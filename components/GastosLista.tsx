@@ -20,6 +20,7 @@ export type GastoFila = {
   comprobanteDriveId: string | null;
   rubro: string | null;
   proveedor: string | null;
+  proveedorId: string | null;
   pagadora: string | null;
   receptora: string | null;
   compartido: boolean;
@@ -76,7 +77,7 @@ export default function GastosLista({
             type="search"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por concepto, proveedor, quién pagó…"
+            placeholder="Buscar por detalle, destino, quién pagó…"
             style={{ ...ui.input, flex: "1 1 240px" }}
           />
 
@@ -119,15 +120,18 @@ export default function GastosLista({
 
           <table style={ui.table}>
             <thead>
+              {/* "Destino" y no "Proveedor / Contratista": es adónde fue la
+                  plata, valga quien valga. El comprobante va en una sola
+                  columna (tipo + archivo), así el detalle —que es lo que se
+                  escribe largo— se queda con el ancho libre. */}
               <tr>
                 <th style={ui.th}>Fecha</th>
                 <th style={ui.th}>Rubro</th>
                 <th style={ui.th}>Tipo</th>
-                <th style={ui.th}>Proveedor / Contratista</th>
+                <th style={ui.th}>Destino</th>
                 <th style={ui.th}>Detalle</th>
                 <th style={ui.th}>Comprobante</th>
                 <th style={ui.th}>Pagó</th>
-                <th style={ui.th}>Comprob.</th>
                 <th style={ui.thRight}>Monto</th>
                 <th style={ui.th}></th>
               </tr>
@@ -143,46 +147,74 @@ export default function GastosLista({
                     key={gasto.id}
                     style={ajuste && !anulado ? filaAjuste : undefined}
                   >
-                    <td style={celda}>{formatDate(gasto.fecha)}</td>
-                    <td style={celda}>{gasto.rubro ?? "—"}</td>
-                    <td style={celda}>
+                    <td style={{ ...celda, ...compacta }}>
+                      {formatDate(gasto.fecha)}
+                    </td>
+                    <td style={{ ...celda, ...compacta }}>
+                      {gasto.rubro ?? "—"}
+                    </td>
+                    <td style={{ ...celda, ...compacta }}>
                       {ajuste ? (
                         <span style={tagAjuste}>Ajuste de saldo</span>
                       ) : (
                         gasto.tipoGasto
                       )}
                     </td>
-                    <td style={celda}>
-                      {ajuste
-                        ? `→ ${gasto.receptora ?? "—"}`
-                        : gasto.proveedor ?? "—"}
+                    <td style={{ ...celda, ...compacta }}>
+                      {/* El destino es la puerta al detalle de pagos a ese
+                          proveedor. Los que se cargaron sin destino (o el
+                          ajuste, que va hacia una socia) no llevan a ningún
+                          lado. */}
+                      {ajuste ? (
+                        `→ ${gasto.receptora ?? "—"}`
+                      ) : gasto.proveedorId ? (
+                        <Link
+                          href={`/obras/${slug}/proveedor/${gasto.proveedorId}`}
+                          style={destinoLink}
+                        >
+                          {gasto.proveedor ?? "—"}
+                        </Link>
+                      ) : (
+                        (gasto.proveedor ?? "—")
+                      )}
                     </td>
                     <td style={celda}>
                       {gasto.concepto}
                       {anulado && <span style={tagAnulado}>Anulado</span>}
                     </td>
-                    <td style={celda}>
+                    <td style={{ ...celda, ...compacta }}>
                       {ajuste ? (
                         "—"
                       ) : (
-                        <span
-                          style={
-                            gasto.tipoPago === "Efectivo"
-                              ? tagEfectivo
-                              : tagFacturado
-                          }
-                        >
+                        <>
                           {gasto.tipoFactura
                             ? `Factura ${gasto.tipoFactura}`
                             : "Efectivo"}
-                        </span>
+                          {gasto.comprobanteDriveId && (
+                            <div style={accionesArchivo}>
+                              <Link
+                                href={`/ver/${gasto.comprobanteDriveId}?volver=${encodeURIComponent(
+                                  `/obras/${slug}/gastos`
+                                )}`}
+                                style={comprobanteLink}
+                              >
+                                Ver
+                              </Link>
+                              <BotonDescarga
+                                fileId={gasto.comprobanteDriveId}
+                                variante="icono"
+                                etiqueta={`Descargar comprobante de ${gasto.concepto}`}
+                              />
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
-                    <td style={celda}>
+                    <td style={{ ...celda, ...compacta }}>
                       {gasto.compartido ? (
                         "Entre las socias"
                       ) : gasto.montoCaja >= gasto.monto ? (
-                        <span style={tagCuenta}>Dinero en cuenta</span>
+                        "Dinero en cuenta"
                       ) : gasto.montoCaja > 0 ? (
                         <>
                           {gasto.pagadora ?? "—"}
@@ -191,28 +223,7 @@ export default function GastosLista({
                           </div>
                         </>
                       ) : (
-                        gasto.pagadora ?? "—"
-                      )}
-                    </td>
-                    <td style={celda}>
-                      {gasto.comprobanteDriveId ? (
-                        <div style={accionesArchivo}>
-                          <Link
-                            href={`/ver/${gasto.comprobanteDriveId}?volver=${encodeURIComponent(
-                              `/obras/${slug}/gastos`
-                            )}`}
-                            style={comprobanteLink}
-                          >
-                            Ver
-                          </Link>
-                          <BotonDescarga
-                            fileId={gasto.comprobanteDriveId}
-                            variante="icono"
-                            etiqueta={`Descargar comprobante de ${gasto.concepto}`}
-                          />
-                        </div>
-                      ) : (
-                        <span style={{ color: "#bbbbbb" }}>—</span>
+                        (gasto.pagadora ?? "—")
                       )}
                     </td>
                     <td style={anulado ? tdAnuladoRight : ui.tdRight}>
@@ -267,6 +278,16 @@ const accionesArchivo = {
   display: "flex",
   alignItems: "center",
   gap: "10px",
+  marginTop: "4px",
+};
+
+// Las columnas cortas no se parten: el ancho que sobra se lo queda el detalle,
+// que es lo único que se escribe largo.
+const compacta = { whiteSpace: "nowrap" as const };
+
+const destinoLink = {
+  color: "#333333",
+  textDecoration: "underline",
 };
 
 const filaAjuste = { background: "#fafafa" };
@@ -277,13 +298,6 @@ const tagAjuste = {
   border: "1px solid #111111",
   background: "#111111",
   color: "#ffffff",
-  padding: "3px 8px",
-  fontSize: "12px",
-  whiteSpace: "nowrap" as const,
-};
-
-const tagCuenta = {
-  border: "1px solid #dcdcdc",
   padding: "3px 8px",
   fontSize: "12px",
   whiteSpace: "nowrap" as const,
@@ -321,20 +335,6 @@ const editarLink = {
 };
 
 const ivaChico = { fontSize: "12px", color: "#999999", marginTop: "4px" };
-
-const tagFacturado = {
-  border: "1px solid #dcdcdc",
-  padding: "3px 8px",
-  fontSize: "12px",
-  whiteSpace: "nowrap" as const,
-};
-
-const tagEfectivo = {
-  ...tagFacturado,
-  border: "1px solid #111111",
-  background: "#111111",
-  color: "#ffffff",
-};
 
 const comprobanteLink = {
   color: "#111111",
