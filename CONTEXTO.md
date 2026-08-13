@@ -70,6 +70,39 @@ gastos. El gasto avisa si se pasa de lo cotizado, pero **no frena** (puede haber
 compra de urgencia). Dos números conviven: presupuesto **estimado** (manual, en
 Editar obra) y **real** (suma de lo aprobado).
 
+### Contratistas y proveedores (el catálogo)
+Proveedores, contratistas y "varios" viven en una sola tabla (`proveedores`)
+separada por `tipo`, y el catálogo es **uno solo para todas las obras**: el mismo
+plomero sirve en dos edificios. Hasta ahora se creaban al vuelo desde el
+formulario de un gasto o una cotización y no había forma de tocarlos: un nombre
+mal escrito quedaba así para siempre.
+
+Se editan en **Presupuestos → Contratistas**
+(`presupuestos/contratistas`). El botón está al lado de "Nueva cotización"
+porque es ahí donde uno se da cuenta de que el nombre está mal: al ir a cargar.
+Se guardan **nombre y apellido** (el mismo campo `nombre` de siempre, que es como
+figura en los desplegables) y **teléfono**. Se probó agregar un campo "contacto"
+aparte y se sacó: en un contratista el nombre ya es el de la persona, así que
+repetía el mismo dato.
+
+La pantalla entra por una obra pero edita el catálogo entero, así que lo dice
+arriba y muestra, de cada uno, el uso **en esta obra** (cotizaciones y gastos)
+aparte del de las demás. Son dos preguntas distintas: "¿con este trabajé acá?" y
+"¿por qué no me deja borrarlo?". Sólo se puede eliminar el que no tiene nada
+cargado en ninguna obra; las dos claves foráneas son `on delete restrict`.
+
+Ojo con el RLS: **agregar lo puede hacer cualquiera** (la política
+`proveedores_insert` estaba abierta desde siempre, porque el form de gastos lo
+necesitaba), pero **modificar y borrar son de admin**. Un update bloqueado por
+RLS no da error: no toca ninguna fila y parece que guardó. Por eso las acciones
+piden `.select()` y avisan si no volvió nada.
+
+No se puede cambiar el `tipo` desde acá, y es a propósito: el trigger
+`chequear_presupuesto_coherente` exige que la mano de obra la cotice un
+contratista, pero corre al escribir el **presupuesto**, no al cambiar el
+proveedor. Mover un contratista a proveedor dejaría sus cotizaciones
+inconsistentes y la base recién lo rechazaría en la próxima edición de cada una.
+
 ### IVA y crédito fiscal
 El monto del gasto es el **total con IVA adentro**. El comprobante define si hay
 crédito: **Factura A** discrimina IVA (da crédito), **B** lo tiene incluido pero
@@ -221,11 +254,44 @@ arriba **cotizado / gastado / falta pagar** del rubro, y abajo los gastos
 separados en **Materiales / Mano de obra / Administrativo**, un bloque por tipo
 con su propia comparación contra lo cotizado (y quién cotizó).
 
-Lo cotizado sale de `getPresupuestosDeObra` —las cotizaciones **aprobadas**—. Sin
-cotización aprobada no se muestran ni "cotizado" ni "falta": un "falta" sin
-contra qué comparar sería el gasto cambiado de signo. Un tipo aparece si tiene
-gastos **o** si tiene cotización, para que un rubro cotizado y todavía sin gastar
-se pueda mirar.
+Lo cotizado sale de `getPresupuestosDeObra` —las cotizaciones **aprobadas**—. Un
+tipo aparece si tiene gastos **o** si tiene cotización, para que un rubro
+cotizado y todavía sin gastar se pueda mirar.
+
+**No hay totales del rubro entero, y es a propósito.** Los había, arriba, en tres
+tarjetas, y mentían: comparaban la cotización de la mano de obra contra lo
+gastado en materiales *más* mano de obra. En Albañilería daba "cotizado
+$82.000.000, gastado $21.504.662, falta pagar $60.495.338" cuando los $82M eran
+sólo lo de Hugo y de los $21M la mitad era material que nadie había cotizado. El
+número no significaba nada. Se sacaron: la comparación vive en cada bloque,
+contra su propia cotización, que es la única que cierra.
+
+Cada tipo es un **acordeón** (`details` nativo, sin JavaScript) y arrancan todos
+**cerrados**: los números viven en el encabezado, que es lo que se viene a mirar,
+y la tabla de gastos es el detalle que se abre cuando hace falta.
+
+Ojo con el `summary`: ponerle `display: flex` **borra el triangulito nativo**, que
+es la única señal de que el bloque se abre. Por eso el contenido va adentro de un
+`span` inline-flex con `width: calc(100% - 28px)`, y el summary queda con su
+display por defecto. Mismo patrón en la pantalla de contratistas.
+
+Los tres números (cotizado / gastado / falta pagar) van **siempre**, con el
+**mismo rótulo en todos los bloques** y en columnas de **ancho fijo**, para que
+arranquen en la misma vertical. Nada de "Cotizado · Hugo" ni "Sin cotización
+aprobada": un rótulo que cambia de largo de bloque en bloque corre la columna y
+la pantalla se lee torcida. Quién cotizó pasó adentro del bloque, al abrirlo.
+
+Lo que no se puede calcular es un **guión**, no un cero: un cero se leería como
+"no falta nada". Y pasarse de lo cotizado sale como **número negativo bajo el
+mismo rótulo**, en vez de cambiarlo por "Se pasó" —el signo ya lo dice y la
+columna queda igual—. Va en **rojo pleno**, igual que el falta: se probó con un
+rojo suave y quedaba desdibujado justo en el número que más se mira.
+
+La tabla de adentro tiene las columnas en **el mismo orden que Gastos** (fecha,
+proveedor, detalle, comprobante, pagó, monto), para no tener que releer el
+encabezado al saltar de una pantalla a la otra. No están Rubro ni Tipo: acá
+serían la misma respuesta en todas las filas. El detalle **no es un enlace**: se
+probó llevando al gasto y sobra, porque a esta pantalla se entra a leer.
 
 Ojo con eso último: hoy a esa pantalla se entra sólo desde el gráfico de torta,
 que lista los rubros **con gastos**. Un rubro cotizado y sin gastar no tiene
@@ -310,6 +376,14 @@ Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
 - **Errores fantasma de `.next`**: si `tsc` pasa pero el dev server muestra
   errores tipo "defined multiple times" o rutas viejas, es caché. Borrar `.next`
   y recargar.
+- **Una migración ya aplicada no se edita**: Supabase la registra por el número
+  de versión (el timestamp del nombre), no por el contenido. Si se cambia el
+  `.sql` —o se lo renombra manteniendo el timestamp— el `db push` la ve aplicada
+  y la saltea: la base queda como estaba y el archivo pasa a mentir sobre lo que
+  hay. Pasó agregando `contacto` a proveedores y sacándolo al toque. Se arregla
+  dejando la vieja tal cual se aplicó y escribiendo **una migración nueva** que
+  deshaga. Antes de tocar un `.sql` ya escrito, `npx supabase migration list`
+  dice si está aplicado.
 - **PowerShell** mastica mal `git add -A` junto a un heredoc largo, y
   `HEAD@{1}`. Usar archivos explícitos y hashes de commit.
 - La MCP de Supabase de esta sesión **no tiene permiso** para consultar/escribir
@@ -332,6 +406,20 @@ Decisión: el lote NO se sumó a la tarjeta "Total gastado" de arriba, porque es
 cuadra con "facturado + efectivo" y meterle el lote la rompía. En su lugar está
 la "inversión total". Si se quiere, se puede reconsiderar.
 
+Cada rubro se **desglosa por tipo de gasto** dentro de su propia porción, en
+**tonos del mismo color**: si Albañilería es verde, su material y su mano de obra
+son dos verdes. El tono dice "esto sigue siendo albañilería" y el corte dice
+"hasta acá fue material" — con colores distintos se perdía a qué rubro pertenecía
+cada pedazo. La leyenda repite el desglose indentado bajo el rubro. Con un solo
+tipo no se desglosa: partir una porción en una sola parte no dice nada. El lote
+tampoco, que es una compra sola.
+
+`aclarar()` mezcla el color con blanco (0 lo deja igual, 1 lo vuelve blanco); el
+paso entre tonos es 0,34. Lo que las partes no cubran —un ajuste de saldo, que no
+es Materiales ni Mano de obra ni Administrativo— se dibuja al final en el color
+base, para que el anillo no quede con un hueco. `lib/tipos-gasto.ts` tiene la
+lista y el orden, que antes repetían Economía, Dólares y el detalle del rubro.
+
 ### Buscar / filtrar gastos y pagos del lote
 Las listas grandes se filtran del lado del cliente (todo ya viene cargado, se
 filtra en JS). Gastos: `components/GastosLista.tsx` (buscador de texto que pega en
@@ -352,6 +440,21 @@ acción de borrar el pago del lote viaja como prop.
   Factura A; se van marcando A/B/C a medida que se tocan.
 - Ver la nota de "queda margen" (gasto por debajo de lo cotizado) en vivo — nunca
   se dio con datos reales.
+- **"Mano de obra con materiales" como tercer tipo de cotización**: hay
+  contratistas (un plomero, por ejemplo) que cotizan con los materiales
+  incluidos, y hoy hay que partirlo en dos o mentirle al tipo. Toca el `check`
+  de `presupuestos.tipo`, el trigger `chequear_presupuesto_coherente` (lo
+  cotizaría un Contratista), qué bloques muestra la solapa Presupuestos, y —para
+  que la comparación cierre— también `gastos.tipo_gasto`, el form de gastos y la
+  fila de "En qué se gastó". Falta decidir si necesita su propia casilla en el
+  rubro o alcanza con `usa_mano_obra`.
+- **Más de una cotización aprobada por rubro**: hoy lo impide el índice único
+  `presupuestos_una_aprobada` (obra, rubro, tipo). El caso real es un contratista
+  que deja la obra por la mitad y otro que cotiza para terminarla. Antes de
+  sacarlo hay que definir **qué es "lo cotizado"** de ese rubro: no es la suma de
+  las dos (el segundo no rehace lo que ya hizo el primero) ni sólo la primera.
+  De eso dependen la ejecución presupuestaria, el detalle por rubro y el avance
+  ponderado, que se apoyan todos en `obra_presupuesto`.
 - **Datos de prueba en 3 De Febrero**: el valor pactado del lote, las cuotas y la
   superficie (160 m²) son de prueba. Reemplazarlos por los reales cuando se
   cargue la obra en serio.
