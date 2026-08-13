@@ -130,9 +130,21 @@ export default async function PresupuestosPage({
       <div style={ui.toolbar}>
         <h3 style={ui.sectionTitle}>Rubro por rubro</h3>
 
-        <Link href={`/obras/${obra.slug}/presupuestos/nuevo`} style={ui.button}>
-          Nueva cotización
-        </Link>
+        <div style={accionesToolbar}>
+          {/* El catálogo de con quiénes se trabaja se edita acá al lado porque
+              es donde uno se da cuenta de que está mal escrito: al ir a cargar
+              la cotización. */}
+          <Link
+            href={`/obras/${obra.slug}/presupuestos/contratistas`}
+            style={ui.secondaryButton}
+          >
+            Contratistas
+          </Link>
+
+          <Link href={`/obras/${obra.slug}/presupuestos/nuevo`} style={ui.button}>
+            Nueva cotización
+          </Link>
+        </div>
       </div>
 
       {rubros.length === 0 ? (
@@ -346,6 +358,11 @@ const errorBox = {
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",
+};
+
+const accionesToolbar = {
+  display: "flex",
+  gap: "12px",
 };
 
 const listaRubros = {

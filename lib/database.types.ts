@@ -1040,21 +1040,42 @@ export type Database = {
           creado_en: string
           id: string
           nombre: string
+          rubro_id: string | null
+          telefono: string | null
           tipo: string
         }
         Insert: {
           creado_en?: string
           id?: string
           nombre: string
+          rubro_id?: string | null
+          telefono?: string | null
           tipo: string
         }
         Update: {
           creado_en?: string
           id?: string
           nombre?: string
+          rubro_id?: string | null
+          telefono?: string | null
           tipo?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "proveedores_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
+          },
+          {
+            foreignKeyName: "proveedores_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "rubros"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rubros: {
         Row: {
