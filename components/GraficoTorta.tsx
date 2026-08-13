@@ -5,15 +5,19 @@
  * Recibe los datos ya sumados; asigna los colores de una paleta por orden. El
  * formato del monto lo pone quien lo usa (pesos o dólares).
  *
- * Una porción puede llevar `href`: ahí la leyenda se vuelve la puerta de entrada
- * al detalle de ese rubro. Sin `href` es texto y listo —hay porciones que no
- * tienen adónde llevar, como los gastos sin rubro—.
+ * La leyenda se lee como una tabla: color · porcentaje · rubro en una línea, y
+ * los montos alineados en su propia columna. Una porción puede llevar `href`:
+ * ahí el nombre se vuelve la puerta de entrada al detalle de ese rubro. Sin
+ * `href` es texto y listo —hay porciones que no tienen adónde llevar, como los
+ * gastos sin rubro—.
  *
  * Y puede llevar `partes`: el desglose interno del rubro (materiales, mano de
- * obra, administrativo). Se dibujan como arcos separados en **tonos del mismo
- * color**, no en colores distintos: el tono dice "esto sigue siendo albañilería"
- * y el corte dice "hasta acá fue material". Con un solo tipo no se desglosa, que
- * sería partir una porción en una sola parte.
+ * obra, administrativo). En el anillo se dibujan como arcos en **tonos del
+ * mismo color** —el tono dice "esto sigue siendo albañilería" y el corte dice
+ * "hasta acá fue material"—. En la leyenda el desglose arranca cerrado, atrás
+ * de un "+": es detalle, no compite con la lectura principal. Es un `details`
+ * nativo porque este componente corre en el servidor. Con un solo tipo no se
+ * desglosa, que sería partir una porción en una sola parte.
  */
 
 import Link from "next/link";
@@ -112,8 +116,37 @@ export default function GraficoTorta({
     if (resto > 0.01) arcos.push({ color: p.base, valor: resto });
   }
 
+  const fila = (p: (typeof porciones)[number]) => (
+    <span style={filaLeyenda}>
+      <span style={{ ...swatch, background: p.base }} />
+      <span style={pct}>{p.porcentaje}%</span>
+      <span style={etiqueta}>
+        {p.href ? (
+          <Link href={p.href} style={enlace}>
+            {p.etiqueta}
+          </Link>
+        ) : (
+          p.etiqueta
+        )}
+        {p.partes.length > 0 && <span style={mas} className="torta-mas" />}
+      </span>
+      <span style={monto}>{formato(p.valor)}</span>
+    </span>
+  );
+
   return (
     <div style={contenedor}>
+      {/* El marcador nativo del details se esconde a propósito: acá la señal
+          de que hay más es el "+", que pasa a "−" al abrir. Ese cambio de
+          estado sólo se puede con CSS, por eso el <style> en un archivo de
+          estilos inline. */}
+      <style>{`
+        details.torta-detalle > summary { cursor: pointer; list-style: none; }
+        details.torta-detalle > summary::-webkit-details-marker { display: none; }
+        .torta-mas::before { content: "+"; }
+        details.torta-detalle[open] > summary .torta-mas::before { content: "\\2212"; }
+      `}</style>
+
       <svg viewBox="0 0 140 140" style={{ width: "140px", height: "140px", flexShrink: 0 }}>
         {/* Se arranca arriba (rotado -90) y cada arco se corre con el offset:
             la suma de los arcos anteriores. Se calcula sin acumulador mutable,
@@ -144,29 +177,25 @@ export default function GraficoTorta({
       <ul style={leyenda}>
         {porciones.map((p, i) => (
           <li key={i}>
-            <div style={item}>
-              <span style={{ ...swatch, background: p.base }} />
-              <span style={etiqueta}>
-                {p.href ? (
-                  <Link href={p.href} style={enlace}>
-                    {p.etiqueta}
-                  </Link>
-                ) : (
-                  p.etiqueta
-                )}
-              </span>
-              <span style={valor}>
-                {formato(p.valor)} <span style={pct}>{p.porcentaje}%</span>
-              </span>
-            </div>
+            {p.partes.length === 0 ? (
+              fila(p)
+            ) : (
+              <details className="torta-detalle">
+                <summary>{fila(p)}</summary>
 
-            {p.partes.map((parte) => (
-              <div key={parte.etiqueta} style={subItem}>
-                <span style={{ ...swatch, background: parte.color }} />
-                <span style={subEtiqueta}>{parte.etiqueta}</span>
-                <span style={subValor}>{formato(parte.valor)}</span>
-              </div>
-            ))}
+                {p.partes.map((parte) => (
+                  <span key={parte.etiqueta} style={filaParte}>
+                    <span />
+                    <span />
+                    <span style={parteEtiqueta}>
+                      <span style={{ ...swatch, background: parte.color }} />
+                      {parte.etiqueta}
+                    </span>
+                    <span style={parteMonto}>{formato(parte.valor)}</span>
+                  </span>
+                ))}
+              </details>
+            )}
           </li>
         ))}
       </ul>
@@ -181,30 +210,35 @@ const contenedor = {
   alignItems: "center",
 };
 
+// Un tope de ancho para que el nombre y su monto no queden a media pantalla de
+// distancia en un panel a lo ancho de la hoja.
 const leyenda = {
   listStyle: "none",
   margin: 0,
   padding: 0,
-  flex: "1 1 220px",
+  flex: "1 1 300px",
+  maxWidth: "760px",
   display: "grid",
-  gap: "10px",
+  gap: "12px",
 };
 
-const item = {
-  display: "flex",
-  alignItems: "center",
+// Cada fila es su propia grilla con columnas fijas: así los porcentajes, los
+// nombres y los montos arrancan en la misma vertical en todas las filas.
+const filaLeyenda = {
+  display: "grid",
+  gridTemplateColumns: "12px 40px minmax(0, 1fr) auto",
   gap: "10px",
+  alignItems: "center",
   fontSize: "14px",
 };
 
-// El desglose se lee como parte del rubro, no como otra fila del mismo rango:
-// va indentado, más chico y en gris.
-const subItem = {
-  ...item,
+// El desglose se lee como parte del rubro: mismo esqueleto de columnas, en
+// gris y con su tono, arrancando bajo el nombre.
+const filaParte = {
+  ...filaLeyenda,
   fontSize: "13px",
   color: "#777777",
-  paddingLeft: "22px",
-  marginTop: "6px",
+  marginTop: "8px",
 };
 
 const swatch = {
@@ -214,9 +248,16 @@ const swatch = {
   borderRadius: "2px",
 };
 
+const pct = {
+  color: "#777777",
+};
+
 const etiqueta = {
-  flex: "1 1 auto",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
   color: "#333333",
+  whiteSpace: "nowrap" as const,
 };
 
 const enlace = {
@@ -224,24 +265,35 @@ const enlace = {
   textDecoration: "underline",
 };
 
-const subEtiqueta = {
-  ...etiqueta,
-  color: "#777777",
+const mas = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "18px",
+  height: "18px",
+  border: "1px solid #dddddd",
+  borderRadius: "3px",
+  color: "#888888",
+  fontSize: "13px",
+  lineHeight: 1,
 };
 
-const valor = {
+const monto = {
   color: "#111111",
   whiteSpace: "nowrap" as const,
+  textAlign: "right" as const,
 };
 
-const subValor = {
-  ...valor,
+const parteEtiqueta = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "10px",
   color: "#777777",
 };
 
-const pct = {
-  color: "#999999",
-  marginLeft: "4px",
+const parteMonto = {
+  ...monto,
+  color: "#777777",
 };
 
 const vacio = {
