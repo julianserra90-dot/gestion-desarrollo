@@ -113,6 +113,7 @@ export default async function EditarGastoPage({
         error={error}
         gasto={gasto}
         cotizacion={cotizacion?.promedio ?? null}
+        inicioObra={obra.fecha_inicio}
         textoBoton="Guardar cambios"
       />
 

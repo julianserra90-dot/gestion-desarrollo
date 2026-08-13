@@ -101,7 +101,11 @@ export default async function GastosPage({
         </Link>
       </div>
 
-      <GastosLista gastos={filas} slug={obra.slug} />
+      <GastosLista
+        gastos={filas}
+        slug={obra.slug}
+        inicioObra={obra.fecha_inicio}
+      />
     </AppShell>
   );
 }

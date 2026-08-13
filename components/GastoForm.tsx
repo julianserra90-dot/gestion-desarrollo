@@ -5,6 +5,7 @@ import { useState } from "react";
 import * as ui from "@/components/ui";
 import { formatMoney, formatUSD } from "@/lib/format";
 import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
+import { semanaDeObra } from "@/lib/semanas";
 
 type Socio = { empresa_id: string; nombre: string; porcentaje: number };
 type Rubro = {
@@ -110,6 +111,7 @@ export default function GastoForm({
   empresaFija,
   gasto,
   cotizacion,
+  inicioObra,
   textoBoton = "Guardar gasto",
 }: {
   action: (formData: FormData) => void;
@@ -129,6 +131,8 @@ export default function GastoForm({
   gasto?: GastoExistente;
   /** Dólar oficial de hoy, sólo para la vista previa de la conversión. */
   cotizacion?: number | null;
+  /** Arranque de la obra: con eso la fecha elegida dice en qué semana cae. */
+  inicioObra?: string | null;
   textoBoton?: string;
 }) {
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
@@ -137,6 +141,7 @@ export default function GastoForm({
     gasto ? String(gasto.moneda === "USD" ? (gasto.monto_usd ?? "") : gasto.monto) : ""
   );
   const [moneda, setMoneda] = useState(gasto?.moneda ?? "ARS");
+  const [fecha, setFecha] = useState(gasto?.fecha ?? "");
   // Al editar: efectivo -> "sin"; facturado sin tipo cargado (gastos viejos)
   // arranca en A, el caso más común, pero no se guarda hasta que se confirme.
   const [comprobante, setComprobante] = useState(
@@ -187,6 +192,8 @@ export default function GastoForm({
   const [cotizValor, setCotizValor] = useState(
     gasto?.cotizacion_manual ? String(gasto.cotizacion ?? "") : ""
   );
+
+  const semanaObra = semanaDeObra(fecha, inicioObra);
 
   // Un ajuste de saldo no compra nada: es plata que pasa de una socia a otra.
   const esAjuste = tipoGasto === AJUSTE;
@@ -368,10 +375,25 @@ export default function GastoForm({
               <input
                 type="date"
                 name="fecha"
-                defaultValue={gasto?.fecha ?? ""}
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
                 required
                 style={ui.input}
               />
+              {/* La semana sale de la fecha: es como se nombra el pago de un
+                  contratista ("semana 11") y así no hay que contarla a mano.
+                  Antes del arranque no hay semana que valga: eso es un acopio
+                  o un anticipo, y conviene saberlo al cargarlo. */}
+              {semanaObra !== null ? (
+                <span style={ayudaCampo}>Semana {semanaObra} de obra.</span>
+              ) : (
+                fecha &&
+                inicioObra && (
+                  <span style={ayudaCampo}>
+                    Anterior al arranque de la obra: acopio o anticipo.
+                  </span>
+                )
+              )}
             </label>
 
             <div style={{ ...fieldAncho, display: esAjuste ? "none" : "grid" }}>

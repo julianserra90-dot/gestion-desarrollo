@@ -165,6 +165,23 @@ export const vacio = {
   margin: 0,
 };
 
+/**
+ * Lo que se pagó antes de que arrancara la obra: acopios de material,
+ * anticipos, señas. No cae en ninguna semana, y en vez de dejar el lugar en
+ * blanco —que se lee como un dato que falta— se marca por lo que es.
+ *
+ * Ámbar porque los otros colores ya significan algo: gris y celeste son el
+ * comprobante, y el verde y el rojo, plata a favor o en contra.
+ */
+export const tagPrevio = {
+  display: "inline-block",
+  background: "#fdf0dd",
+  color: "#8a5a12",
+  padding: "2px 6px",
+  fontSize: "11px",
+  whiteSpace: "nowrap" as const,
+};
+
 export const progressBackground = {
   height: "8px",
   background: "#eeeeee",

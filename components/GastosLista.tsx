@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
+import { semanaDeObra } from "@/lib/semanas";
 
 export type GastoFila = {
   id: string;
@@ -66,9 +67,12 @@ function valorDe(g: GastoFila, col: ColumnaFiltrable): string {
 export default function GastosLista({
   gastos,
   slug,
+  inicioObra,
 }: {
   gastos: GastoFila[];
   slug: string;
+  /** Arranque de la obra: con eso cada fecha sabe en qué semana cae. */
+  inicioObra: string | null;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [ocultarAnulados, setOcultarAnulados] = useState(false);
@@ -100,7 +104,9 @@ export default function GastosLista({
 
       if (!q) return true;
 
-      // Un solo texto busca en todo lo que se ve de un gasto.
+      // Un solo texto busca en todo lo que se ve de un gasto, incluida la
+      // semana: "semana 11" es como se lo nombra en la obra.
+      const semana = semanaDeObra(g.fecha, inicioObra);
       const campos = [
         g.concepto,
         g.rubro,
@@ -110,12 +116,13 @@ export default function GastosLista({
         g.tipoGasto,
         g.tipoFactura ? `factura ${g.tipoFactura}` : g.tipoPago,
         formatDate(g.fecha),
+        semana !== null ? `semana ${semana}` : null,
         String(g.monto),
       ];
 
       return campos.some((c) => c?.toLowerCase().includes(q));
     });
-  }, [gastos, busqueda, ocultarAnulados, filtros]);
+  }, [gastos, busqueda, ocultarAnulados, filtros, inicioObra]);
 
   const hayFiltros = Object.keys(filtros).length > 0;
 
@@ -257,14 +264,27 @@ export default function GastosLista({
                 const anulado = gasto.estado === "Anulado";
                 const ajuste = gasto.tipoGasto === "Ajuste de saldo";
                 const celda = anulado ? tdAnulado : ajuste ? tdAjuste : ui.td;
+                const semana = semanaDeObra(gasto.fecha, inicioObra);
 
                 return (
                   <tr
                     key={gasto.id}
                     style={ajuste && !anulado ? filaAjuste : undefined}
                   >
+                    {/* La semana de obra va debajo de la fecha en vez de en su
+                        propia columna: es la misma respuesta contada de otra
+                        manera, y una columna más para eso sobraba. */}
                     <td style={{ ...celda, ...compacta }}>
                       {formatDate(gasto.fecha)}
+                      {semana !== null ? (
+                        <div style={semanaChica}>Semana {semana}</div>
+                      ) : (
+                        inicioObra && (
+                          <div style={{ marginTop: "4px" }}>
+                            <span style={ui.tagPrevio}>Previo al arranque</span>
+                          </div>
+                        )
+                      )}
                     </td>
                     <td style={{ ...celda, ...compacta }}>
                       {gasto.rubro ?? "—"}
@@ -451,6 +471,12 @@ const tagAjuste = {
 
 const aporteCuenta = {
   fontSize: "13px",
+  color: "#999999",
+  marginTop: "4px",
+};
+
+const semanaChica = {
+  fontSize: "12px",
   color: "#999999",
   marginTop: "4px",
 };

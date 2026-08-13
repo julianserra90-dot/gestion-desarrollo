@@ -106,6 +106,7 @@ export default async function NuevoGastoPage({
           error={error}
           empresaFija={perfil?.empresa_id ?? undefined}
           cotizacion={cotizacion?.promedio ?? null}
+          inicioObra={obra.fecha_inicio}
         />
       )}
     </AppShell>
