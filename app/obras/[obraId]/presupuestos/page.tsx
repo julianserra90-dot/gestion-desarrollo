@@ -15,6 +15,13 @@ import {
 
 const TIPOS = ["Materiales", "Mano de obra"] as const;
 
+/** La aprobada primera, después las pendientes, las descartadas al final. */
+const ORDEN_ESTADO: Record<string, number> = {
+  Aprobado: 0,
+  Pendiente: 1,
+  Descartado: 2,
+};
+
 export default async function PresupuestosPage({
   params,
   searchParams,
@@ -96,11 +103,6 @@ export default async function PresupuestosPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Situación económica</p>
         <h2 style={ui.pageTitle}>Presupuestos</h2>
-        <p style={ui.subtitle}>
-          Las cotizaciones que se pidieron por rubro. Al lado de cada uno se
-          marca si lleva materiales, mano de obra o las dos, y de cada bloque se
-          aprueba la elegida.
-        </p>
       </section>
 
       {error && <p style={errorBox}>{error}</p>}
@@ -163,22 +165,24 @@ export default async function PresupuestosPage({
             const tipos = tiposDe(rubro);
 
             return (
-            <section key={rubro.id} style={ui.panel}>
-              <div style={cabeceraRubro}>
-                <h3 style={tituloRubro}>{rubro.nombre}</h3>
+              <section key={rubro.id} style={ui.panel}>
+                <div style={cabeceraRubro}>
+                  <h3 style={tituloRubro}>{rubro.nombre}</h3>
 
-                <TiposDeRubro
-                  rubroId={rubro.id}
-                  slug={obra.slug}
-                  usaMateriales={rubro.usa_materiales}
-                  usaManoObra={rubro.usa_mano_obra}
-                  accion={cambiarTiposDeRubro}
-                />
-              </div>
+                  <TiposDeRubro
+                    rubroId={rubro.id}
+                    slug={obra.slug}
+                    usaMateriales={rubro.usa_materiales}
+                    usaManoObra={rubro.usa_mano_obra}
+                    accion={cambiarTiposDeRubro}
+                  />
+                </div>
 
-              {/* Un rubro que sólo se compra ocupa el ancho entero: no tiene
-                  sentido dejar media pantalla vacía. */}
-              <div style={tipos.length === 1 ? unTipo : dosTipos}>
+                {/* Cada tipo es un acordeón a lo ancho: con muchas cotizaciones
+                    el bloque abierto se hacía interminable. Los números viven
+                    en el encabezado —la aprobada siempre a la vista— y la lista
+                    es el detalle que se abre cuando hace falta. Arrancan
+                    cerrados, igual que en el detalle por rubro. */}
                 {tipos.map((tipo) => {
                   const fila = buscar(rubro.id, tipo);
                   const cotizado = Number(fila?.cotizado ?? 0);
@@ -186,159 +190,184 @@ export default async function PresupuestosPage({
                   const suyas = lista.filter(
                     (c) => c.rubro_id === rubro.id && c.tipo === tipo
                   );
+                  const aprobada = suyas.find((c) => c.estado === "Aprobado");
+                  const ordenadas = [...suyas].sort(
+                    (a, b) =>
+                      (ORDEN_ESTADO[a.estado] ?? 1) - (ORDEN_ESTADO[b.estado] ?? 1) ||
+                      Number(a.monto) - Number(b.monto)
+                  );
 
                   return (
-                    <div key={tipo} style={bloqueTipo}>
-                      <div style={cabeceraTipo}>
-                        <p style={ui.eyebrow}>{tipo}</p>
+                    <details key={tipo} style={acordeonTipo}>
+                      {/* El contenido va en un span aparte: darle display al
+                          summary borra el triangulito nativo, que es la señal
+                          de que esto se abre. Columnas de ancho fijo para que
+                          los números arranquen en la misma vertical en todos
+                          los rubros. */}
+                      <summary style={resumenTipo}>
+                        <span style={contenidoResumen}>
+                          <span style={tituloTipo}>
+                            {tipo}
+                            <span style={cuentaCotizaciones}>
+                              {suyas.length === 0
+                                ? "Sin cotizaciones"
+                                : suyas.length === 1
+                                  ? "1 cotización"
+                                  : `${suyas.length} cotizaciones`}
+                            </span>
+                          </span>
 
-                        <Link
-                          href={`/obras/${obra.slug}/presupuestos/nuevo?rubro=${rubro.id}&tipo=${encodeURIComponent(tipo)}`}
-                          style={enlaceCotizar}
-                        >
-                          + Cotizar
-                        </Link>
-                      </div>
+                          <span style={dato}>
+                            <span style={datoLabel}>Aprobada</span>
+                            {aprobada ? (
+                              <strong style={aprobadaResumen}>
+                                {formatMoney(aprobada.monto)}
+                              </strong>
+                            ) : (
+                              <span style={sinDato}>—</span>
+                            )}
+                          </span>
 
-                      {/* Lo aprobado contra lo que realmente se gastó: es la
-                          lectura que ordena la obra. */}
-                      {(cotizado > 0 || gastado > 0) && (
-                        <div style={comparativa}>
-                          <div style={filaComp}>
-                            <span>Cotizado</span>
-                            <strong>
-                              {cotizado > 0 ? formatMoney(cotizado) : "—"}
-                            </strong>
-                          </div>
-                          <div style={filaComp}>
-                            <span>Gastado</span>
+                          <span style={dato}>
+                            <span style={datoLabel}>Gastado</span>
                             <strong>{formatMoney(gastado)}</strong>
-                          </div>
-                          {cotizado > 0 && (
-                            <div style={filaComp}>
-                              <span>Diferencia</span>
+                          </span>
+
+                          <span style={dato}>
+                            <span style={datoLabel}>Diferencia</span>
+                            {cotizado > 0 ? (
                               <strong style={estiloDiferencia(gastado - cotizado)}>
                                 {gastado > cotizado ? "+" : ""}
                                 {formatMoney(gastado - cotizado)}
                               </strong>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                            ) : (
+                              <span style={sinDato}>—</span>
+                            )}
+                          </span>
 
-                      {suyas.length === 0 ? (
-                        <p style={sinCotizaciones}>Sin cotizaciones.</p>
-                      ) : (
-                        <div style={listaCotizaciones}>
-                          {suyas.map((c) => {
-                            const aprobada = c.estado === "Aprobado";
+                          <Link
+                            href={`/obras/${obra.slug}/presupuestos/nuevo?rubro=${rubro.id}&tipo=${encodeURIComponent(tipo)}`}
+                            style={enlaceCotizar}
+                          >
+                            + Cotizar
+                          </Link>
+                        </span>
+                      </summary>
 
-                            return (
-                              <div
-                                key={c.id}
-                                style={aprobada ? tarjetaAprobada : tarjeta}
-                              >
-                                <div style={cabeceraCotizacion}>
-                                  <div>
-                                    <strong>{c.proveedores?.nombre ?? "—"}</strong>
-                                    {aprobada && <span style={tagOk}>Aprobada</span>}
-                                    {c.estado === "Descartado" && (
-                                      <span style={tagDescartada}>Descartada</span>
-                                    )}
+                      <div style={contenidoAbierto}>
+                        {ordenadas.length === 0 ? (
+                          <p style={sinCotizaciones}>Sin cotizaciones.</p>
+                        ) : (
+                          <div style={listaCotizaciones}>
+                            {ordenadas.map((c) => {
+                              const esAprobada = c.estado === "Aprobado";
+
+                              return (
+                                <div
+                                  key={c.id}
+                                  style={esAprobada ? tarjetaAprobada : tarjeta}
+                                >
+                                  <div style={cabeceraCotizacion}>
+                                    <div>
+                                      <strong>{c.proveedores?.nombre ?? "—"}</strong>
+                                      {esAprobada && (
+                                        <span style={tagOk}>Aprobada</span>
+                                      )}
+                                      {c.estado === "Descartado" && (
+                                        <span style={tagDescartada}>Descartada</span>
+                                      )}
+                                    </div>
+
+                                    <strong style={montoCotizacion}>
+                                      {formatMoney(c.monto)}
+                                    </strong>
                                   </div>
 
-                                  <strong style={montoCotizacion}>
-                                    {formatMoney(c.monto)}
-                                  </strong>
-                                </div>
+                                  {c.detalle && (
+                                    <p style={detalleCotizacion}>{c.detalle}</p>
+                                  )}
 
-                                {c.detalle && (
-                                  <p style={detalleCotizacion}>{c.detalle}</p>
-                                )}
+                                  <div style={pieCotizacion}>
+                                    <span>
+                                      {formatDate(c.fecha)}
+                                      {c.validez_hasta &&
+                                        ` · vence ${formatDate(c.validez_hasta)}`}
+                                      {c.moneda === "USD" &&
+                                        ` · US$ ${Number(c.monto_usd ?? 0).toLocaleString("es-AR")}`}
+                                    </span>
 
-                                <div style={pieCotizacion}>
-                                  <span>
-                                    {formatDate(c.fecha)}
-                                    {c.validez_hasta &&
-                                      ` · vence ${formatDate(c.validez_hasta)}`}
-                                    {c.moneda === "USD" &&
-                                      ` · US$ ${Number(c.monto_usd ?? 0).toLocaleString("es-AR")}`}
-                                  </span>
+                                    <div style={accionesCotizacion}>
+                                      {c.comprobante_drive_id && (
+                                        <>
+                                          <Link
+                                            href={`/ver/${c.comprobante_drive_id}?volver=${encodeURIComponent(
+                                              `/obras/${obra.slug}/presupuestos`
+                                            )}`}
+                                            style={enlaceSimple}
+                                          >
+                                            Ver
+                                          </Link>
+                                          <BotonDescarga
+                                            fileId={c.comprobante_drive_id}
+                                            variante="icono"
+                                            etiqueta={`Descargar cotización de ${c.proveedores?.nombre ?? "proveedor"}`}
+                                          />
+                                        </>
+                                      )}
 
-                                  <div style={accionesCotizacion}>
-                                    {c.comprobante_drive_id && (
-                                      <>
-                                        <Link
-                                          href={`/ver/${c.comprobante_drive_id}?volver=${encodeURIComponent(
-                                            `/obras/${obra.slug}/presupuestos`
-                                          )}`}
-                                          style={enlaceSimple}
-                                        >
-                                          Ver
-                                        </Link>
-                                        <BotonDescarga
-                                          fileId={c.comprobante_drive_id}
-                                          variante="icono"
-                                          etiqueta={`Descargar cotización de ${c.proveedores?.nombre ?? "proveedor"}`}
-                                        />
-                                      </>
-                                    )}
-
-                                    <Link
-                                      href={`/obras/${obra.slug}/presupuestos/${c.id}/editar`}
-                                      style={enlaceSimple}
-                                    >
-                                      Editar
-                                    </Link>
-
-                                    <form
-                                      action={
-                                        aprobada
-                                          ? desaprobarPresupuesto.bind(null, c.id)
-                                          : aprobarPresupuesto.bind(null, c.id)
-                                      }
-                                    >
-                                      <input
-                                        type="hidden"
-                                        name="slug"
-                                        value={obra.slug}
-                                      />
-                                      <button
-                                        type="submit"
-                                        style={aprobada ? ui.secondaryButton : botonAprobar}
+                                      <Link
+                                        href={`/obras/${obra.slug}/presupuestos/${c.id}/editar`}
+                                        style={enlaceSimple}
                                       >
-                                        {aprobada ? "Desaprobar" : "Aprobar"}
-                                      </button>
-                                    </form>
+                                        Editar
+                                      </Link>
+
+                                      <form
+                                        action={
+                                          esAprobada
+                                            ? desaprobarPresupuesto.bind(null, c.id)
+                                            : aprobarPresupuesto.bind(null, c.id)
+                                        }
+                                      >
+                                        <input
+                                          type="hidden"
+                                          name="slug"
+                                          value={obra.slug}
+                                        />
+                                        <button
+                                          type="submit"
+                                          style={
+                                            esAprobada
+                                              ? ui.secondaryButton
+                                              : botonAprobar
+                                          }
+                                        >
+                                          {esAprobada ? "Desaprobar" : "Aprobar"}
+                                        </button>
+                                      </form>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </details>
                   );
                 })}
-              </div>
-            </section>
+              </section>
             );
           })}
         </div>
       )}
 
-      <p style={{ ...ui.note, marginTop: "20px" }}>
-        {sinCotizar > 0 && (
-          <>
-            Quedan {sinCotizar} combinaciones de rubro y tipo sin cotización
-            aprobada.{" "}
-          </>
-        )}
-        Aprobar no obliga a nada: si aparece una compra de urgencia que nadie
-        cotizó, el gasto se carga igual eligiendo otro proveedor. El total
-        aprobado es el presupuesto real de la obra, distinto del estimado que se
-        carga en <strong>Editar obra</strong>.
-      </p>
+      {sinCotizar > 0 && (
+        <p style={{ ...ui.note, marginTop: "20px" }}>
+          Quedan {sinCotizar} combinaciones de rubro y tipo sin cotización
+          aprobada.
+        </p>
+      )}
     </AppShell>
   );
 }
@@ -376,7 +405,7 @@ const cabeceraRubro = {
   alignItems: "center",
   gap: "20px",
   flexWrap: "wrap" as const,
-  marginBottom: "20px",
+  marginBottom: "6px",
 };
 
 const tituloRubro = {
@@ -385,49 +414,72 @@ const tituloRubro = {
   margin: 0,
 };
 
-const dosTipos = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "24px",
+const acordeonTipo = {
+  borderTop: "1px solid #eeeeee",
+  padding: "14px 0",
 };
 
-const unTipo = {
-  display: "grid",
-  gridTemplateColumns: "1fr",
+const resumenTipo = {
+  cursor: "pointer",
 };
 
-const bloqueTipo = {
-  display: "grid",
-  gap: "12px",
-  alignContent: "start",
-};
-
-const cabeceraTipo = {
-  display: "flex",
-  justifyContent: "space-between",
+const contenidoResumen = {
+  display: "inline-grid",
+  // Tres columnas de números del mismo ancho fijo: montos completos, sin
+  // recortes, y alineados en la misma vertical en todos los rubros.
+  gridTemplateColumns: "minmax(0, 1fr) 150px 150px 150px auto",
   alignItems: "center",
-  borderBottom: "1px solid #eeeeee",
-  paddingBottom: "8px",
+  gap: "20px",
+  width: "calc(100% - 28px)",
+  verticalAlign: "middle" as const,
+};
+
+const tituloTipo = {
+  display: "inline-grid",
+  gap: "2px",
+  fontSize: "15px",
+  color: "#111111",
+};
+
+const cuentaCotizaciones = {
+  fontSize: "12px",
+  color: "#999999",
+};
+
+const dato = {
+  display: "inline-grid",
+  gap: "4px",
+};
+
+const datoLabel = {
+  fontSize: "12px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+  color: "#777777",
+};
+
+const sinDato = {
+  color: "#999999",
+  fontSize: "14px",
+};
+
+// La aprobada va en verde y siempre a la vista, abierto o cerrado el bloque:
+// es la que manda sobre el rubro. Sólo el monto: el nombre de quien cotizó
+// se veía cortado acá y vive en la ficha, al abrir.
+const aprobadaResumen = {
+  color: VERDE,
+  whiteSpace: "nowrap" as const,
 };
 
 const enlaceCotizar = {
   color: "#111111",
   fontSize: "13px",
   textDecoration: "underline",
+  justifySelf: "end" as const,
 };
 
-const comparativa = {
-  display: "grid",
-  gap: "4px",
-  border: "1px solid #eeeeee",
-  padding: "12px",
-};
-
-const filaComp = {
-  display: "flex",
-  justifyContent: "space-between",
-  fontSize: "14px",
-  color: "#555555",
+const contenidoAbierto = {
+  marginTop: "16px",
 };
 
 const sinCotizaciones = {
@@ -446,11 +498,10 @@ const tarjeta = {
   padding: "12px",
 };
 
-// La aprobada se distingue con borde negro: es la que manda.
 const tarjetaAprobada = {
   ...tarjeta,
-  border: "1px solid #111111",
-  background: "#fafafa",
+  border: `1px solid ${VERDE}`,
+  background: "#f2faf5",
 };
 
 const cabeceraCotizacion = {
@@ -466,8 +517,8 @@ const montoCotizacion = {
 
 const tagOk = {
   marginLeft: "8px",
-  border: "1px solid #111111",
-  background: "#111111",
+  border: `1px solid ${VERDE}`,
+  background: VERDE,
   color: "#ffffff",
   padding: "2px 6px",
   fontSize: "11px",
@@ -516,9 +567,9 @@ const enlaceSimple = {
 };
 
 const botonAprobar = {
-  background: "#111111",
+  background: VERDE,
   color: "#ffffff",
-  border: "1px solid #111111",
+  border: `1px solid ${VERDE}`,
   padding: "8px 12px",
   fontSize: "13px",
   cursor: "pointer",
