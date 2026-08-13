@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -41,7 +42,7 @@ export default async function RubroDetalle({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, monto_caja, tipo_gasto, tipo_factura, tipo_pago, estado, compartido, proveedor_id, proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, tipo_gasto, tipo_factura, tipo_pago, estado, compartido, comprobante_drive_id, proveedor_id, proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .eq("rubro_id", rubroId)
@@ -197,9 +198,11 @@ export default async function RubroDetalle({
                           </td>
                           <td style={ui.td}>{gasto.concepto}</td>
                           <td style={ui.td}>
-                            {gasto.tipo_factura
-                              ? `Factura ${gasto.tipo_factura}`
-                              : "Efectivo"}
+                            <EtiquetaComprobante
+                              tipoFactura={gasto.tipo_factura}
+                              driveId={gasto.comprobante_drive_id}
+                              volver={`/obras/${obra.slug}/rubro/${rubroId}`}
+                            />
                           </td>
                           <td style={ui.td}>{quienPago(gasto)}</td>
                           <td style={ui.tdRight}>

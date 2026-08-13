@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import BotonDescarga from "@/components/BotonDescarga";
+import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 
@@ -12,7 +12,6 @@ export type GastoFila = {
   concepto: string;
   monto: number;
   montoCaja: number;
-  iva: number;
   tipoFactura: string | null;
   tipoGasto: string;
   tipoPago: string | null;
@@ -26,6 +25,44 @@ export type GastoFila = {
   compartido: boolean;
 };
 
+/**
+ * Columnas con filtro estilo Excel: el desplegable de la columna lista sus
+ * valores con una casilla cada uno, y se destilda lo que no se quiere ver.
+ * Convive con el buscador de texto: el filtro acota, el buscador encuentra.
+ */
+const COLUMNAS_FILTRABLES = [
+  { clave: "rubro", rotulo: "Rubro" },
+  { clave: "tipo", rotulo: "Tipo" },
+  { clave: "destino", rotulo: "Destino" },
+  { clave: "comprobante", rotulo: "Comprobante" },
+  { clave: "pago", rotulo: "Pagó" },
+] as const;
+
+type ColumnaFiltrable = (typeof COLUMNAS_FILTRABLES)[number]["clave"];
+
+/**
+ * El valor de un gasto en cada columna filtrable: el mismo texto que muestra
+ * la celda, así el desplegable ofrece exactamente lo que se ve en pantalla.
+ */
+function valorDe(g: GastoFila, col: ColumnaFiltrable): string {
+  const ajuste = g.tipoGasto === "Ajuste de saldo";
+
+  switch (col) {
+    case "rubro":
+      return g.rubro ?? "—";
+    case "tipo":
+      return g.tipoGasto;
+    case "destino":
+      return ajuste ? `→ ${g.receptora ?? "—"}` : (g.proveedor ?? "—");
+    case "comprobante":
+      return ajuste ? "—" : g.tipoFactura ? `Factura ${g.tipoFactura}` : "Efectivo";
+    case "pago":
+      if (g.compartido) return "Entre las socias";
+      if (g.montoCaja >= g.monto) return "Dinero en cuenta";
+      return g.pagadora ?? "—";
+  }
+}
+
 export default function GastosLista({
   gastos,
   slug,
@@ -34,30 +71,41 @@ export default function GastosLista({
   slug: string;
 }) {
   const [busqueda, setBusqueda] = useState("");
-  const [rubro, setRubro] = useState("");
   const [ocultarAnulados, setOcultarAnulados] = useState(false);
+  const [filtros, setFiltros] = useState<
+    Partial<Record<ColumnaFiltrable, Set<string>>>
+  >({});
+  const [abierto, setAbierto] = useState<ColumnaFiltrable | null>(null);
 
-  const rubros = useMemo(
-    () =>
-      Array.from(new Set(gastos.map((g) => g.rubro).filter(Boolean))).sort() as string[],
-    [gastos]
-  );
+  const opciones = useMemo(() => {
+    const mapa = {} as Record<ColumnaFiltrable, string[]>;
+    for (const col of COLUMNAS_FILTRABLES) {
+      mapa[col.clave] = [
+        ...new Set(gastos.map((g) => valorDe(g, col.clave))),
+      ].sort((a, b) => a.localeCompare(b));
+    }
+    return mapa;
+  }, [gastos]);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
     return gastos.filter((g) => {
-      if (rubro && g.rubro !== rubro) return false;
       if (ocultarAnulados && g.estado === "Anulado") return false;
+
+      for (const col of COLUMNAS_FILTRABLES) {
+        const elegidos = filtros[col.clave];
+        if (elegidos && !elegidos.has(valorDe(g, col.clave))) return false;
+      }
+
       if (!q) return true;
 
       // Un solo texto busca en todo lo que se ve de un gasto.
-      const quien = g.compartido ? "entre las socias" : g.pagadora ?? "";
       const campos = [
         g.concepto,
         g.rubro,
         g.proveedor,
-        quien,
+        valorDe(g, "pago"),
         g.receptora,
         g.tipoGasto,
         g.tipoFactura ? `factura ${g.tipoFactura}` : g.tipoPago,
@@ -67,7 +115,88 @@ export default function GastosLista({
 
       return campos.some((c) => c?.toLowerCase().includes(q));
     });
-  }, [gastos, busqueda, rubro, ocultarAnulados]);
+  }, [gastos, busqueda, ocultarAnulados, filtros]);
+
+  const hayFiltros = Object.keys(filtros).length > 0;
+
+  // Sin filtro guardado, todas las casillas están tildadas. Destildar una crea
+  // el filtro con el resto; volver a tildarlas todas lo borra, así "sin
+  // filtro" queda como el estado natural de la columna.
+  const alternar = (col: ColumnaFiltrable, valor: string) => {
+    setFiltros((prev) => {
+      const nuevo = new Set(prev[col] ?? opciones[col]);
+      if (nuevo.has(valor)) {
+        nuevo.delete(valor);
+      } else {
+        nuevo.add(valor);
+      }
+
+      const copia = { ...prev };
+      if (nuevo.size === opciones[col].length) {
+        delete copia[col];
+      } else {
+        copia[col] = nuevo;
+      }
+      return copia;
+    });
+  };
+
+  const limpiar = (col: ColumnaFiltrable) => {
+    setFiltros((prev) => {
+      const copia = { ...prev };
+      delete copia[col];
+      return copia;
+    });
+  };
+
+  const thFiltrable = (clave: ColumnaFiltrable) => {
+    const col = COLUMNAS_FILTRABLES.find((c) => c.clave === clave)!;
+    const activo = Boolean(filtros[clave]);
+
+    return (
+      <th style={{ ...ui.th, position: "relative" }}>
+        <span style={contenidoTh}>
+          {col.rotulo}
+          <button
+            type="button"
+            onClick={() => setAbierto(abierto === clave ? null : clave)}
+            style={{ ...botonFiltro, color: activo ? "#111111" : "#bbbbbb" }}
+            title={`Filtrar por ${col.rotulo.toLowerCase()}`}
+          >
+            ▾
+          </button>
+        </span>
+
+        {abierto === clave && (
+          <>
+            {/* Capa invisible que cierra el desplegable al tocar afuera. */}
+            <div style={fondoCerrar} onClick={() => setAbierto(null)} />
+
+            <div style={popover}>
+              <button
+                type="button"
+                onClick={() => limpiar(clave)}
+                style={botonTodos}
+              >
+                Todos
+              </button>
+
+              {opciones[clave].map((valor) => (
+                <label key={valor} style={opcionFiltro}>
+                  <input
+                    type="checkbox"
+                    checked={!filtros[clave] || filtros[clave].has(valor)}
+                    onChange={() => alternar(clave, valor)}
+                  />
+                  {valor}
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+      </th>
+    );
+  };
 
   return (
     <section style={ui.panel}>
@@ -80,19 +209,6 @@ export default function GastosLista({
             placeholder="Buscar por detalle, destino, quién pagó…"
             style={{ ...ui.input, flex: "1 1 240px" }}
           />
-
-          <select
-            value={rubro}
-            onChange={(e) => setRubro(e.target.value)}
-            style={{ ...ui.input, flex: "0 0 auto" }}
-          >
-            <option value="">Todos los rubros</option>
-            {rubros.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
 
           <label style={toggle}>
             <input
@@ -108,13 +224,13 @@ export default function GastosLista({
       {gastos.length === 0 ? (
         <p style={ui.vacio}>Todavía no hay gastos cargados en esta obra.</p>
       ) : filtrados.length === 0 ? (
-        <p style={ui.vacio}>Ningún gasto coincide con la búsqueda.</p>
+        <p style={ui.vacio}>Ningún gasto coincide con la búsqueda o los filtros.</p>
       ) : (
         <>
           <p style={contador}>
             {filtrados.length}{" "}
             {filtrados.length === 1 ? "gasto" : "gastos"}
-            {(busqueda || rubro || ocultarAnulados) &&
+            {(busqueda || ocultarAnulados || hayFiltros) &&
               ` de ${gastos.length}`}
           </p>
 
@@ -126,12 +242,12 @@ export default function GastosLista({
                   escribe largo— se queda con el ancho libre. */}
               <tr>
                 <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Rubro</th>
-                <th style={ui.th}>Tipo</th>
-                <th style={ui.th}>Destino</th>
+                {thFiltrable("rubro")}
+                {thFiltrable("tipo")}
+                {thFiltrable("destino")}
                 <th style={ui.th}>Detalle</th>
-                <th style={ui.th}>Comprobante</th>
-                <th style={ui.th}>Pagó</th>
+                {thFiltrable("comprobante")}
+                {thFiltrable("pago")}
                 <th style={ui.thRight}>Monto</th>
                 <th style={ui.th}></th>
               </tr>
@@ -186,28 +302,11 @@ export default function GastosLista({
                       {ajuste ? (
                         "—"
                       ) : (
-                        <>
-                          {gasto.tipoFactura
-                            ? `Factura ${gasto.tipoFactura}`
-                            : "Efectivo"}
-                          {gasto.comprobanteDriveId && (
-                            <div style={accionesArchivo}>
-                              <Link
-                                href={`/ver/${gasto.comprobanteDriveId}?volver=${encodeURIComponent(
-                                  `/obras/${slug}/gastos`
-                                )}`}
-                                style={comprobanteLink}
-                              >
-                                Ver
-                              </Link>
-                              <BotonDescarga
-                                fileId={gasto.comprobanteDriveId}
-                                variante="icono"
-                                etiqueta={`Descargar comprobante de ${gasto.concepto}`}
-                              />
-                            </div>
-                          )}
-                        </>
+                        <EtiquetaComprobante
+                          tipoFactura={gasto.tipoFactura}
+                          driveId={gasto.comprobanteDriveId}
+                          volver={`/obras/${slug}/gastos`}
+                        />
                       )}
                     </td>
                     <td style={{ ...celda, ...compacta }}>
@@ -226,11 +325,10 @@ export default function GastosLista({
                         (gasto.pagadora ?? "—")
                       )}
                     </td>
+                    {/* Sin el IVA abajo del monto: "Factura A" ya dice que lo
+                        tiene, y el renglón extra ensuciaba la columna. */}
                     <td style={anulado ? tdAnuladoRight : ui.tdRight}>
                       <strong>{formatMoney(gasto.monto)}</strong>
-                      {gasto.iva > 0 && (
-                        <div style={ivaChico}>IVA {formatMoney(gasto.iva)}</div>
-                      )}
                     </td>
                     <td style={celda}>
                       <Link
@@ -274,20 +372,68 @@ const contador = {
   margin: "0 0 12px",
 };
 
-const accionesArchivo = {
-  display: "flex",
+const contenidoTh = {
+  display: "inline-flex",
   alignItems: "center",
-  gap: "10px",
-  marginTop: "4px",
+  gap: "4px",
 };
 
-// Las columnas cortas no se parten: el ancho que sobra se lo queda el detalle,
-// que es lo único que se escribe largo.
-const compacta = { whiteSpace: "nowrap" as const };
+const botonFiltro = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  padding: "0 2px",
+  fontSize: "11px",
+  lineHeight: 1,
+};
 
-const destinoLink = {
-  color: "#333333",
+const fondoCerrar = {
+  position: "fixed" as const,
+  inset: 0,
+  zIndex: 10,
+};
+
+// El th escribe en mayúsculas espaciadas; el desplegable vuelve al texto
+// normal. La sombra es la única de la app: sin ella el recuadro se funde con
+// las filas que tapa.
+const popover = {
+  position: "absolute" as const,
+  top: "calc(100% - 6px)",
+  left: "8px",
+  zIndex: 20,
+  background: "#ffffff",
+  border: "1px solid #dcdcdc",
+  padding: "10px 12px",
+  minWidth: "210px",
+  maxHeight: "300px",
+  overflowY: "auto" as const,
+  boxShadow: "0 6px 16px rgba(0, 0, 0, 0.08)",
+  textTransform: "none" as const,
+  letterSpacing: "normal",
+  fontWeight: 400,
+  textAlign: "left" as const,
+};
+
+const botonTodos = {
+  background: "none",
+  border: "none",
+  padding: "0 0 8px",
+  color: "#111111",
   textDecoration: "underline",
+  fontSize: "13px",
+  cursor: "pointer",
+  display: "block",
+};
+
+const opcionFiltro = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "5px 0",
+  fontSize: "13px",
+  color: "#333333",
+  cursor: "pointer",
+  whiteSpace: "nowrap" as const,
 };
 
 const filaAjuste = { background: "#fafafa" };
@@ -307,6 +453,15 @@ const aporteCuenta = {
   fontSize: "13px",
   color: "#999999",
   marginTop: "4px",
+};
+
+// Las columnas cortas no se parten: el ancho que sobra se lo queda el detalle,
+// que es lo único que se escribe largo.
+const compacta = { whiteSpace: "nowrap" as const };
+
+const destinoLink = {
+  color: "#333333",
+  textDecoration: "underline",
 };
 
 const tdAnulado = {
@@ -332,12 +487,4 @@ const editarLink = {
   color: "#111111",
   fontSize: "14px",
   textDecoration: "underline",
-};
-
-const ivaChico = { fontSize: "12px", color: "#999999", marginTop: "4px" };
-
-const comprobanteLink = {
-  color: "#111111",
-  textDecoration: "underline",
-  fontSize: "14px",
 };
