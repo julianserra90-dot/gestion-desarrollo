@@ -196,7 +196,7 @@ export default async function ObraDetalle({
           <p style={label}>En efectivo</p>
           <h3 style={number}>{formatMoney(resumen?.total_efectivo)}</h3>
         </div>
-        <Link href={`/obras/${obra.slug}/dinero-en-cuenta`} style={cardEnlace}>
+        <Link href={`/obras/${obra.slug}/ingresos`} style={cardEnlace}>
           <p style={label}>Dinero en cuenta</p>
           <h3 style={number}>{formatMoney(caja.arsSaldo)}</h3>
           <p style={{ ...note, margin: "6px 0 0" }}>
