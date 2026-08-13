@@ -8,6 +8,7 @@ import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { getLote } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
+import { ordenarPorTipo } from "@/lib/tipos-gasto";
 
 export default async function DolaresPage({
   params,
@@ -131,19 +132,34 @@ export default async function DolaresPage({
 
   // "En qué se gastó", en dólares: cada rubro más el lote (que ya está en USD).
   // Es la misma lectura que en Economía, pero en la moneda en que se piensa.
-  const porRubroUsd = new Map<string, number>();
+  // Igual que en Economía, de cada rubro se guarda el desglose por tipo: el
+  // gráfico lo dibuja en tonos del mismo color.
+  const porRubroUsd = new Map<
+    string,
+    { total: number; porTipo: Map<string, number> }
+  >();
+
   for (const g of convertidos) {
     const nombre = g.rubros?.nombre ?? "Sin rubro";
-    porRubroUsd.set(nombre, (porRubroUsd.get(nombre) ?? 0) + (g.usd ?? 0));
+    const actual = porRubroUsd.get(nombre) ?? {
+      total: 0,
+      porTipo: new Map<string, number>(),
+    };
+
+    const tipo = g.tipo_gasto ?? "Sin tipo";
+    actual.porTipo.set(tipo, (actual.porTipo.get(tipo) ?? 0) + (g.usd ?? 0));
+
+    porRubroUsd.set(nombre, { ...actual, total: actual.total + (g.usd ?? 0) });
   }
 
   const tortaUsd = [
-    ...[...porRubroUsd.entries()].map(([etiqueta, valor]) => ({
+    ...[...porRubroUsd.entries()].map(([etiqueta, r]) => ({
       etiqueta,
-      valor,
+      valor: r.total,
+      partes: ordenarPorTipo(r.porTipo),
     })),
     ...(lote.totalUsd > 0
-      ? [{ etiqueta: "Lote / Terreno", valor: lote.totalUsd }]
+      ? [{ etiqueta: "Lote / Terreno", valor: lote.totalUsd, partes: [] }]
       : []),
   ];
 

@@ -7,6 +7,7 @@ import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { calcularLiquidacion } from "@/lib/liquidacion";
 import { getLote } from "@/lib/lote";
 import { createClient } from "@/lib/supabase/server";
+import { TIPOS_DE_GASTO, ordenarPorTipo } from "@/lib/tipos-gasto";
 
 export default async function ObraDetalle({
   params,
@@ -150,9 +151,17 @@ export default async function ObraDetalle({
   // Cada rubro se guarda con su id para poder entrar al detalle desde la
   // leyenda. Los gastos sin rubro se juntan aparte y no llevan enlace: no hay
   // adónde ir.
+  // De cada rubro se guarda además cuánto fue material y cuánto mano de obra:
+  // es lo que el gráfico dibuja en tonos del mismo color, para que se vea que
+  // sigue siendo el mismo rubro.
   const porRubro = new Map<
     string,
-    { nombre: string; id: string | null; total: number }
+    {
+      nombre: string;
+      id: string | null;
+      total: number;
+      porTipo: Map<string, number>;
+    }
   >();
 
   for (const gasto of vigentes) {
@@ -161,7 +170,11 @@ export default async function ObraDetalle({
       nombre: gasto.rubros?.nombre ?? "Sin rubro",
       id: gasto.rubro_id,
       total: 0,
+      porTipo: new Map<string, number>(),
     };
+
+    const tipo = gasto.tipo_gasto ?? "Sin tipo";
+    actual.porTipo.set(tipo, (actual.porTipo.get(tipo) ?? 0) + Number(gasto.monto));
 
     porRubro.set(clave, { ...actual, total: actual.total + Number(gasto.monto) });
   }
@@ -185,13 +198,17 @@ export default async function ObraDetalle({
       rubro: r.nombre,
       total: r.total,
       href: r.id ? `/obras/${obra.slug}/rubro/${r.id}` : undefined,
+      partes: ordenarPorTipo(r.porTipo),
     })),
+    // El lote no se desglosa: es una compra sola, no tiene materiales ni mano
+    // de obra.
     ...(loteArs > 0
       ? [
           {
             rubro: "Lote / Terreno",
             total: loteArs,
             href: `/obras/${obra.slug}/lote`,
+            partes: [],
           },
         ]
       : []),
@@ -203,12 +220,13 @@ export default async function ObraDetalle({
     etiqueta: r.rubro,
     valor: r.total,
     href: r.href,
+    partes: r.partes,
   }));
 
   // Materiales vs mano de obra: la otra lectura útil de en qué se va la plata.
   // Lo administrativo (impuestos, honorarios) se suma como tercera categoría,
   // pero sólo aparece si la obra tiene alguno: no todas las obras lo tienen.
-  const porTipo = ["Materiales", "Mano de obra", "Administrativo"]
+  const porTipo = TIPOS_DE_GASTO
     .map((tipo) => {
       const total = vigentes
         .filter((g) => g.tipo_gasto === tipo)
