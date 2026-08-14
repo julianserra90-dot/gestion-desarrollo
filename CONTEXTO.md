@@ -359,12 +359,40 @@ que entra al acumulado para que la columna cierre con el total.
 La semana se muestra debajo de la fecha, no en su propia columna: es la misma
 respuesta contada de otra manera. También la encuentra el buscador ("semana 22").
 
+**La semana se muestra en Detalle**, como etiqueta delante del texto libre
+(`components/DetalleDeGasto.tsx`): es como se nombra el pago —"Semana 22 · Hugo"—
+y es lo que antes se escribía a mano ahí adentro, donde era texto suelto. Debajo
+de la fecha no va nada: tenerla en los dos lugares era decir dos veces lo mismo.
+Lo anterior al arranque dice "Previo al arranque", así la columna nunca queda
+muda. Un ajuste de saldo no lleva semana: no es trabajo de obra.
+
+El mismo componente se usa en las cuatro tablas que muestran gastos —Gastos, el
+detalle del rubro, el del proveedor y Dólares—. Es puro, así que sirve igual en
+el listado, que corre en el cliente, y en las de servidor.
+
+**Y el detalle es opcional.** Era obligatorio y casi siempre terminaba siendo la
+semana escrita a mano; con la fecha, el rubro, el destino y el monto el gasto ya
+está identificado. Vacío se guarda como `null`, no como cadena en blanco. Ojo con
+eso al mostrarlo: un `null` en JSX **no dibuja nada y TypeScript no lo marca**,
+así que una columna Detalle vacía pasa desapercibida. En Ingresos el detalle es
+el texto del enlace a editar el gasto, así que ahí cae a "Sin detalle": sin nada
+no habría dónde hacer clic.
+
+Hubo un intento de que la semana fuera un **dato cargado y corregible**
+(`gastos.semana`, con una casilla en el formulario), pensando en el pago del
+lunes que corresponde al trabajo de la semana anterior. Se descartó al día
+siguiente por simplicidad: que la semana salga siempre de la fecha deja a todos
+los gastos identificados igual, sin depender de que alguien se acuerde de
+marcarla, y el flujo puede agrupar por semana con todo adentro. La columna se
+borró en vez de dejarla sin uso —mismo criterio que con `contacto` en
+proveedores—; si el caso vuelve, es agregarla de nuevo.
+
 La solapa **Flujo** contesta *cuándo* se gastó, que es lo que los totales no
-dicen: gráfico de barras por mes (gastos e ingresos, `GraficoBarras`, SVG sin
-librerías como el de torta), tabla mes a mes con el **gastado acumulado**, y un
-acordeón "semana a semana". Los meses sin movimiento aparecen igual: una obra
-parada es información y saltearlos deformaría el gráfico. El promedio por mes se
-calcula sobre los meses **con** gasto —dividir por los parados lo hunde y no
+dicen: un gráfico de barras por mes (gastos e ingresos, `GraficoBarras`, SVG sin
+librerías como el de torta) y nada más. Los meses sin movimiento aparecen igual:
+una obra parada es información y saltearlos deformaría el gráfico. El promedio
+por mes se calcula sobre los meses **con** gasto —dividir por los parados lo
+hunde y no
 dice nada del ritmo real—.
 
 Los ingresos de esa pantalla son lo que entró **a la cuenta**; muchos gastos los
@@ -374,6 +402,58 @@ restan entre sí: el acumulado es de gastos, no un saldo de cuenta.
 Ojo con el `viewBox` de `GraficoBarras`: es de **ancho fijo** y los grupos se
 reparten adentro. Con un ancho proporcional a la cantidad de meses, dos meses
 estirados al ancho de la pantalla agrandaban la tipografía cuatro veces.
+
+**La solapa Flujo es sólo el gráfico.** Tenía debajo una tabla mes a mes y un
+acordeón semana a semana, y entre las tres decía lo mismo de tres maneras. Acá se
+viene a ver la forma; el monto exacto de cada barra aparece **al pasar el mouse**
+(el `title` de cada rectángulo) y lo que da la magnitud es el **eje de la
+izquierda**, con sus líneas de referencia. Se probó escribir los montos sobre las
+barras —girados, con halo blanco— y ensuciaba justo lo que tiene que leerse de un
+vistazo.
+
+Las marcas del eje usan `formatMoneyEje` ("$ 4 M", "$ 500 k"), el **único lugar
+de la app donde se redondea**: no es un dato sino una referencia para leer una
+altura de reojo. El techo se redondea al múltiplo lindo más cercano
+(`escalaDe`), porque marcas en "$ 12.904.662" no se leen de costado.
+
+**Tocando un mes se entra a `flujo/[mes]`**: ese mes semana por semana, con cada
+barra de gastos **partida por rubro** —apilada, en los colores de
+`lib/paleta-rubros.ts`—, la tabla de semanas y en qué se gastó el mes. El
+desglose por rubro va acá y no en el gráfico de meses a propósito: arriba lo que
+se busca es el ritmo, y partir cada barra en cinco colores lo tapaba; recién
+entrando a un mes uno pregunta "¿en qué se fue?". El orden del apilado sale del
+peso de cada rubro **en el mes entero**, no semana a semana, o las barras no se
+pueden comparar entre sí.
+
+El **arranque de la obra** se marca con una línea de puntos ámbar rotulada
+"Arranque de obra" (`PuntoBarras.marca`), en el gráfico de meses y en el del mes.
+Sin eso, lo que queda a la izquierda parece obra y no lo es: son acopios de
+material, anticipos e impuestos del terreno, que a veces se vienen pagando de
+mucho antes. Se probó en cambio partir lo previo por tipo de gasto y se descartó:
+el problema no era qué tipo eran sino que no se entendía por qué estaban ahí.
+
+La marca sólo aparece si **quedó algo a la izquierda**: pegada al borde no separa
+nada. En el gráfico de meses eso significa que la obra tiene movimientos en un
+mes anterior al de arranque; en el del mes, que hay gastos previos. Los hitos se
+dibujan en su propia pasada y **fuera del enlace** de cada grupo: una línea
+clickeable que lleve a otro mes sería una trampa.
+
+Ojo con filtrar un mes: **`fecha` es una columna `date`, no texto**, así que
+`like "2026-05-%"` no filtra nada y la consulta vuelve vacía **sin dar error**
+—pasó, y el mes se veía en cero—. Va por rango, `gte(desde)` y `lt(hasta)`, con
+`hasta` en el primer día del mes siguiente para no tener que saber si el mes
+tiene 28, 30 o 31 días (`rangoDeMes` en `lib/meses.ts`).
+
+En Flujo **no hay "resultado del mes"** aunque el gráfico muestre las dos series
+juntas, por lo mismo de siempre: los ingresos son lo que entró a la cuenta y
+muchos gastos los paga una socia de su bolsillo sin pasar por ahí. Restarlos
+daría un número que no es el saldo de nada.
+
+**Los colores todavía no coinciden con la torta de Economía.** Comparten la
+paleta, pero cada gráfico la reparte según el orden en que le llegan los rubros,
+y en Economía el lote ocupa un lugar y corre a todos los demás: albañilería sale
+azul allá y negra acá. Para unificarlo habría que darle al lote un color fijo
+—no es un rubro— y dejar que los rubros tomen la paleta por su propio orden.
 
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
@@ -531,11 +611,15 @@ acción de borrar el pago del lote viaja como prop.
   las dos (el segundo no rehace lo que ya hizo el primero) ni sólo la primera.
   De eso dependen la ejecución presupuestaria, el detalle por rubro y el avance
   ponderado, que se apoyan todos en `obra_presupuesto`.
-- **Semana por contratista**: la semana que se muestra se cuenta desde el
-  arranque de la obra, pero en el detalle de los gastos está escrita a mano la
-  del contratista ("Semana 22" de Hugo, que empezó dos semanas después). Son dos
-  cuentas distintas y hoy conviven. Si conviene, se puede numerar desde el
-  primer gasto de cada proveedor.
+- **Semana por contratista**: la semana se cuenta desde el arranque de la obra,
+  pero en el concepto de los gastos está escrita a mano la del contratista
+  ("Semana 2" de Franco, "Semana 8" de Patricio, que entraron después). Marcar
+  la semana en el gasto lo alivia —se puede corregir el número—, pero la cuenta
+  sigue siendo una sola y la del contratista queda escrita en el texto. Si
+  conviene, se puede numerar desde el primer gasto de cada proveedor.
+- **Filtrar por semana en Gastos**: ahora que la semana es un dato y no texto,
+  puede sumarse a los filtros estilo Excel del listado, al lado de Rubro y Tipo.
+  Quedó afuera de esta tanda.
 - **Acopios en el gráfico mensual**: lo previo al arranque está separado en la
   tabla semanal, pero en el gráfico por mes suma como un gasto más de febrero.
   Falta decidir si el mes también los distingue.
