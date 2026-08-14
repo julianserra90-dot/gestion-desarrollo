@@ -3,9 +3,10 @@ import AppShell from "@/components/AppShell";
 import GraficoBarras from "@/components/GraficoBarras";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatMoney, formatMoneyEje } from "@/lib/format";
+import { etiquetaMes, mesesEntre } from "@/lib/meses";
 import { getObraPorSlug } from "@/lib/obras";
-import { rangoDeSemana, semanaDeObra } from "@/lib/semanas";
+import { semanaDeObra } from "@/lib/semanas";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -15,52 +16,16 @@ import { createClient } from "@/lib/supabase/server";
  * Es la lectura que anticipa la plata que va a hacer falta: tres meses seguidos
  * de gasto creciente se ven acá y en ningún otro lado.
  *
- * El acumulado es de gastos, no un saldo de cuenta: los ingresos son lo que
- * entró a la cuenta de la obra, pero muchos gastos los paga una socia de su
- * bolsillo sin pasar por ahí. Restar las dos columnas daría un número que no
- * es el saldo de nada.
+ * **Es sólo el gráfico, a propósito.** Tenía debajo una tabla mes a mes y un
+ * acordeón semana a semana, y entre las tres la pantalla decía lo mismo de tres
+ * maneras. Acá se viene a ver la forma; el monto exacto de cada barra aparece al
+ * pasar el mouse y todo el detalle —incluido el semana a semana— está a un clic,
+ * tocando el mes.
+ *
+ * Los ingresos son lo que entró a la cuenta, y muchos gastos los paga una socia
+ * de su bolsillo sin pasar por ahí: las dos series conviven en el gráfico pero
+ * **no se restan entre sí**. Por eso acá no hay "resultado del mes".
  */
-
-const MESES = [
-  "ene",
-  "feb",
-  "mar",
-  "abr",
-  "may",
-  "jun",
-  "jul",
-  "ago",
-  "sep",
-  "oct",
-  "nov",
-  "dic",
-];
-
-/** "2026-07" a "jul 26". */
-function etiquetaMes(clave: string) {
-  const [year, mes] = clave.split("-");
-  return `${MESES[Number(mes) - 1]} ${year.slice(2)}`;
-}
-
-/** Todos los meses entre el primero y el último, incluso los vacíos: un mes
- * sin movimiento es información —la obra estuvo parada— y saltearlo deformaría
- * el gráfico. */
-function mesesEntre(desde: string, hasta: string) {
-  const claves: string[] = [];
-  let [year, mes] = desde.split("-").map(Number);
-  const [yearFin, mesFin] = hasta.split("-").map(Number);
-
-  while (year < yearFin || (year === yearFin && mes <= mesFin)) {
-    claves.push(`${year}-${String(mes).padStart(2, "0")}`);
-    mes += 1;
-    if (mes > 12) {
-      mes = 1;
-      year += 1;
-    }
-  }
-
-  return claves;
-}
 
 export default async function FlujoPage({
   params,
@@ -121,28 +86,26 @@ export default async function FlujoPage({
       ? mesesEntre(conMovimiento[0], conMovimiento[conMovimiento.length - 1])
       : [];
 
-  // El acumulado se arma recorriendo en orden, del mes más viejo al más nuevo.
-  const meses: {
-    clave: string;
-    etiqueta: string;
-    gastado: number;
-    ingresado: number;
-    acumulado: number;
-  }[] = [];
+  // El mes en que arrancó la obra, para marcarlo en el gráfico. Sólo si quedó
+  // algún mes antes: una línea pegada al borde izquierdo no separa nada, y lo
+  // que la marca explica es justamente que a la izquierda hay movimientos que
+  // no son obra —acopios, anticipos, impuestos del terreno—, que a veces se
+  // vienen pagando de mucho antes.
+  const mesDeArranque = obra.fecha_inicio?.slice(0, 7) ?? null;
+  const marcarArranque =
+    mesDeArranque !== null &&
+    claves.indexOf(mesDeArranque) > 0;
 
-  let acumulado = 0;
-  for (const clave of claves) {
-    const gastado = gastosPorMes.get(clave) ?? 0;
-    acumulado += gastado;
-
-    meses.push({
-      clave,
-      etiqueta: etiquetaMes(clave),
-      gastado,
-      ingresado: ingresosPorMes.get(clave) ?? 0,
-      acumulado,
-    });
-  }
+  const meses = claves.map((clave) => ({
+    clave,
+    etiqueta: etiquetaMes(clave),
+    gastado: gastosPorMes.get(clave) ?? 0,
+    ingresado: ingresosPorMes.get(clave) ?? 0,
+    marca:
+      marcarArranque && clave === mesDeArranque
+        ? "Arranque de obra"
+        : undefined,
+  }));
 
   // El promedio se calcula sobre los meses que tuvieron gasto: dividir por los
   // meses parados lo hundiría y no diría nada del ritmo real de la obra.
@@ -153,48 +116,6 @@ export default async function FlujoPage({
   const hoy = new Date();
   const hoyIso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
   const semanaActual = semanaDeObra(hoyIso, obra.fecha_inicio);
-
-  // Lo mismo que los meses, pero por semana de obra. Sólo las que tuvieron
-  // gasto: una obra de un año tiene cincuenta semanas y las vacías serían puro
-  // relleno en una tabla que se lee de arriba abajo.
-  // Lo pagado antes del arranque no cae en ninguna semana —acopios de
-  // material, anticipos, señas—, pero es plata que salió: va en una fila
-  // aparte y entra al acumulado, para que la columna cierre con el total.
-  const porSemana = new Map<number, number>();
-  let previoAlArranque = 0;
-
-  for (const g of salidas) {
-    const semana = semanaDeObra(g.fecha, obra.fecha_inicio);
-    if (semana === null) {
-      if (obra.fecha_inicio) previoAlArranque += Number(g.monto);
-      continue;
-    }
-    porSemana.set(semana, (porSemana.get(semana) ?? 0) + Number(g.monto));
-  }
-
-  const semanas: {
-    semana: number;
-    gastado: number;
-    acumulado: number;
-    rango: { desde: string; hasta: string } | null;
-  }[] = [];
-
-  let acumuladoSemanal = previoAlArranque;
-  for (const [semana, gastado] of [...porSemana.entries()].sort(
-    (a, b) => a[0] - b[0]
-  )) {
-    acumuladoSemanal += gastado;
-    semanas.push({
-      semana,
-      gastado,
-      acumulado: acumuladoSemanal,
-      rango: rangoDeSemana(semana, obra.fecha_inicio),
-    });
-  }
-
-  // Se acumula del más viejo al más nuevo, pero se lista al revés: la semana
-  // en curso arriba, igual que en el resto de los listados.
-  semanas.reverse();
 
   return (
     <AppShell>
@@ -232,133 +153,12 @@ export default async function FlujoPage({
       </section>
 
       <section style={ui.panelConMargen}>
-        <h3 style={ui.sectionTitle}>Mes a mes</h3>
+        <div style={ui.toolbar}>
+          <h3 style={{ ...ui.sectionTitle, margin: 0 }}>Mes a mes</h3>
+          <span style={ui.note}>Tocá un mes para ver su semana a semana.</span>
+        </div>
 
-        <GraficoBarras
-          datos={meses.map((m) => ({
-            etiqueta: m.etiqueta,
-            valores: [m.gastado, m.ingresado],
-          }))}
-          series={[
-            { nombre: "Gastos", color: "#111827" },
-            { nombre: "Ingresos a la cuenta", color: "#93b8e8" },
-          ]}
-          formato={formatMoney}
-        />
-
-        {meses.length > 0 && (
-          <table style={{ ...ui.table, marginTop: "28px" }}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Mes</th>
-                <th style={ui.thRight}>Gastos</th>
-                <th style={ui.thRight}>Ingresos a la cuenta</th>
-                <th style={ui.thRight}>Gastado acumulado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {meses.map((m) => (
-                <tr key={m.clave}>
-                  <td style={ui.td}>{m.etiqueta}</td>
-                  <td style={ui.tdRight}>
-                    {m.gastado > 0 ? (
-                      <strong>{formatMoney(m.gastado)}</strong>
-                    ) : (
-                      <span style={{ color: "#bbbbbb" }}>—</span>
-                    )}
-                  </td>
-                  <td style={ui.tdRight}>
-                    {m.ingresado > 0 ? (
-                      formatMoney(m.ingresado)
-                    ) : (
-                      <span style={{ color: "#bbbbbb" }}>—</span>
-                    )}
-                  </td>
-                  <td style={ui.tdRight}>{formatMoney(m.acumulado)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td style={tdTotal}>Total</td>
-                <td style={tdTotalRight}>{formatMoney(totalGastado)}</td>
-                <td style={tdTotalRight}>{formatMoney(totalIngresado)}</td>
-                <td style={tdTotalRight}>—</td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
-
-        <p style={{ ...ui.note, marginTop: "16px", marginBottom: 0 }}>
-          Los ingresos son lo que entró a la cuenta de la obra; muchos gastos
-          los paga una socia de su bolsillo sin pasar por ahí, así que las dos
-          columnas no se restan entre sí.
-        </p>
-      </section>
-
-      {semanas.length > 0 && (
-        /* Acordeón: la semana es el detalle fino, y con medio año de obra son
-           veinte filas. Los meses quedan arriba, que es la lectura que se
-           viene a buscar. */
-        <details style={ui.panelConMargen}>
-          <summary style={resumenSemanas}>
-            <span style={contenidoResumen}>
-              <span style={tituloSemanas}>Semana a semana</span>
-              <span style={ui.note}>{semanas.length} semanas con gastos</span>
-            </span>
-          </summary>
-
-          <table style={{ ...ui.table, marginTop: "16px" }}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Semana</th>
-                <th style={ui.th}>Del</th>
-                <th style={ui.thRight}>Gastos</th>
-                <th style={ui.thRight}>Gastado acumulado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {semanas.map((s) => (
-                <tr key={s.semana}>
-                  <td style={ui.td}>
-                    <strong>Semana {s.semana}</strong>
-                    {s.semana === semanaActual && (
-                      <span style={tagActual}>En curso</span>
-                    )}
-                  </td>
-                  <td style={ui.td}>
-                    {s.rango
-                      ? `${formatDate(s.rango.desde)} al ${formatDate(s.rango.hasta)}`
-                      : "—"}
-                  </td>
-                  <td style={ui.tdRight}>
-                    <strong>{formatMoney(s.gastado)}</strong>
-                  </td>
-                  <td style={ui.tdRight}>{formatMoney(s.acumulado)}</td>
-                </tr>
-              ))}
-
-              {/* Va última porque la tabla se lee de la semana en curso hacia
-                  atrás, y esto es lo más viejo de todo. */}
-              {previoAlArranque > 0 && (
-                <tr>
-                  <td style={ui.td}>
-                    <span style={ui.tagPrevio}>Previo al arranque</span>
-                  </td>
-                  <td style={ui.td}>Acopios, anticipos y señas</td>
-                  <td style={ui.tdRight}>
-                    <strong>{formatMoney(previoAlArranque)}</strong>
-                  </td>
-                  <td style={ui.tdRight}>{formatMoney(previoAlArranque)}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </details>
-      )}
-
-      {meses.length === 0 && (
-        <section style={ui.panelConMargen}>
+        {meses.length === 0 ? (
           <p style={ui.vacio}>
             Todavía no hay gastos ni ingresos cargados en esta obra. Cargá el
             primero en{" "}
@@ -367,51 +167,46 @@ export default async function FlujoPage({
             </Link>
             .
           </p>
-        </section>
-      )}
+        ) : (
+          <>
+            {/* Los meses vacíos no llevan enlace: entrar a un mes sin nada sería
+                una pantalla en blanco. */}
+            <GraficoBarras
+              datos={meses.map((m) => ({
+                etiqueta: m.etiqueta,
+                valores: [m.gastado, m.ingresado],
+                marca: m.marca,
+                href:
+                  m.gastado > 0 || m.ingresado > 0
+                    ? `/obras/${obra.slug}/flujo/${m.clave}`
+                    : undefined,
+              }))}
+              series={[
+                { nombre: "Gastos", color: "#111827" },
+                { nombre: "Ingresos a la cuenta", color: "#93b8e8" },
+              ]}
+              formato={formatMoney}
+              formatoEje={formatMoneyEje}
+            />
+
+            <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
+              {marcarArranque && (
+                <>
+                  A la izquierda del arranque no hay obra: son acopios de
+                  material, anticipos e impuestos del terreno, que se vienen
+                  pagando desde antes de empezar.{" "}
+                </>
+              )}
+              Los ingresos son lo que entró a la cuenta de la obra; muchos gastos
+              los paga una socia de su bolsillo sin pasar por ahí, así que las
+              dos columnas no se restan entre sí.
+            </p>
+          </>
+        )}
+      </section>
     </AppShell>
   );
 }
-
-const tdTotal = {
-  padding: "14px 12px",
-  borderTop: "2px solid #111111",
-  color: "#111111",
-  fontWeight: 600,
-};
-
-const tdTotalRight = {
-  ...tdTotal,
-  textAlign: "right" as const,
-};
-
-const resumenSemanas = {
-  cursor: "pointer",
-};
-
-// El contenido va en un span aparte: darle display al summary borra el
-// triangulito nativo, que es la señal de que el bloque se abre.
-const contenidoResumen = {
-  display: "inline-flex",
-  alignItems: "baseline",
-  gap: "14px",
-  width: "calc(100% - 28px)",
-  verticalAlign: "middle" as const,
-};
-
-const tituloSemanas = {
-  fontSize: "18px",
-};
-
-const tagActual = {
-  marginLeft: "8px",
-  background: "#f2f2f2",
-  color: "#555555",
-  padding: "2px 6px",
-  fontSize: "11px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-};
 
 const enlace = {
   color: "#111111",

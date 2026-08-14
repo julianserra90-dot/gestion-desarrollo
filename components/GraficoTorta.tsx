@@ -21,19 +21,7 @@
  */
 
 import Link from "next/link";
-
-const PALETA = [
-  "#111827",
-  "#2563eb",
-  "#16a34a",
-  "#d97706",
-  "#dc2626",
-  "#7c3aed",
-  "#0891b2",
-  "#db2777",
-  "#65a30d",
-  "#6b7280",
-];
+import { PALETA_RUBROS as PALETA } from "@/lib/paleta-rubros";
 
 /** Cuánto se aclara cada parte respecto de la anterior. */
 const PASO_DE_TONO = 0.34;
