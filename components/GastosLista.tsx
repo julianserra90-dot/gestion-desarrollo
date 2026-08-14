@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import DetalleDeGasto from "@/components/DetalleDeGasto";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -306,18 +305,12 @@ export default function GastosLista({
                         (gasto.proveedor ?? "—")
                       )}
                     </td>
-                    {/* Un ajuste de saldo no es trabajo de obra: no lleva
-                        semana, sólo su rótulo fijo. */}
+                    {/* Sólo lo que se escribió, y si no se escribió nada la
+                        celda queda vacía. La semana no se muestra: sale de la
+                        fecha y su trabajo es agrupar en el flujo, no ocupar
+                        lugar acá. El buscador sí la encuentra ("semana 11"). */}
                     <td style={celda}>
-                      {ajuste ? (
-                        gasto.concepto
-                      ) : (
-                        <DetalleDeGasto
-                          fecha={gasto.fecha}
-                          inicioObra={inicioObra}
-                          concepto={gasto.concepto}
-                        />
-                      )}
+                      {gasto.concepto}
                       {anulado && <span style={tagAnulado}>Anulado</span>}
                     </td>
                     <td style={{ ...celda, ...compacta }}>

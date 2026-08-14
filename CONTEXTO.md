@@ -359,16 +359,16 @@ que entra al acumulado para que la columna cierre con el total.
 La semana se muestra debajo de la fecha, no en su propia columna: es la misma
 respuesta contada de otra manera. También la encuentra el buscador ("semana 22").
 
-**La semana se muestra en Detalle**, como etiqueta delante del texto libre
-(`components/DetalleDeGasto.tsx`): es como se nombra el pago —"Semana 22 · Hugo"—
-y es lo que antes se escribía a mano ahí adentro, donde era texto suelto. Debajo
-de la fecha no va nada: tenerla en los dos lugares era decir dos veces lo mismo.
-Lo anterior al arranque dice "Previo al arranque", así la columna nunca queda
-muda. Un ajuste de saldo no lleva semana: no es trabajo de obra.
+**La semana no se muestra en el listado de gastos.** Se calcula de la fecha y su
+trabajo es agrupar en el flujo; en la tabla no ocupa lugar. La columna Detalle
+tiene sólo lo que se escribió, y si no se escribió nada **queda vacía** —tampoco
+va "Previo al arranque"—. El buscador sí la encuentra: "semana 11" filtra igual
+aunque no esté a la vista.
 
-El mismo componente se usa en las cuatro tablas que muestran gastos —Gastos, el
-detalle del rubro, el del proveedor y Dólares—. Es puro, así que sirve igual en
-el listado, que corre en el cliente, y en las de servidor.
+Se probó al revés, con una etiqueta "Semana 22" delante del texto en las cuatro
+tablas de gastos (había un `DetalleDeGasto` para eso). Con datos reales quedaba
+al lado del texto que uno escribe, que muchas veces dice lo mismo, y la columna
+se veía cargada de una información que ya está en la fecha.
 
 **Y el detalle es opcional.** Era obligatorio y casi siempre terminaba siendo la
 semana escrita a mano; con la fecha, el rubro, el destino y el monto el gasto ya
