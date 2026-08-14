@@ -416,7 +416,7 @@ export type Database = {
           comprobante_nombre: string | null
           comprobante_path: string | null
           comprobante_tamano: number | null
-          concepto: string
+          concepto: string | null
           cotizacion: number | null
           cotizacion_manual: boolean
           creado_en: string
@@ -450,7 +450,7 @@ export type Database = {
           comprobante_nombre?: string | null
           comprobante_path?: string | null
           comprobante_tamano?: number | null
-          concepto: string
+          concepto?: string | null
           cotizacion?: number | null
           cotizacion_manual?: boolean
           creado_en?: string
@@ -484,7 +484,7 @@ export type Database = {
           comprobante_nombre?: string | null
           comprobante_path?: string | null
           comprobante_tamano?: number | null
-          concepto?: string
+          concepto?: string | null
           cotizacion?: number | null
           cotizacion_manual?: boolean
           creado_en?: string

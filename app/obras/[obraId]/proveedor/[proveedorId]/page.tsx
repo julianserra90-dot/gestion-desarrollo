@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import DetalleDeGasto from "@/components/DetalleDeGasto";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
@@ -171,7 +172,13 @@ export default async function ProveedorDetalle({
                   <td style={ui.td}>{formatDate(gasto.fecha)}</td>
                   <td style={ui.td}>{gasto.rubros?.nombre ?? "—"}</td>
                   <td style={ui.td}>{gasto.tipo_gasto}</td>
-                  <td style={ui.td}>{gasto.concepto}</td>
+                  <td style={ui.td}>
+                    <DetalleDeGasto
+                      fecha={gasto.fecha}
+                      inicioObra={obra.fecha_inicio}
+                      concepto={gasto.concepto}
+                    />
+                  </td>
                   <td style={ui.td}>
                     <EtiquetaComprobante
                       tipoFactura={gasto.tipo_factura}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import DetalleDeGasto from "@/components/DetalleDeGasto";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -10,7 +11,8 @@ import { semanaDeObra } from "@/lib/semanas";
 export type GastoFila = {
   id: string;
   fecha: string;
-  concepto: string;
+  /** Aclaración libre, opcional: puede venir vacío. */
+  concepto: string | null;
   monto: number;
   montoCaja: number;
   tipoFactura: string | null;
@@ -264,27 +266,17 @@ export default function GastosLista({
                 const anulado = gasto.estado === "Anulado";
                 const ajuste = gasto.tipoGasto === "Ajuste de saldo";
                 const celda = anulado ? tdAnulado : ajuste ? tdAjuste : ui.td;
-                const semana = semanaDeObra(gasto.fecha, inicioObra);
 
                 return (
                   <tr
                     key={gasto.id}
                     style={ajuste && !anulado ? filaAjuste : undefined}
                   >
-                    {/* La semana de obra va debajo de la fecha en vez de en su
-                        propia columna: es la misma respuesta contada de otra
-                        manera, y una columna más para eso sobraba. */}
+                    {/* Sólo la fecha: la semana sale de ella y se muestra en
+                        Detalle, que es donde se nombra el pago. Tenerla en los
+                        dos lugares era decir dos veces lo mismo. */}
                     <td style={{ ...celda, ...compacta }}>
                       {formatDate(gasto.fecha)}
-                      {semana !== null ? (
-                        <div style={semanaChica}>Semana {semana}</div>
-                      ) : (
-                        inicioObra && (
-                          <div style={{ marginTop: "4px" }}>
-                            <span style={ui.tagPrevio}>Previo al arranque</span>
-                          </div>
-                        )
-                      )}
                     </td>
                     <td style={{ ...celda, ...compacta }}>
                       {gasto.rubro ?? "—"}
@@ -314,8 +306,18 @@ export default function GastosLista({
                         (gasto.proveedor ?? "—")
                       )}
                     </td>
+                    {/* Un ajuste de saldo no es trabajo de obra: no lleva
+                        semana, sólo su rótulo fijo. */}
                     <td style={celda}>
-                      {gasto.concepto}
+                      {ajuste ? (
+                        gasto.concepto
+                      ) : (
+                        <DetalleDeGasto
+                          fecha={gasto.fecha}
+                          inicioObra={inicioObra}
+                          concepto={gasto.concepto}
+                        />
+                      )}
                       {anulado && <span style={tagAnulado}>Anulado</span>}
                     </td>
                     <td style={{ ...celda, ...compacta }}>
@@ -475,11 +477,7 @@ const aporteCuenta = {
   marginTop: "4px",
 };
 
-const semanaChica = {
-  fontSize: "12px",
-  color: "#999999",
-  marginTop: "4px",
-};
+
 
 // Las columnas cortas no se parten: el ancho que sobra se lo queda el detalle,
 // que es lo único que se escribe largo.

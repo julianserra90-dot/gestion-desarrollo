@@ -94,7 +94,9 @@ export default async function IngresosPage({
       // que la cuenta se hizo cargo de todo.
       etiqueta:
         Number(g.monto_caja) < Number(g.monto) ? "Gasto (parcial)" : "Gasto",
-      detalle: g.concepto,
+      // El detalle del gasto es opcional, pero acá es el texto del enlace a
+      // editarlo: sin nada no habría dónde hacer clic.
+      detalle: g.concepto ?? "Sin detalle",
       quien: g.proveedores?.nombre ?? "—",
       ars: -Number(g.caja_ars),
       usd: -Number(g.caja_usd),

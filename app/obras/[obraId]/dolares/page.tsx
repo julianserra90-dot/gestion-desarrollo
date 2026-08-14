@@ -1,4 +1,5 @@
 import AppShell from "@/components/AppShell";
+import DetalleDeGasto from "@/components/DetalleDeGasto";
 import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
@@ -463,7 +464,13 @@ export default async function DolaresPage({
                 <tr key={gasto.id}>
                   <td style={ui.td}>{formatDate(gasto.fecha)}</td>
                   <td style={ui.td}>{gasto.rubros?.nombre ?? "—"}</td>
-                  <td style={ui.td}>{gasto.concepto}</td>
+                  <td style={ui.td}>
+                    <DetalleDeGasto
+                      fecha={gasto.fecha}
+                      inicioObra={obra.fecha_inicio}
+                      concepto={gasto.concepto}
+                    />
+                  </td>
                   <td style={ui.td}>
                     {gasto.empresa}
                     {(gasto.pagadora?.nombre || gasto.compartido) &&

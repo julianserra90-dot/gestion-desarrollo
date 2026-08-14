@@ -219,10 +219,12 @@ export async function crearGasto(formData: FormData) {
   const esAjuste = tipoGasto === "Ajuste de saldo";
   const { compartido, empresaPagadora } = leerQuienPago(formData, esAjuste);
   const factura = leerComprobante(formData, esAjuste);
-  // Todos los ajustes llevan el mismo detalle, venga lo que venga del form.
+  // Todos los ajustes llevan el mismo detalle, venga lo que venga del form. El
+  // resto es opcional, y vacío se guarda como `null`: un dato que no se cargó,
+  // no una cadena en blanco.
   const concepto = esAjuste
     ? "Ajuste de saldo"
-    : String(formData.get("concepto") ?? "").trim();
+    : String(formData.get("concepto") ?? "").trim() || null;
   const receptora = String(formData.get("empresa_receptora_id") ?? "");
   const observaciones = String(formData.get("observaciones") ?? "").trim();
   const comprobante = formData.get("comprobante");
@@ -234,7 +236,6 @@ export async function crearGasto(formData: FormData) {
       `/obras/${slug}/gastos/nuevo?error=${encodeURIComponent(mensaje)}`
     );
 
-  if (!concepto) volver("Poné un detalle para el gasto.");
   // Con dinero en cuenta puede no hacer falta ninguna: se pide más abajo, sólo
   // si una empresa agregó algo de su bolsillo.
   if (!usarCaja && !empresaPagadora && !compartido) {
@@ -361,10 +362,12 @@ export async function actualizarGasto(formData: FormData) {
   const esAjuste = tipoGasto === "Ajuste de saldo";
   const { compartido, empresaPagadora } = leerQuienPago(formData, esAjuste);
   const factura = leerComprobante(formData, esAjuste);
-  // Todos los ajustes llevan el mismo detalle, venga lo que venga del form.
+  // Todos los ajustes llevan el mismo detalle, venga lo que venga del form. El
+  // resto es opcional, y vacío se guarda como `null`: un dato que no se cargó,
+  // no una cadena en blanco.
   const concepto = esAjuste
     ? "Ajuste de saldo"
-    : String(formData.get("concepto") ?? "").trim();
+    : String(formData.get("concepto") ?? "").trim() || null;
   const receptora = String(formData.get("empresa_receptora_id") ?? "");
   const observaciones = String(formData.get("observaciones") ?? "").trim();
   const comprobante = formData.get("comprobante");
@@ -377,7 +380,6 @@ export async function actualizarGasto(formData: FormData) {
       `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(mensaje)}`
     );
 
-  if (!concepto) volver("Poné un detalle para el gasto.");
   if (!usarCaja && !empresaPagadora && !compartido) {
     volver("Elegí qué empresa pagó el gasto.");
   }

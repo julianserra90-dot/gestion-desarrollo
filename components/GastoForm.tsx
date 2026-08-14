@@ -66,7 +66,7 @@ export type GastoExistente = {
   proveedor_id: string | null;
   empresa_receptora_id: string | null;
   tipo_gasto: string;
-  concepto: string;
+  concepto: string | null;
   tipo_pago: string;
   tipo_factura: string | null;
   alicuota_iva: number | null;
@@ -193,6 +193,8 @@ export default function GastoForm({
     gasto?.cotizacion_manual ? String(gasto.cotizacion ?? "") : ""
   );
 
+  // La semana sale de la fecha y no se carga: todos los gastos quedan
+  // identificados igual, sin depender de que alguien se acuerde de marcarla.
   const semanaObra = semanaDeObra(fecha, inicioObra);
 
   // Un ajuste de saldo no compra nada: es plata que pasa de una socia a otra.
@@ -732,14 +734,19 @@ export default function GastoForm({
                   <div style={campoFijo}>{AJUSTE}</div>
                 </>
               ) : (
-                <input
-                  type="text"
-                  name="concepto"
-                  defaultValue={gasto?.concepto ?? ""}
-                  placeholder="Ej: Hormigón para platea"
-                  required
-                  style={ui.input}
-                />
+                <>
+                  {/* Opcional: con la fecha, el rubro, el destino y el monto el
+                      gasto ya está identificado. El texto queda para lo que
+                      haga falta aclarar —antes era obligatorio y terminaba
+                      siendo la semana escrita a mano, que ahora sale sola—. */}
+                  <input
+                    type="text"
+                    name="concepto"
+                    defaultValue={gasto?.concepto ?? ""}
+                    placeholder="Opcional: qué se compró o para qué"
+                    style={ui.input}
+                  />
+                </>
               )}
             </div>
 
@@ -1267,6 +1274,7 @@ const ayudaCampo = {
   fontSize: "13px",
   color: "#999999",
 };
+
 
 const textarea = {
   ...ui.input,
