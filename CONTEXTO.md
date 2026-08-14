@@ -560,9 +560,17 @@ Cada rubro se **desglosa por tipo de gasto** dentro de su propia porción, en
 **tonos del mismo color**: si Albañilería es verde, su material y su mano de obra
 son dos verdes. El tono dice "esto sigue siendo albañilería" y el corte dice
 "hasta acá fue material" — con colores distintos se perdía a qué rubro pertenecía
-cada pedazo. La leyenda repite el desglose indentado bajo el rubro. Con un solo
-tipo no se desglosa: partir una porción en una sola parte no dice nada. El lote
-tampoco, que es una compra sola.
+cada pedazo. La leyenda repite el desglose indentado bajo el rubro, atrás de un
+"+".
+
+El "+" aparece **aunque el rubro tenga un solo tipo**. Al principio se desglosaba
+sólo con dos o más —partir una porción en una sola parte no cambia nada en el
+anillo—, pero en pantalla quedaban rubros con "+" y rubros sin, y a los que no lo
+tenían parecía faltarles algo: en 3 De Febrero, Instalación sanitaria y Eléctrica
+son mano de obra pura y no se podían abrir. Que todo un rubro haya sido mano de
+obra es un dato. El anillo sigue igual (un arco solo es la porción entera, y el
+primer tono es el color base); lo que cambia es que se puede abrir. El lote no
+lleva desglose, que es una compra sola.
 
 `aclarar()` mezcla el color con blanco (0 lo deja igual, 1 lo vuelve blanco); el
 paso entre tonos es 0,34. Lo que las partes no cubran —un ajuste de saldo, que no

@@ -16,8 +16,11 @@
  * mismo color** —el tono dice "esto sigue siendo albañilería" y el corte dice
  * "hasta acá fue material"—. En la leyenda el desglose arranca cerrado, atrás
  * de un "+": es detalle, no compite con la lectura principal. Es un `details`
- * nativo porque este componente corre en el servidor. Con un solo tipo no se
- * desglosa, que sería partir una porción en una sola parte.
+ * nativo porque este componente corre en el servidor.
+ *
+ * El "+" aparece aunque el rubro tenga **un solo tipo**: que toda la instalación
+ * sanitaria haya sido mano de obra es un dato, y si unos rubros lo muestran y
+ * otros no, al que no lo tiene parece faltarle algo.
  */
 
 import Link from "next/link";
@@ -70,11 +73,15 @@ export default function GraficoTorta({
     const base = PALETA[i % PALETA.length];
     const conValor = (d.partes ?? []).filter((p) => p.valor > 0);
 
-    // Una sola parte es el rubro entero: desglosarlo no diría nada.
-    const partes =
-      conValor.length > 1
-        ? conValor.map((p, j) => ({ ...p, color: aclarar(base, j * PASO_DE_TONO) }))
-        : [];
+    // El desglose se arma siempre que haya algo, aunque sea un solo tipo: que
+    // toda la instalación sanitaria haya sido mano de obra es un dato, y si
+    // unos rubros muestran el "+" y otros no, el que no lo tiene parece que le
+    // falta. En el anillo no cambia nada —un arco solo es la porción entera, y
+    // el primer tono es el color base—; lo que cambia es que se puede abrir.
+    const partes = conValor.map((p, j) => ({
+      ...p,
+      color: aclarar(base, j * PASO_DE_TONO),
+    }));
 
     return {
       ...d,
