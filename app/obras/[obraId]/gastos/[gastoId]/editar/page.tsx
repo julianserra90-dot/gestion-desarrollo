@@ -58,6 +58,19 @@ export default async function EditarGastoPage({
       getPresupuestosDeObra(obra.id),
     ]);
 
+  // El catálogo de materiales y el detalle ya cargado de este gasto.
+  const [{ data: materiales }, { data: items }] = await Promise.all([
+    supabase
+      .from("materiales")
+      .select("id, nombre, unidad, rubro_id")
+      .order("nombre"),
+    supabase
+      .from("gasto_materiales")
+      .select("material_id, cantidad, precio_unitario")
+      .eq("gasto_id", gasto.id)
+      .order("orden"),
+  ]);
+
   const cotizacion = await getCotizacionActual();
   const caja = await getCaja(obra.id);
 
@@ -114,6 +127,17 @@ export default async function EditarGastoPage({
         gasto={gasto}
         cotizacion={cotizacion?.promedio ?? null}
         inicioObra={obra.fecha_inicio}
+        materiales={(materiales ?? []).map((m) => ({
+          id: m.id,
+          nombre: m.nombre,
+          unidad: m.unidad,
+          rubroId: m.rubro_id,
+        }))}
+        itemsIniciales={(items ?? []).map((i) => ({
+          materialId: i.material_id,
+          cantidad: String(i.cantidad),
+          precio: i.precio_unitario === null ? "" : String(i.precio_unitario),
+        }))}
         textoBoton="Guardar cambios"
       />
 

@@ -51,6 +51,13 @@ export default async function NuevoGastoPage({
       getPresupuestosDeObra(obra.id),
     ]);
 
+  // El catálogo de materiales, para el detalle de la factura. Es común a todas
+  // las obras, igual que el de proveedores.
+  const { data: materiales } = await supabase
+    .from("materiales")
+    .select("id, nombre, unidad, rubro_id")
+    .order("nombre");
+
   const cotizacion = await getCotizacionActual();
   const caja = await getCaja(obra.id);
 
@@ -107,6 +114,12 @@ export default async function NuevoGastoPage({
           empresaFija={perfil?.empresa_id ?? undefined}
           cotizacion={cotizacion?.promedio ?? null}
           inicioObra={obra.fecha_inicio}
+          materiales={(materiales ?? []).map((m) => ({
+            id: m.id,
+            nombre: m.nombre,
+            unidad: m.unidad,
+            rubroId: m.rubro_id,
+          }))}
         />
       )}
     </AppShell>

@@ -50,6 +50,9 @@ const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
       { key: "fotos", label: "Fotos", path: "/fotos" },
       { key: "documentos", label: "Documentos", path: "/documentos" },
       { key: "rubros", label: "Rubros", path: "/rubros" },
+      // Qué material entró a la obra. Va en Obra y no en Economía: la plata de
+      // esas compras ya está en Gastos; acá interesan las cantidades.
+      { key: "materiales", label: "Materiales", path: "/materiales" },
     ],
   },
 ];

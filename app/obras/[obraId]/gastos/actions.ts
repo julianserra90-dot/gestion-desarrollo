@@ -210,6 +210,74 @@ function leerQuienPago(formData: FormData, esAjuste: boolean) {
   };
 }
 
+/**
+ * El detalle de materiales: qué se compró, cuánto y a cuánto.
+ *
+ * Viaja como tres listas paralelas —`item_material`, `item_cantidad`,
+ * `item_precio`— que se cruzan por posición: es como el navegador manda un
+ * campo repetido, y evita inventar un formato propio adentro de un input.
+ *
+ * El precio es opcional (a veces la factura no lo discrimina) pero el material
+ * y la cantidad no: una fila a medio llenar no se guarda, no se rechaza el
+ * gasto entero por eso.
+ */
+type ItemMaterial = {
+  material_id: string;
+  cantidad: number;
+  precio_unitario: number | null;
+  orden: number;
+};
+
+function leerItems(formData: FormData, esMateriales: boolean): ItemMaterial[] {
+  if (!esMateriales) return [];
+
+  const materiales = formData.getAll("item_material").map(String);
+  const cantidades = formData.getAll("item_cantidad").map(String);
+  const precios = formData.getAll("item_precio").map(String);
+
+  return materiales
+    .map((material_id, i) => ({
+      material_id,
+      cantidad: Number(cantidades[i] ?? 0),
+      precio_unitario:
+        (precios[i] ?? "").trim() === "" ? null : Number(precios[i]),
+      orden: i,
+    }))
+    .filter(
+      (item) =>
+        item.material_id !== "" &&
+        Number.isFinite(item.cantidad) &&
+        item.cantidad > 0
+    );
+}
+
+/**
+ * Guarda el detalle reemplazando el anterior entero.
+ *
+ * Borrar y volver a insertar es más simple que averiguar qué cambió, y no se
+ * pierde nada: los items no tienen historia propia —son el desglose de este
+ * gasto— y el `id` no lo referencia nadie.
+ */
+async function guardarItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  gastoId: string,
+  items: ItemMaterial[]
+) {
+  const { error: errorBorrado } = await supabase
+    .from("gasto_materiales")
+    .delete()
+    .eq("gasto_id", gastoId);
+
+  if (errorBorrado) return errorBorrado.message;
+  if (items.length === 0) return null;
+
+  const { error } = await supabase
+    .from("gasto_materiales")
+    .insert(items.map((item) => ({ ...item, gasto_id: gastoId })));
+
+  return error?.message ?? null;
+}
+
 export async function crearGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const obraId = String(formData.get("obra_id") ?? "");
@@ -308,38 +376,43 @@ export async function crearGasto(formData: FormData) {
     volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
   }
 
-  const { error } = await supabase.from("gastos").insert({
-    obra_id: obraId,
-    fecha,
-    // Un ajuste no lleva rubro ni proveedor: no se compró nada.
-    rubro_id: esAjuste || rubro === "" ? null : rubro,
-    concepto,
-    tipo_gasto: tipoGasto,
-    proveedor_id: esAjuste ? null : proveedor.id,
-    empresa_receptora_id: esAjuste ? receptora : null,
-    empresa_pagadora_id:
-      compartido || !loPoneAlguien ? null : empresaPagadora,
-    compartido: compartido && loPoneAlguien,
-    caja_ars: reparto?.ars ?? 0,
-    caja_usd: reparto?.usd ?? 0,
-    cotizacion_manual: caja.cotizacionManual !== null,
-    monto: montos.ars,
-    monto_usd: montos.usd,
-    cotizacion: montos.cotizacion,
-    tipo_pago: factura.tipo_pago,
-    tipo_factura: factura.tipo_factura,
-    alicuota_iva: factura.alicuota_iva,
-    empresa_factura_id: factura.empresa_factura_id,
-    moneda,
-    // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
-    estado: "Pagado",
-    observaciones: observaciones === "" ? null : observaciones,
-    cargado_por: user?.id ?? null,
-    comprobante_drive_id: archivoComprobante?.id ?? null,
-    comprobante_nombre: archivoComprobante?.nombre ?? null,
-    comprobante_mime: archivoComprobante?.mimeType ?? null,
-    comprobante_tamano: archivoComprobante?.tamano ?? null,
-  });
+  // Se pide el id de vuelta porque el detalle de materiales cuelga de él.
+  const { data: creado, error } = await supabase
+    .from("gastos")
+    .insert({
+      obra_id: obraId,
+      fecha,
+      // Un ajuste no lleva rubro ni proveedor: no se compró nada.
+      rubro_id: esAjuste || rubro === "" ? null : rubro,
+      concepto,
+      tipo_gasto: tipoGasto,
+      proveedor_id: esAjuste ? null : proveedor.id,
+      empresa_receptora_id: esAjuste ? receptora : null,
+      empresa_pagadora_id:
+        compartido || !loPoneAlguien ? null : empresaPagadora,
+      compartido: compartido && loPoneAlguien,
+      caja_ars: reparto?.ars ?? 0,
+      caja_usd: reparto?.usd ?? 0,
+      cotizacion_manual: caja.cotizacionManual !== null,
+      monto: montos.ars,
+      monto_usd: montos.usd,
+      cotizacion: montos.cotizacion,
+      tipo_pago: factura.tipo_pago,
+      tipo_factura: factura.tipo_factura,
+      alicuota_iva: factura.alicuota_iva,
+      empresa_factura_id: factura.empresa_factura_id,
+      moneda,
+      // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
+      estado: "Pagado",
+      observaciones: observaciones === "" ? null : observaciones,
+      cargado_por: user?.id ?? null,
+      comprobante_drive_id: archivoComprobante?.id ?? null,
+      comprobante_nombre: archivoComprobante?.nombre ?? null,
+      comprobante_mime: archivoComprobante?.mimeType ?? null,
+      comprobante_tamano: archivoComprobante?.tamano ?? null,
+    })
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     // Si falló guardar el gasto, se limpia el comprobante ya subido a Drive.
@@ -347,6 +420,25 @@ export async function crearGasto(formData: FormData) {
       await eliminarArchivo(archivoComprobante.id).catch(() => {});
     }
     volver(error.message);
+  }
+
+  // El gasto ya está guardado. Si el detalle falla, se avisa desde la pantalla
+  // de edición en vez de perder la carga entera: es el desglose, no el gasto.
+  if (creado) {
+    const problema = await guardarItems(
+      supabase,
+      creado.id,
+      leerItems(formData, tipoGasto === "Materiales")
+    );
+
+    if (problema) {
+      revalidatePath("/", "layout");
+      redirect(
+        `/obras/${slug}/gastos/${creado.id}/editar?error=${encodeURIComponent(
+          `El gasto se guardó, pero el detalle de materiales no: ${problema}`
+        )}`
+      );
+    }
   }
 
   revalidatePath("/", "layout");
@@ -499,6 +591,18 @@ export async function actualizarGasto(formData: FormData) {
   const seReemplazo = subidoAhora && actual.comprobante_drive_id;
   if ((seReemplazo || quitarComprobante) && actual.comprobante_drive_id) {
     await eliminarArchivo(actual.comprobante_drive_id).catch(() => {});
+  }
+
+  // El detalle se reemplaza entero. Si el gasto dejó de ser de materiales, la
+  // lista viene vacía y el desglose anterior se borra: ya no aplica.
+  const problema = await guardarItems(
+    supabase,
+    gastoId,
+    leerItems(formData, tipoGasto === "Materiales")
+  );
+
+  if (problema) {
+    volver(`El gasto se guardó, pero el detalle de materiales no: ${problema}`);
   }
 
   revalidatePath("/", "layout");

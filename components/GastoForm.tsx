@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import ItemsDeMaterial, {
+  type ItemCargado,
+  type MaterialOpcion,
+} from "@/components/ItemsDeMaterial";
 import * as ui from "@/components/ui";
 import { formatMoney, formatUSD } from "@/lib/format";
 import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
@@ -112,6 +116,8 @@ export default function GastoForm({
   gasto,
   cotizacion,
   inicioObra,
+  materiales = [],
+  itemsIniciales = [],
   textoBoton = "Guardar gasto",
 }: {
   action: (formData: FormData) => void;
@@ -133,6 +139,10 @@ export default function GastoForm({
   cotizacion?: number | null;
   /** Arranque de la obra: con eso la fecha elegida dice en qué semana cae. */
   inicioObra?: string | null;
+  /** El catálogo de materiales, para el detalle de un gasto de materiales. */
+  materiales?: MaterialOpcion[];
+  /** El detalle ya cargado, al editar. */
+  itemsIniciales?: ItemCargado[];
   textoBoton?: string;
 }) {
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
@@ -926,6 +936,27 @@ export default function GastoForm({
                       : "Se usa el dólar oficial de la fecha del gasto."}
                   </span>
                 )}
+              </div>
+            )}
+
+            {/* Sólo en una compra de materiales: la mano de obra no se
+                desglosa en items, y un ajuste de saldo no compra nada. Va
+                después del monto porque primero se dice cuánto salió la
+                factura y recién después qué tenía adentro. */}
+            {/* "Detallar materiales de compra" y no "Detalle": el campo de
+                arriba también se llama Detalle —el texto libre del gasto, que
+                es opcional— y dos cosas con el mismo nombre en la misma
+                pantalla se confunden. Esto es otra cosa: el control de qué
+                material entró a la obra. */}
+            {tipoGasto === "Materiales" && (
+              <div style={fieldAncho}>
+                <span style={labelCampo}>Detallar materiales de compra</span>
+                <ItemsDeMaterial
+                  materiales={materiales}
+                  rubroId={rubroId}
+                  slug={slug}
+                  iniciales={itemsIniciales}
+                />
               </div>
             )}
 
