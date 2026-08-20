@@ -1,8 +1,8 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
+import Volver from "@/components/Volver";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -100,6 +100,7 @@ export default async function ProveedorDetalle({
       <ObraHeader obra={obra} activeSection="gastos" />
 
       <section style={ui.sectionHeader}>
+        <Volver href={`/obras/${obra.slug}/gastos`}>Gastos</Volver>
         <p style={ui.eyebrow}>{proveedor.tipo}</p>
         <h2 style={ui.pageTitle}>{proveedor.nombre}</h2>
         {ficha && <p style={ui.subtitle}>{ficha}</p>}
@@ -198,12 +199,6 @@ export default async function ProveedorDetalle({
         )}
       </section>
 
-      <p style={{ ...ui.note, marginTop: "24px" }}>
-        <Link href={`/obras/${obra.slug}/gastos`} style={enlace}>
-          Volver a Gastos
-        </Link>
-        .
-      </p>
     </AppShell>
   );
 }
@@ -222,9 +217,4 @@ const tdTotal = {
 const tdTotalRight = {
   ...tdTotal,
   textAlign: "right" as const,
-};
-
-const enlace = {
-  color: "#111111",
-  textDecoration: "underline",
 };

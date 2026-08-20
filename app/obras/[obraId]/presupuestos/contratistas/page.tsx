@@ -1,7 +1,7 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
+import Volver from "@/components/Volver";
 import { getObraPorSlug } from "@/lib/obras";
 import { TIPOS_DE_PROVEEDOR } from "@/lib/proveedores-tipos";
 import { createClient } from "@/lib/supabase/server";
@@ -100,6 +100,7 @@ export default async function ContratistasPage({
       <ObraHeader obra={obra} activeSection="presupuestos" />
 
       <section style={ui.sectionHeader}>
+        <Volver href={`/obras/${obra.slug}/presupuestos`}>Presupuestos</Volver>
         <p style={ui.eyebrow}>Situación económica</p>
         <h2 style={ui.pageTitle}>Contratistas y proveedores</h2>
         <p style={ui.subtitle}>
@@ -119,15 +120,10 @@ export default async function ContratistasPage({
         </p>
       )}
 
+      {/* El "volver" salió de acá: vive arriba del título, en el mismo lugar
+          que en todas las pantallas de detalle. */}
       <div style={ui.toolbar}>
         <h3 style={ui.sectionTitle}>Agregar</h3>
-
-        <Link
-          href={`/obras/${obra.slug}/presupuestos`}
-          style={ui.secondaryButton}
-        >
-          Volver a presupuestos
-        </Link>
       </div>
 
       <section style={ui.panel}>

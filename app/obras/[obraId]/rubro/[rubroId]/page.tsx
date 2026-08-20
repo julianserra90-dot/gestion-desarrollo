@@ -3,6 +3,7 @@ import AppShell from "@/components/AppShell";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
+import Volver from "@/components/Volver";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { getPresupuestosDeObra } from "@/lib/presupuestos";
@@ -87,6 +88,10 @@ export default async function RubroDetalle({
       <ObraHeader obra={obra} activeSection="economia" />
 
       <section style={ui.sectionHeader}>
+        {/* "Balance" y no "Economía": es el nombre de la solapa que queda
+            marcada al llegar, y así todas las vueltas a esa pantalla se
+            llaman igual. */}
+        <Volver href={`/obras/${obra.slug}`}>Balance</Volver>
         <p style={ui.eyebrow}>En qué se gastó</p>
         <h2 style={ui.pageTitle}>{rubro.nombre}</h2>
         <p style={ui.subtitle}>
@@ -223,10 +228,6 @@ export default async function RubroDetalle({
         Lo cotizado sale de las cotizaciones aprobadas en{" "}
         <Link href={`/obras/${obra.slug}/presupuestos`} style={enlace}>
           Presupuestos
-        </Link>
-        .{" "}
-        <Link href={`/obras/${obra.slug}`} style={enlace}>
-          Volver a Economía
         </Link>
         .
       </p>
