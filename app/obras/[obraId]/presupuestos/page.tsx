@@ -93,6 +93,16 @@ export default async function PresupuestosPage({
 
   const totalCotizado = filas.reduce((acc, f) => acc + Number(f.cotizado), 0);
   const totalGastado = filas.reduce((acc, f) => acc + Number(f.gastado), 0);
+
+  // Lo que queda por pagar de lo aprobado. Sólo las filas con cotización —lo
+  // gastado en un rubro sin cotizar no descuenta de nada— y sólo los saldos
+  // positivos: un rubro que se pasó no devuelve plata para otro.
+  const totalRestante = filas
+    .filter((f) => Number(f.cotizado) > 0)
+    .reduce(
+      (acc, f) => acc + Math.max(Number(f.cotizado) - Number(f.gastado), 0),
+      0
+    );
   const pendientes = lista.filter((c) => c.estado === "Pendiente").length;
   const sinCotizar = filas.filter((f) => Number(f.cotizado) === 0).length;
 
@@ -116,11 +126,13 @@ export default async function PresupuestosPage({
           <p style={ui.label}>Gastado en esos rubros</p>
           <h3 style={ui.statNumber}>{formatMoney(totalGastado)}</h3>
         </div>
+        {/* El mismo número que la ficha "Resta pagar" del Balance, y calculado
+            igual: sólo lo que tiene cotización aprobada, y un rubro que se pasó
+            no compensa lo que falta en otro. */}
         <div style={ui.statCard}>
-          <p style={ui.label}>Diferencia</p>
-          <h3 style={{ ...ui.statNumber, ...estiloDiferencia(totalGastado - totalCotizado) }}>
-            {totalGastado > totalCotizado ? "+" : ""}
-            {formatMoney(totalGastado - totalCotizado)}
+          <p style={ui.label}>Restante</p>
+          <h3 style={{ ...ui.statNumber, ...estiloFalta }}>
+            {formatMoney(totalRestante)}
           </h3>
         </div>
         <div style={ui.statCard}>
@@ -233,12 +245,17 @@ export default async function PresupuestosPage({
                             <strong>{formatMoney(gastado)}</strong>
                           </span>
 
+                          {/* Lo aprobado menos lo pagado: el saldo que queda
+                              por poner. Va siempre en rojo —es plata que falta,
+                              no una diferencia a favor—, igual que en el
+                              Balance y en el detalle por rubro. Pasarse sale
+                              como negativo bajo el mismo rótulo: el signo ya lo
+                              dice. */}
                           <span style={dato}>
-                            <span style={datoLabel}>Diferencia</span>
+                            <span style={datoLabel}>Restante</span>
                             {cotizado > 0 ? (
-                              <strong style={estiloDiferencia(gastado - cotizado)}>
-                                {gastado > cotizado ? "+" : ""}
-                                {formatMoney(gastado - cotizado)}
+                              <strong style={estiloFalta}>
+                                {formatMoney(cotizado - gastado)}
                               </strong>
                             ) : (
                               <span style={sinDato}>—</span>
@@ -375,12 +392,10 @@ export default async function PresupuestosPage({
 const VERDE = "#15803d";
 const ROJO = "#b91c1c";
 
-// Gastar menos de lo cotizado es buena noticia; más, no.
-function estiloDiferencia(valor: number) {
-  if (valor > 0) return { color: ROJO };
-  if (valor < 0) return { color: VERDE };
-  return undefined;
-}
+// Lo que resta pagar va en rojo: es plata que todavía hay que poner, no una
+// diferencia a favor. Pasarse de lo cotizado sale como negativo bajo el mismo
+// rótulo y comparte el color, que el signo ya lo dice.
+const estiloFalta = { color: ROJO };
 
 const errorBox = {
   border: "1px solid #111111",
