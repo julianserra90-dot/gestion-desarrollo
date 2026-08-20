@@ -14,6 +14,7 @@ type Obra = {
   fecha_fin_estimada: string | null;
   presupuesto: number | null;
   valor_m2_usd: number | null;
+  valor_venta_m2_usd: number | null;
   domicilio: string | null;
   unidades_funcionales: number | null;
   pisos: number | null;
@@ -214,6 +215,24 @@ export default function ObraForm({
             <span style={ayudaCampo}>
               A cuántos dólares el metro se arrancó la obra. Con esto y la
               superficie, Estado compara contra lo que va dando de verdad.
+            </span>
+          </label>
+
+          <label style={field}>
+            <span style={label}>Valor de venta por m² (USD)</span>
+            <input
+              type="number"
+              name="valor_venta_m2_usd"
+              min="0"
+              step="1"
+              defaultValue={obra?.valor_venta_m2_usd ?? ""}
+              placeholder="Ej: 1800"
+              style={input}
+            />
+            <span style={ayudaCampo}>
+              A cuánto se espera vender el metro. Va sobre la superficie de
+              venta, que es lo que se cobra, y con el costo sale el beneficio
+              estimado.
             </span>
           </label>
         </div>

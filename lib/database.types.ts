@@ -825,6 +825,7 @@ export type Database = {
           ubicacion: string | null
           unidades_funcionales: number | null
           valor_m2_usd: number | null
+          valor_venta_m2_usd: number | null
         }
         Insert: {
           archivada_en?: string | null
@@ -853,6 +854,7 @@ export type Database = {
           ubicacion?: string | null
           unidades_funcionales?: number | null
           valor_m2_usd?: number | null
+          valor_venta_m2_usd?: number | null
         }
         Update: {
           archivada_en?: string | null
@@ -881,6 +883,7 @@ export type Database = {
           ubicacion?: string | null
           unidades_funcionales?: number | null
           valor_m2_usd?: number | null
+          valor_venta_m2_usd?: number | null
         }
         Relationships: []
       }

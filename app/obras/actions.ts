@@ -278,6 +278,7 @@ function leerDatosObra(formData: FormData) {
 
   const presupuesto = String(formData.get("presupuesto") ?? "").trim();
   const valorM2 = String(formData.get("valor_m2_usd") ?? "").trim();
+  const valorVenta = String(formData.get("valor_venta_m2_usd") ?? "").trim();
   const unidades = String(formData.get("unidades_funcionales") ?? "").trim();
   const pisos = String(formData.get("pisos") ?? "").trim();
 
@@ -295,6 +296,7 @@ function leerDatosObra(formData: FormData) {
     fecha_fin_estimada: texto("fecha_fin_estimada"),
     presupuesto: presupuesto === "" ? null : Number(presupuesto),
     valor_m2_usd: valorM2 === "" ? null : Number(valorM2),
+    valor_venta_m2_usd: valorVenta === "" ? null : Number(valorVenta),
     domicilio: texto("domicilio"),
     unidades_funcionales: unidades === "" ? null : Number(unidades),
     pisos: pisos === "" ? null : Number(pisos),

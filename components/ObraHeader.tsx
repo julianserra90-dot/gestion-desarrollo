@@ -34,6 +34,9 @@ const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
       { key: "flujo", label: "Flujo", path: "/flujo" },
       { key: "lote", label: "Lote", path: "/lote" },
       { key: "dolares", label: "Dólares", path: "/dolares" },
+      // Última porque es la conclusión: si el negocio cierra. Las de antes son
+      // la plata que se mueve; ésta, lo que queda al final.
+      { key: "beneficio", label: "Beneficio", path: "/beneficio" },
     ],
   },
   {
