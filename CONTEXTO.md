@@ -231,9 +231,9 @@ sin tener que cargar dos pagos. El centinela del desplegable es
 `PAGO_COMPARTIDO` en `lib/lote-tipos.ts`.
 
 ### La solapa Balance (Economía), de arriba abajo
-En este orden, todo a lo ancho y **sin párrafos explicativos**: las cinco
-tarjetas en una línea (Total gastado · Facturado · En efectivo · Dinero en
-cuenta · Crédito fiscal), el gráfico de torta, la ejecución presupuestaria en
+En este orden, todo a lo ancho y **sin párrafos explicativos**: las tarjetas en
+una línea (Total gastado · Facturado · En efectivo · Crédito fiscal · Dinero en
+cuenta · Resta pagar), el gráfico de torta, la ejecución presupuestaria en
 cuatro columnas, el **balance entre empresas** con su liquidación, y el
 **terreno** reducido a qué puso cada socia y —si el precio pactado no está
 saldado— cuánto le resta según su porcentaje.
@@ -242,7 +242,22 @@ La pantalla mostraba lo mismo varias veces: dos tablas de saldos, dos
 liquidaciones, y el desglose de la torta repetido en tarjetas. Se fue todo lo
 duplicado, más Plazos (vive en Estado) y Últimos gastos (vive en Gastos).
 
-**Las cinco tarjetas son enlaces**: llevan al listado de gastos con la columna
+Las tarjetas van en **orden de jerarquía**: el total gastado primero y al lado
+su desglose —facturado, en efectivo, crédito fiscal, que son partes de ese
+mismo total—, después el dinero en cuenta y al final **Resta pagar**, en rojo.
+Esa última es lo aprobado menos lo pagado de cada rubro **y tipo** (la
+cotización de la mano de obra no se mide contra lo gastado en materiales) y
+lleva a Presupuestos, que es donde está el desglose. Se probó como una tabla
+rubro por rubro en el Balance y sobraba, porque ese detalle ya estaba a un
+click.
+
+Dos cosas de ese número: un rubro que se pasó **no compensa** lo que falta en
+otro —no devuelve plata—, así que suma sólo lo que todavía hay que poner; y
+debajo va cuántas combinaciones no tienen cotización aprobada, porque hoy casi
+ningún material está cotizado y sin esa línea se lee como todo lo que falta de
+la obra.
+
+**Las tarjetas son enlaces**: llevan al listado de gastos con la columna
 Comprobante ya filtrada (`gastos?ver=efectivo`, `facturado`, `credito-fiscal`,
 `todos`), que es la pregunta que sigue al número —"¿en qué se fue todo eso en
 efectivo?"—. No hay pantallas nuevas: reusa el listado con sus filtros estilo
