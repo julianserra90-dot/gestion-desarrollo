@@ -242,6 +242,26 @@ La pantalla mostraba lo mismo varias veces: dos tablas de saldos, dos
 liquidaciones, y el desglose de la torta repetido en tarjetas. Se fue todo lo
 duplicado, más Plazos (vive en Estado) y Últimos gastos (vive en Gastos).
 
+**Las cinco tarjetas son enlaces**: llevan al listado de gastos con la columna
+Comprobante ya filtrada (`gastos?ver=efectivo`, `facturado`, `credito-fiscal`,
+`todos`), que es la pregunta que sigue al número —"¿en qué se fue todo eso en
+efectivo?"—. No hay pantallas nuevas: reusa el listado con sus filtros estilo
+Excel, así que al llegar se puede seguir acotando a mano. El atajo viaja como
+una **intención** y no como una lista de valores, porque cuáles existen depende
+de los datos de cada obra (una puede no tener ninguna factura C): se resuelven
+contra los que hay. La de Dinero en cuenta lleva a Ingresos, que es donde está
+su detalle.
+
+Ojo: la de **crédito fiscal** lleva a las facturas A —las únicas que lo
+discriminan—, pero el total que se ve ahí es lo facturado, no el IVA. El
+desglose del crédito en sí no está en el listado desde que se sacó la columna
+de IVA.
+
+El listado suma además el **total de lo que se está viendo** al lado del
+contador ("34 gastos de 36 · $ 43.250.000"). Deja afuera anulados y ajustes de
+saldo, igual que todos los totales de la app, así cuadra exacto con la tarjeta
+de la que se vino.
+
 **Lo que se perdió a propósito**: la tabla "Total por empresa" —obra + terreno
 sumados— y su liquidación consolidada. Resolvía un caso real: una socia pone el
 terreno entero y la otra compensa pagando la obra diaria, y las dos
@@ -454,6 +474,28 @@ paleta, pero cada gráfico la reparte según el orden en que le llegan los rubro
 y en Economía el lote ocupa un lugar y corre a todos los demás: albañilería sale
 azul allá y negra acá. Para unificarlo habría que darle al lote un color fijo
 —no es un rubro— y dejar que los rubros tomen la paleta por su propio orden.
+
+### Cómo se sale de una pantalla de detalle
+A un mes del flujo, a un rubro, a un proveedor, a los contratistas se entra
+desde otra pantalla y **no están en las solapas**, así que salir dependía del
+botón del navegador. Cada una lo resolvía a su manera —un botón a mitad de
+página, una nota gris al pie, o nada— y en el mes del flujo directamente no se
+encontraba.
+
+`components/Volver.tsx`: siempre el mismo, siempre **arriba del título**, con el
+nombre de adónde vuelve ("← Balance", "← Gastos", "← Flujo"). Dice adónde va y
+no "volver" a secas, que obliga a adivinar. La pantalla de destino se llama
+**Balance** —el nombre de la solapa que queda marcada al llegar— aunque su
+título grande diga "Economía": lo importante es que todas las vueltas al mismo
+lugar se llamen igual.
+
+**Gastos es un caso aparte**: es una solapa, así que normalmente no lleva
+vuelta —se sale por las mismas solapas—, pero entrando desde una tarjeta del
+Balance funciona como detalle y ahí sí la muestra. De eso se encarga el `ver` de
+la URL; un `ver` inventado se ignora y la pantalla abre sin filtro ni vuelta.
+
+Los formularios no llevan: ya tienen **Cancelar** al lado de Guardar, que es la
+salida que corresponde ahí.
 
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
