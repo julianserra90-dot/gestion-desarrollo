@@ -40,11 +40,6 @@ export default async function FotosPage({
   const rubros = Array.from(new Set(lista.map((r) => r.rubroNombre))).sort();
   const filtrados = rubro ? lista.filter((r) => r.rubroNombre === rubro) : lista;
 
-  const totalFotos = filtrados.reduce((acc, r) => acc + r.cantidad, 0);
-  const pendientes = filtrados.filter(
-    (r) => r.estado === "Pendiente de revisión"
-  ).length;
-
   return (
     <AppShell>
       <ObraHeader obra={obra} activeSection="fotos" />
@@ -63,25 +58,8 @@ export default async function FotosPage({
         </Link>
       </section>
 
-      <section style={ui.statsGrid}>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Registros</p>
-          <h3 style={ui.statNumber}>{filtrados.length}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Fotos cargadas</p>
-          <h3 style={ui.statNumber}>{totalFotos}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Rubros visibles</p>
-          <h3 style={ui.statNumber}>{rubro ? 1 : rubros.length}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Pendientes de revisión</p>
-          <h3 style={ui.statNumber}>{pendientes}</h3>
-        </div>
-      </section>
-
+      {/* Sin tarjetas de conteo: cuántos registros o cuántas fotos hay no le
+          sirve a nadie, y cada acordeón ya dice lo suyo ("2 fotos · 2 cargas"). */}
       {rubros.length > 0 && (
         <section style={filtros}>
           <Link
