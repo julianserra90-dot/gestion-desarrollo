@@ -81,6 +81,12 @@ rubros— y la lista es el detalle que se abre. En el encabezado va **sólo el
 monto**: con el nombre de quien cotizó al lado se cortaba, y el nombre ya está
 en la ficha al abrir, donde la aprobada aparece primera y en verde.
 
+La tercera columna es **Restante** —aprobado menos gastado, en rojo—, no
+"diferencia": lo que se quiere saber es cuánto falta poner. La ficha de arriba
+usa el mismo número que la de "Resta pagar" del Balance y se calcula igual
+(sólo lo cotizado, sólo saldos positivos); antes eran dos números distintos
+para la misma pregunta.
+
 De cada bloque se aprueba una (la elegida), que engancha con el
 proveedor/contratista de gastos. El gasto avisa si se pasa de lo cotizado, pero **no frena** (puede haber
 compra de urgencia). Dos números conviven: presupuesto **estimado** (manual, en
@@ -512,6 +518,55 @@ la URL; un `ver` inventado se ignora y la pantalla abre sin filtro ni vuelta.
 Los formularios no llevan: ya tienen **Cancelar** al lado de Guardar, que es la
 salida que corresponde ahí.
 
+### Beneficio estimado (si el negocio cierra)
+La app contestaba cuánto sale la obra, pero no si conviene. La solapa
+**Beneficio** (última de Economía) pone las dos patas juntas:
+
+    Venta estimada     = valor de venta por m² × superficie de **venta**
+    − Costo de obra    = objetivo por m² × superficie de **construcción**
+    − Terreno          = lo pactado + los gastos de la operación
+    = Beneficio, y el margen sobre la venta
+
+El **valor de venta** (`obras.valor_venta_m2_usd`) se carga a mano en Editar
+obra: es una estimación que se corrige con el mercado, no sale de ningún dato
+del sistema. Por eso es una columna suelta y no una vista.
+
+Va por m² de **venta** y no de construcción porque lo que se cobra es lo
+vendible. Y el costo de obra se mide contra el **objetivo**, no contra lo
+cotizado ni lo gastado: es el número con el que se decidió arrancar, está
+completo desde el día uno y no se mueve. Lo aprobado hoy cubre casi sólo mano
+de obra y lo gastado sube mientras la obra avanza; con cualquiera de los dos el
+beneficio saldría inflado. El terreno entra por lo pactado y no por lo pagado:
+el saldo también hay que ponerlo.
+
+Con cualquiera de las cuatro patas en falta **no muestra medio número**: dice
+qué hay que cargar. `lib/beneficio.ts` es puro y devuelve null en ese caso.
+
+Vive en Economía y no en Obra —donde estuvo un rato—: no habla de cómo va la
+construcción sino de si el negocio cierra. Es la pregunta del desarrollador, no
+la del director de obra. En **Estado** quedó lo otro: el valor del m² real
+(objetivo, cotizado, gastado, gastado por m² de venta) en cuatro números
+pelados. Se sacó de ahí la proyección "si sigue a este ritmo termina en", que
+con 4% de avance daba US$ 2.744 el metro contra un objetivo de 800: no servía
+para decidir nada. El cálculo sigue en `lib/metro-cuadrado.ts` por si vuelve.
+
+### Fotos por rubro
+Las fotos se agrupan **por rubro en acordeones cerrados** —"Albañilería · 2
+fotos · 2 cargas"—, y adentro va una carga por registro con sus miniaturas. Con
+varias cargas la lista de tarjetas era interminable. Con un solo rubro a la
+vista (filtrando por uno) el acordeón abre solo: cerrado sería una pantalla con
+una línea y nada más.
+
+El visor ampliado recorre todas las fotos con las flechas **en el orden en que
+se ven**: la lista plana se arma sobre el orden ya agrupado, o las flechas
+irían a otro lado que la vista.
+
+Ojo con el compilador de React acá: los `useCallback` atados a listas que se
+arman en el render lo obligan a saltear el componente entero
+(`react-hooks/preserve-manual-memoization`, que es **error** y no warning).
+Quedaron como funciones sueltas —de memoizar se encarga el compilador— y el
+efecto del teclado depende sólo de cuántas fotos hay, que es un número.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance
@@ -549,8 +604,8 @@ mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
-Ingresos, Flujo, Lote, Dólares) y **Obra** (Estado, Presupuestos, Avances,
-Fotos, Documentos, Rubros).
+Ingresos, Flujo, Lote, Dólares, Beneficio) y **Obra** (Estado, Presupuestos,
+Avances, Fotos, Documentos, Rubros).
 
 ## Flujo de trabajo entre dos máquinas
 
