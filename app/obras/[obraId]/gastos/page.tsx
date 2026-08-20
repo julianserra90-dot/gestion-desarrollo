@@ -11,6 +11,14 @@ import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
+// Tres y no cuatro: con la grilla de cuatro columnas de `ui` quedaba un hueco
+// al costado donde estaba la tarjeta que se sacó.
+const tresTarjetas = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: "16px",
+};
+
 /** Los atajos que llegan desde las tarjetas del Balance. */
 const VISTAS: VistaGastos[] = [
   "todos",
@@ -96,7 +104,9 @@ export default async function GastosPage({
         <h2 style={ui.pageTitle}>Gastos</h2>
       </section>
 
-      <section style={ui.statsGrid}>
+      {/* Sin la tarjeta "Gastos cargados": contar gastos no dice nada, y el
+          contador del listado ya lo tiene al lado del total de lo filtrado. */}
+      <section style={tresTarjetas}>
         <div style={ui.statCard}>
           <p style={ui.label}>Total gastado</p>
           <h3 style={ui.statNumber}>{formatMoney(total)}</h3>
@@ -108,10 +118,6 @@ export default async function GastosPage({
         <div style={ui.statCard}>
           <p style={ui.label}>En efectivo</p>
           <h3 style={ui.statNumber}>{formatMoney(totalEfectivo)}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Gastos cargados</p>
-          <h3 style={ui.statNumber}>{vigentes.length}</h3>
         </div>
       </section>
 

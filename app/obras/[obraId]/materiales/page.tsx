@@ -64,11 +64,14 @@ export default async function MaterialesPage({
       .from("materiales")
       .select("id, nombre, unidad, rubro_id")
       .order("nombre"),
+    // Alfabético y no por el orden del catálogo (que es la secuencia de obra:
+    // preliminares, demoliciones, excavaciones…): acá no se sigue la obra, se
+    // busca un rubro puntual en una lista larga.
     supabase
       .from("rubros")
       .select("id, nombre")
       .is("obra_id", null)
-      .order("orden"),
+      .order("nombre"),
     // `!inner` para poder filtrar por la obra del gasto: sin eso traería el
     // detalle de todas las obras. Los anulados no entraron a la obra.
     supabase
@@ -90,9 +93,9 @@ export default async function MaterialesPage({
   const listaRubros = rubros ?? [];
   const nombreRubro = new Map(listaRubros.map((r) => [r.id, r.nombre]));
 
-  // El catálogo agrupado por rubro, en el orden del catálogo de rubros —el de
-  // la obra, no alfabético— y con los sueltos al final. Un rubro sin
-  // materiales no aparece: sería un acordeón vacío.
+  // El catálogo agrupado por rubro, alfabético (los rubros vienen ordenados
+  // así de la consulta) y con los sueltos al final. Un rubro sin materiales no
+  // aparece: sería un acordeón vacío.
   const grupos = [
     ...listaRubros
       .map((r) => ({
@@ -150,11 +153,13 @@ export default async function MaterialesPage({
     porRubro.set(rubro, delRubro);
   }
 
-  // El rubro con más plata en materiales primero: es donde se mira.
+  // Todo alfabético, rubros y materiales: a esta pantalla se viene a buscar
+  // uno puntual —"¿cuántos ladrillos llevamos?"— y ordenar por lo que pesa
+  // obliga a leer la lista entera para encontrarlo.
   const consumo = [...porRubro.entries()]
     .map(([rubro, materiales]) => {
-      const filas = [...materiales.values()].sort(
-        (a, b) => b.costo - a.costo || a.material.localeCompare(b.material)
+      const filas = [...materiales.values()].sort((a, b) =>
+        a.material.localeCompare(b.material)
       );
 
       return {
@@ -163,7 +168,7 @@ export default async function MaterialesPage({
         costo: filas.reduce((acc, f) => acc + f.costo, 0),
       };
     })
-    .sort((a, b) => b.costo - a.costo || a.rubro.localeCompare(b.rubro));
+    .sort((a, b) => a.rubro.localeCompare(b.rubro));
 
   return (
     <AppShell>
