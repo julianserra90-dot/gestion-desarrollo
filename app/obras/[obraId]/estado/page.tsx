@@ -9,7 +9,7 @@ import {
 } from "@/lib/avances";
 import { formatDate, formatUSD } from "@/lib/format";
 import { getLote, incidenciaPorM2 } from "@/lib/lote";
-import { calcularValorM2, leerDesvioM2 } from "@/lib/metro-cuadrado";
+import { calcularValorM2 } from "@/lib/metro-cuadrado";
 import { getObraPorSlug } from "@/lib/obras";
 import {
   superficieConstruccion,
@@ -82,7 +82,6 @@ export default async function EstadoDeObraPage({
   );
 
   const desvio = leerDesvio(plazo.desvio);
-  const lecturaM2 = leerDesvioM2(m2);
 
   // La ficha muestra sólo lo que está cargado: una tarjeta con "—" ocupa el
   // mismo lugar que un dato y no dice nada.
@@ -257,17 +256,14 @@ export default async function EstadoDeObraPage({
           </p>
         ) : (
           <>
+            {/* Tres números y nada más. Estaba además la proyección al ritmo
+                actual —"si sigue así termina en tanto"— y se sacó: con 4% de
+                avance proyectaba US$ 2.700 el metro contra un objetivo de 800,
+                y ese disparate ocupaba media pantalla con su explicación. */}
             <table style={ui.table}>
               <tbody>
                 <tr>
-                  <td style={ui.td}>
-                    Objetivo al arrancar
-                    <span style={aclaracion}>
-                      {m2.objetivo === null
-                        ? "Cargalo en Editar obra para poder comparar."
-                        : "Lo que se planeó pagar por metro. Es el número contra el que se mide todo lo demás."}
-                    </span>
-                  </td>
+                  <td style={ui.td}>Objetivo al arrancar</td>
                   <td style={{ ...ui.td, ...celdaNumero }}>
                     {m2.objetivo === null
                       ? "—"
@@ -285,97 +281,34 @@ export default async function EstadoDeObraPage({
                 )}
 
                 <tr>
-                  <td style={ui.td}>
-                    Llevás gastado
-                    <span style={aclaracion}>
-                      {formatUSD(totales.gastadoUsd)} repartidos en los{" "}
-                      {supConstruccion} m² de construcción.{" "}
-                      {avance > 0 && avance < 100
-                        ? `Va a subir: falta el ${100 - avance}% de la obra.`
-                        : "Es plata ya pagada, no una estimación."}
-                    </span>
-                  </td>
+                  <td style={ui.td}>Llevás gastado</td>
                   <td style={{ ...ui.td, ...celdaNumero }}>
                     {formatUSD(m2.gastado ?? 0)} /m²
                   </td>
                 </tr>
 
-                <tr>
-                  <td style={ui.td}>
-                    Si sigue a este ritmo, termina en
-                    <span style={aclaracion}>
-                      {m2.proyectado === null
-                        ? "Hace falta algún avance cargado para poder proyectar."
-                        : `Con ${formatUSD(totales.gastadoUsd)} se hizo el ${avance}%, así que la obra entera saldría ${formatUSD(
-                            totales.gastadoUsd / (avance / 100)
-                          )}.`}
-                    </span>
-                  </td>
-                  <td style={{ ...ui.td, ...celdaNumero }}>
-                    {m2.proyectado === null ? (
-                      "—"
-                    ) : (
-                      <>
-                        <strong style={numeroProyectado}>
-                          {formatUSD(m2.proyectado)} /m²
-                        </strong>
-                        {m2.desvioUsd !== null && (
-                          <span
-                            style={
-                              m2.desvioUsd > 0
-                                ? { ...desvioTexto, ...textoAlerta }
-                                : desvioTexto
-                            }
-                          >
-                            {m2.desvioUsd > 0 ? "+" : "−"}
-                            {formatUSD(Math.abs(m2.desvioUsd))} /m² contra el
-                            objetivo
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
+                {/* La misma plata sobre la superficie vendible, que es la que
+                    se compara contra el valor de venta. */}
+                {supVenta && supVenta !== supConstruccion && (
+                  <tr>
+                    <td style={ui.td}>Gastado por m² de venta</td>
+                    <td style={{ ...ui.td, ...celdaNumero }}>
+                      {formatUSD(m2Venta.gastado ?? 0)} /m²
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
 
-            {lecturaM2 && (
-              <p
-                style={
-                  lecturaM2.caro
-                    ? { ...lecturaDesvio, ...lecturaMala }
-                    : lecturaDesvio
-                }
-              >
-                {lecturaM2.texto}
-                {m2.desvioTotal !== null && Math.abs(m2.desvioTotal) >= 1 && (
-                  <span style={desvioTotalTexto}>
-                    {formatUSD(Math.abs(m2.desvioTotal))} en toda la obra
-                    {m2.desvioPorcentaje !== null &&
-                      ` · ${m2.desvioPorcentaje > 0 ? "+" : ""}${m2.desvioPorcentaje}%`}
-                  </span>
-                )}
+            {/* Que cada gasto se valúe al dólar de su fecha no hace falta
+                aclararlo; que haya movimientos afuera del cálculo, sí. */}
+            {totales.sinCotizar > 0 && (
+              <p style={aclaracionPie}>
+                {totales.sinCotizar} movimiento
+                {totales.sinCotizar === 1 ? "" : "s"} sin cotización quedan
+                afuera del cálculo.
               </p>
             )}
-
-            {supVenta && supVenta !== supConstruccion && (
-              <p style={{ ...aclaracionPie, color: "#555555" }}>
-                <strong>Por m² de venta</strong> ({supVenta} m²): gastado{" "}
-                {formatUSD(m2Venta.gastado ?? 0)} /m²
-                {m2Venta.proyectado !== null &&
-                  `, proyectado al cierre ${formatUSD(m2Venta.proyectado)} /m²`}
-                .
-              </p>
-            )}
-
-            <p style={aclaracionPie}>
-              Cada gasto se valúa al dólar de su fecha, así que el total sale al
-              dólar promedio real de la obra y no a una cotización única.
-              {totales.sinCotizar > 0 &&
-                ` ${totales.sinCotizar} movimiento${
-                  totales.sinCotizar === 1 ? "" : "s"
-                } sin cotización quedan afuera del cálculo.`}
-            </p>
           </>
         )}
       </section>
@@ -538,6 +471,7 @@ const textoAlerta = {
   color: "#b00020",
 };
 
+
 const pieBarra = {
   fontSize: "13px",
   color: "#999999",
@@ -595,17 +529,6 @@ const celdaNumero = {
   textAlign: "right" as const,
 };
 
-const numeroProyectado = {
-  fontSize: "18px",
-  fontWeight: 400,
-};
-
-const aclaracion = {
-  display: "block",
-  fontSize: "13px",
-  color: "#999999",
-  marginTop: "4px",
-};
 
 const filaInversion = {
   display: "flex",
@@ -628,22 +551,9 @@ const incidenciaTexto = {
   fontSize: "14px",
 };
 
-const desvioTotalTexto = {
-  display: "block",
-  fontSize: "14px",
-  color: "#777777",
-  marginTop: "6px",
-};
-
 const aclaracionPie = {
   fontSize: "13px",
   color: "#999999",
   marginTop: "16px",
 };
 
-const desvioTexto = {
-  display: "block",
-  fontSize: "13px",
-  color: "#777777",
-  marginTop: "4px",
-};
