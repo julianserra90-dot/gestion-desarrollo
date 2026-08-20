@@ -65,21 +65,54 @@ function valorDe(g: GastoFila, col: ColumnaFiltrable): string {
   }
 }
 
+/**
+ * Los atajos de las tarjetas de Economía: se llega al listado con la columna
+ * Comprobante ya filtrada, en vez de tener que armar el filtro a mano.
+ *
+ * Se expresa como una intención ("efectivo", "facturado") y no como una lista
+ * de valores porque los valores reales dependen de los datos de cada obra —una
+ * puede no tener ninguna factura C—: acá se resuelven contra los que existen.
+ */
+export type VistaGastos = "todos" | "efectivo" | "facturado" | "credito-fiscal";
+
+function filtroDe(ver: VistaGastos | undefined, comprobantes: string[]) {
+  // "todos" no filtra nada: existe para que la tarjeta de Total gastado también
+  // se reconozca como una entrada desde el Balance y ofrezca la vuelta.
+  if (!ver || ver === "todos") return {};
+
+  const valores = comprobantes.filter((v) =>
+    ver === "efectivo"
+      ? v === "Efectivo"
+      : ver === "facturado"
+        ? v.startsWith("Factura")
+        : // El crédito fiscal lo da sólo la factura A: es la única que
+          // discrimina el IVA.
+          v === "Factura A"
+  );
+
+  return valores.length > 0 ? { comprobante: new Set(valores) } : {};
+}
+
 export default function GastosLista({
   gastos,
   slug,
   inicioObra,
+  ver,
 }: {
   gastos: GastoFila[];
   slug: string;
   /** Arranque de la obra: con eso cada fecha sabe en qué semana cae. */
   inicioObra: string | null;
+  /** Con qué filtro arranca la pantalla, si se entró por un atajo. */
+  ver?: VistaGastos;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [ocultarAnulados, setOcultarAnulados] = useState(false);
   const [filtros, setFiltros] = useState<
     Partial<Record<ColumnaFiltrable, Set<string>>>
-  >({});
+  >(() =>
+    filtroDe(ver, [...new Set(gastos.map((g) => valorDe(g, "comprobante")))])
+  );
   const [abierto, setAbierto] = useState<ColumnaFiltrable | null>(null);
 
   const opciones = useMemo(() => {
@@ -126,6 +159,14 @@ export default function GastosLista({
   }, [gastos, busqueda, ocultarAnulados, filtros, inicioObra]);
 
   const hayFiltros = Object.keys(filtros).length > 0;
+
+  // Cuánto suma lo que se está viendo. Es el número que se viene a buscar
+  // cuando se entra por una tarjeta de Economía ("¿en qué se fue el efectivo?"),
+  // y cuadra con ella: quedan afuera los anulados y los ajustes de saldo, que
+  // no son gasto de obra en ninguna otra pantalla.
+  const totalFiltrado = filtrados
+    .filter((g) => g.estado !== "Anulado" && g.tipoGasto !== "Ajuste de saldo")
+    .reduce((acc, g) => acc + g.monto, 0);
 
   // Sin filtro guardado, todas las casillas están tildadas. Destildar una crea
   // el filtro con el resto; volver a tildarlas todas lo borra, así "sin
@@ -240,6 +281,9 @@ export default function GastosLista({
             {filtrados.length === 1 ? "gasto" : "gastos"}
             {(busqueda || ocultarAnulados || hayFiltros) &&
               ` de ${gastos.length}`}
+            {totalFiltrado > 0 && (
+              <span style={totalContador}>{formatMoney(totalFiltrado)}</span>
+            )}
           </p>
 
           <table style={ui.table}>
@@ -385,6 +429,13 @@ const contador = {
   fontSize: "13px",
   color: "#999999",
   margin: "0 0 12px",
+};
+
+// El total va en negro al lado de la cuenta de gastos: es el dato, no el
+// pie de página.
+const totalContador = {
+  color: "#111111",
+  marginLeft: "10px",
 };
 
 const contenidoTh = {

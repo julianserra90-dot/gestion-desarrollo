@@ -1,23 +1,41 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import GastosLista, { type GastoFila } from "@/components/GastosLista";
+import GastosLista, {
+  type GastoFila,
+  type VistaGastos,
+} from "@/components/GastosLista";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
+import Volver from "@/components/Volver";
 import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
+/** Los atajos que llegan desde las tarjetas del Balance. */
+const VISTAS: VistaGastos[] = [
+  "todos",
+  "efectivo",
+  "facturado",
+  "credito-fiscal",
+];
+
 export default async function GastosPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ obraId: string }>;
+  searchParams: Promise<{ ver?: string }>;
 }) {
   const { obraId } = await params;
+  const { ver } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
     return <AppShell>Obra no encontrada</AppShell>;
   }
+
+  // Lo que venga de más en la URL se ignora: la pantalla abre sin filtro.
+  const vista = VISTAS.find((v) => v === ver);
 
   const supabase = await createClient();
   const { data: gastos } = await supabase
@@ -69,7 +87,11 @@ export default async function GastosPage({
     <AppShell>
       <ObraHeader obra={obra} activeSection="gastos" />
 
+      {/* Gastos es una solapa, así que normalmente no lleva "volver": se sale
+          por las mismas solapas. Pero entrando desde una tarjeta del Balance
+          funciona como pantalla de detalle, y ahí sí hace falta la vuelta. */}
       <section style={ui.sectionHeader}>
+        {vista && <Volver href={`/obras/${obra.slug}`}>Balance</Volver>}
         <p style={ui.eyebrow}>Control de obra</p>
         <h2 style={ui.pageTitle}>Gastos</h2>
       </section>
@@ -101,10 +123,15 @@ export default async function GastosPage({
         </Link>
       </div>
 
+      {/* La `key` fuerza a rearmar la lista cuando cambia el atajo: el filtro
+          inicial se calcula al montar, y sin esto volver a entrar desde otra
+          tarjeta dejaba el filtro anterior puesto. */}
       <GastosLista
+        key={vista ?? "todos"}
         gastos={filas}
         slug={obra.slug}
         inicioObra={obra.fecha_inicio}
+        ver={vista}
       />
     </AppShell>
   );

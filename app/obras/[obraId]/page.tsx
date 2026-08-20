@@ -183,19 +183,29 @@ export default async function ObraDetalle({
         <h2 style={tituloSeccion}>Economía</h2>
       </section>
 
+      {/* Cada tarjeta lleva al detalle de lo que muestra: el listado de gastos
+          con la columna Comprobante ya filtrada. Es la pregunta que sigue
+          naturalmente al número —"¿en qué se fue todo eso en efectivo?"— y
+          desde ahí se puede seguir filtrando a mano. */}
       <section style={statsGrid}>
-        <div style={card}>
+        <Link href={`/obras/${obra.slug}/gastos?ver=todos`} style={cardEnlace}>
           <p style={label}>Total gastado</p>
           <h3 style={number}>{formatMoney(resumen?.total_gastado)}</h3>
-        </div>
-        <div style={card}>
+        </Link>
+        <Link
+          href={`/obras/${obra.slug}/gastos?ver=facturado`}
+          style={cardEnlace}
+        >
           <p style={label}>Facturado</p>
           <h3 style={number}>{formatMoney(resumen?.total_facturado)}</h3>
-        </div>
-        <div style={card}>
+        </Link>
+        <Link
+          href={`/obras/${obra.slug}/gastos?ver=efectivo`}
+          style={cardEnlace}
+        >
           <p style={label}>En efectivo</p>
           <h3 style={number}>{formatMoney(resumen?.total_efectivo)}</h3>
-        </div>
+        </Link>
         <Link href={`/obras/${obra.slug}/ingresos`} style={cardEnlace}>
           <p style={label}>Dinero en cuenta</p>
           <h3 style={number}>{formatMoney(caja.arsSaldo)}</h3>
@@ -203,10 +213,15 @@ export default async function ObraDetalle({
             {formatUSD(caja.usdSaldo)}
           </p>
         </Link>
-        <div style={card}>
+        {/* El crédito fiscal sale sólo de las facturas A, así que el detalle
+            son esas: el resto no lo discrimina. */}
+        <Link
+          href={`/obras/${obra.slug}/gastos?ver=credito-fiscal`}
+          style={cardEnlace}
+        >
           <p style={label}>Crédito fiscal (IVA)</p>
           <h3 style={number}>{formatMoney(creditoFiscal)}</h3>
-        </div>
+        </Link>
       </section>
 
       <section style={panelWithMargin}>
