@@ -567,6 +567,46 @@ arman en el render lo obligan a saltear el componente entero
 Quedaron como funciones sueltas —de memoizar se encarga el compilador— y el
 efecto del teclado depende sólo de cuántas fotos hay, que es un número.
 
+### Materiales: qué se compró, no sólo cuánto salió
+Un gasto de materiales dice "Corralón Chivilcoy, $ 5.218.446": sirve para la
+plata, no para la obra. El **detalle** lo completa: 2.500 ladrillos, 40 bolsas
+de cemento, y a cuánto cada uno.
+
+Dos tablas (`20260820130000_materiales.sql`). El **catálogo** (`materiales`:
+nombre, unidad, rubro opcional) es **uno solo para todas las obras**, como el de
+proveedores, y con su mismo RLS: agregar lo puede hacer cualquiera —hace falta
+al cargar un gasto—, modificar y borrar es de admin. El **detalle**
+(`gasto_materiales`) cuelga del gasto con `on delete cascade` —sin él no
+significa nada—, pero el material usado no se puede borrar del catálogo
+(`restrict`).
+
+**El monto del gasto no sale del detalle.** Sigue siendo el de la factura, que
+puede traer el IVA adentro, un flete o un descuento que no son items. La suma se
+muestra al lado como referencia y **no se avisa si no coincide**: en toda
+factura A sería un aviso permanente. Por eso el precio unitario es opcional (la
+cantidad no) y una fila a medio llenar no se guarda, en vez de rechazar el gasto
+entero.
+
+En el formulario el bloque se llama **"Detallar materiales de compra"** y no
+"Detalle": el campo de arriba ya se llama Detalle —el texto libre del gasto— y
+dos cosas con el mismo nombre en la misma pantalla se confunden. Los items se
+agregan con el **"+" verde de cada fila**, que inserta la siguiente **abajo de
+ella** (así se lee una factura, renglón por renglón), y se sacan con la "✕"
+roja. Sin filas, el "+" va suelto: no hay dónde ponerlo.
+
+La solapa **Materiales vive en Obra**, no en Economía: la plata de esas compras
+ya está en Gastos; acá interesan las cantidades. Arriba, "lo que se usó por
+rubro" —acordeones que se arman solos con el detalle de cada gasto, sumando las
+compras del mismo material en un renglón— y abajo el catálogo, también en
+acordeones por rubro. Sin precio cargado el costo va con guion y no con cero,
+que se leería como "salió gratis".
+
+Los items viajan al server action como **tres listas paralelas**
+(`item_material`, `item_cantidad`, `item_precio`) que se cruzan por posición:
+es como el navegador manda un campo repetido, y evita inventar un formato propio
+adentro de un input. Al guardar se reemplaza el detalle entero (borrar e
+insertar): no tiene historia propia y nadie referencia sus `id`.
+
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance
@@ -605,7 +645,7 @@ mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
 Ingresos, Flujo, Lote, Dólares, Beneficio) y **Obra** (Estado, Presupuestos,
-Avances, Fotos, Documentos, Rubros).
+Avances, Fotos, Documentos, Rubros, Materiales).
 
 ## Flujo de trabajo entre dos máquinas
 
