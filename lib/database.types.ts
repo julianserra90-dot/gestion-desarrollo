@@ -404,6 +404,51 @@ export type Database = {
           },
         ]
       }
+      gasto_materiales: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          gasto_id: string
+          id: string
+          material_id: string
+          orden: number
+          precio_unitario: number | null
+        }
+        Insert: {
+          cantidad: number
+          creado_en?: string
+          gasto_id: string
+          id?: string
+          material_id: string
+          orden?: number
+          precio_unitario?: number | null
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          gasto_id?: string
+          id?: string
+          material_id?: string
+          orden?: number
+          precio_unitario?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gasto_materiales_gasto_id_fkey"
+            columns: ["gasto_id"]
+            isOneToOne: false
+            referencedRelation: "gastos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gasto_materiales_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gastos: {
         Row: {
           alicuota_iva: number | null
@@ -679,90 +724,6 @@ export type Database = {
           },
         ]
       }
-      gasto_materiales: {
-        Row: {
-          cantidad: number
-          creado_en: string
-          gasto_id: string
-          id: string
-          material_id: string
-          orden: number
-          precio_unitario: number | null
-        }
-        Insert: {
-          cantidad: number
-          creado_en?: string
-          gasto_id: string
-          id?: string
-          material_id: string
-          orden?: number
-          precio_unitario?: number | null
-        }
-        Update: {
-          cantidad?: number
-          creado_en?: string
-          gasto_id?: string
-          id?: string
-          material_id?: string
-          orden?: number
-          precio_unitario?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "gasto_materiales_gasto_id_fkey"
-            columns: ["gasto_id"]
-            isOneToOne: false
-            referencedRelation: "gastos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "gasto_materiales_material_id_fkey"
-            columns: ["material_id"]
-            isOneToOne: false
-            referencedRelation: "materiales"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      materiales: {
-        Row: {
-          creado_en: string
-          id: string
-          nombre: string
-          rubro_id: string | null
-          unidad: string
-        }
-        Insert: {
-          creado_en?: string
-          id?: string
-          nombre: string
-          rubro_id?: string | null
-          unidad: string
-        }
-        Update: {
-          creado_en?: string
-          id?: string
-          nombre?: string
-          rubro_id?: string | null
-          unidad?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "materiales_rubro_id_fkey"
-            columns: ["rubro_id"]
-            isOneToOne: false
-            referencedRelation: "obra_presupuesto"
-            referencedColumns: ["rubro_id"]
-          },
-          {
-            foreignKeyName: "materiales_rubro_id_fkey"
-            columns: ["rubro_id"]
-            isOneToOne: false
-            referencedRelation: "rubros"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       lote_pagos: {
         Row: {
           categoria: string
@@ -830,6 +791,45 @@ export type Database = {
             columns: ["obra_id"]
             isOneToOne: false
             referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      materiales: {
+        Row: {
+          creado_en: string
+          id: string
+          nombre: string
+          rubro_id: string | null
+          unidad: string
+        }
+        Insert: {
+          creado_en?: string
+          id?: string
+          nombre: string
+          rubro_id?: string | null
+          unidad: string
+        }
+        Update: {
+          creado_en?: string
+          id?: string
+          nombre?: string
+          rubro_id?: string | null
+          unidad?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materiales_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
+          },
+          {
+            foreignKeyName: "materiales_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "rubros"
             referencedColumns: ["id"]
           },
         ]
