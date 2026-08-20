@@ -107,13 +107,6 @@ export default async function EstadoDeObraPage({
       valor:
         obra.pisos === null ? null : obra.pisos === 0 ? "Sólo PB" : `PB + ${obra.pisos}`,
     },
-    {
-      etiqueta: "Promedio por unidad",
-      valor:
-        supConstruccion && obra.unidades_funcionales
-          ? `${Math.round(supConstruccion / obra.unidades_funcionales)} m²`
-          : null,
-    },
   ].filter((d): d is { etiqueta: string; valor: string } => Boolean(d.valor));
   const enEjecucion = rubros.filter((r) => r.estado === "En ejecución").length;
   const finalizados = rubros.filter((r) => r.estado === "Finalizado").length;

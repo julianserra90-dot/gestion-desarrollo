@@ -27,7 +27,15 @@ export default async function ObraDetalle({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [{ data: balance }, { data: resumen }, { data: gastos }, caja, lote] = await Promise.all([
+  const [
+    { data: balance },
+    { data: resumen },
+    { data: gastos },
+    { data: comparacion },
+    { data: rubrosObra },
+    caja,
+    lote,
+  ] = await Promise.all([
     supabase
       .from("obra_balance")
       .select(
@@ -47,6 +55,20 @@ export default async function ObraDetalle({
         "monto, iva, empresa_factura_id, estado, tipo_gasto, rubro_id, rubros(nombre)"
       )
       .eq("obra_id", obra.id),
+    // Lo cotizado y aprobado contra lo gastado, por rubro y tipo: de ahí sale
+    // lo que todavía falta pagar.
+    supabase
+      .from("obra_presupuesto")
+      .select("rubro_id, rubro, tipo, cotizado, gastado")
+      .eq("obra_id", obra.id),
+    // Los rubros con sus casillas, para saber qué combinaciones corresponden:
+    // la vista devuelve materiales y mano de obra de todos, y en el terreno la
+    // mano de obra no existe.
+    supabase
+      .from("rubros")
+      .select("id, nombre, orden, activo, usa_materiales, usa_mano_obra")
+      .eq("obra_id", obra.id)
+      .order("orden"),
     getCaja(obra.id),
     // El valor pactado del lote hace falta para calcular cuánto le resta pagar
     // a cada socia; el resto de la ficha acá no se usa.
@@ -166,6 +188,52 @@ export default async function ObraDetalle({
   const aprobado = Number(resumen?.presupuesto_aprobado ?? 0);
   const consumido = hayPresupuesto ? `${resumen?.avance_financiero ?? 0}%` : "—";
 
+  // --------------------------- Lo que falta pagar ----------------------------
+  // Sale de las cotizaciones aprobadas: lo cotizado menos lo ya pagado del
+  // mismo rubro **y del mismo tipo**. Es la única comparación que cierra —la
+  // cotización de la mano de obra no tiene nada que ver con lo que se gastó en
+  // materiales—, igual que en el detalle por rubro.
+  const pendientes = (comparacion ?? [])
+    .filter((f) => Number(f.cotizado) > 0)
+    .map((f) => ({
+      rubroId: f.rubro_id,
+      rubro: f.rubro ?? "—",
+      tipo: f.tipo ?? "",
+      cotizado: Number(f.cotizado),
+      gastado: Number(f.gastado),
+      falta: Number(f.cotizado) - Number(f.gastado),
+    }))
+    .sort((a, b) => b.falta - a.falta);
+
+  // Un rubro que se pasó no devuelve plata, así que no compensa lo que falta en
+  // otro: el total suma sólo lo que todavía hay que poner.
+  const totalFalta = pendientes.reduce((acc, p) => acc + Math.max(p.falta, 0), 0);
+
+  // Lo que no se puede saber: los rubros marcados en la obra cuyo material o
+  // mano de obra no tiene cotización aprobada. Hay que decirlo, o el total de
+  // arriba se lee como si fuera todo lo que falta de la obra —y hoy casi ningún
+  // material está cotizado—.
+  const cotizados = new Set(pendientes.map((p) => `${p.rubroId}-${p.tipo}`));
+
+  const sinCotizar = (rubrosObra ?? [])
+    .filter((r) => r.activo)
+    .flatMap((r) => {
+      const combos: { id: string; rubro: string; tipo: string }[] = [];
+      if (r.usa_materiales) {
+        combos.push({ id: r.id, rubro: r.nombre, tipo: "materiales" });
+      }
+      if (r.usa_mano_obra) {
+        combos.push({ id: r.id, rubro: r.nombre, tipo: "mano de obra" });
+      }
+      return combos;
+    })
+    .filter(
+      (c) =>
+        !cotizados.has(
+          `${c.id}-${c.tipo === "materiales" ? "Materiales" : "Mano de obra"}`
+        )
+    );
+
   // El terreno va aparte de la obra: es una compra de inmueble y no entra en el
   // balance de arriba. Acá va sólo quién puso cuánto y, si el precio pactado no
   // está saldado, cuánto le resta a cada socia según su porcentaje. El detalle
@@ -206,13 +274,6 @@ export default async function ObraDetalle({
           <p style={label}>En efectivo</p>
           <h3 style={number}>{formatMoney(resumen?.total_efectivo)}</h3>
         </Link>
-        <Link href={`/obras/${obra.slug}/ingresos`} style={cardEnlace}>
-          <p style={label}>Dinero en cuenta</p>
-          <h3 style={number}>{formatMoney(caja.arsSaldo)}</h3>
-          <p style={{ ...note, margin: "6px 0 0" }}>
-            {formatUSD(caja.usdSaldo)}
-          </p>
-        </Link>
         {/* El crédito fiscal sale sólo de las facturas A, así que el detalle
             son esas: el resto no lo discrimina. */}
         <Link
@@ -222,6 +283,34 @@ export default async function ObraDetalle({
           <p style={label}>Crédito fiscal (IVA)</p>
           <h3 style={number}>{formatMoney(creditoFiscal)}</h3>
         </Link>
+        {/* Recién acá se corta el desglose del total gastado y empieza otra
+            cosa: la plata que hay y la que falta. */}
+        <Link href={`/obras/${obra.slug}/ingresos`} style={cardEnlace}>
+          <p style={label}>Dinero en cuenta</p>
+          <h3 style={number}>{formatMoney(caja.arsSaldo)}</h3>
+          <p style={{ ...note, margin: "6px 0 0" }}>
+            {formatUSD(caja.usdSaldo)}
+          </p>
+        </Link>
+        {/* Lo que todavía hay que poner: lo aprobado menos lo pagado, rubro por
+            rubro. En rojo porque es plata que falta, igual que el "falta pagar"
+            del detalle por rubro. El desglose vive en Presupuestos, que es
+            adonde lleva. */}
+        {pendientes.length > 0 && (
+          <Link href={`/obras/${obra.slug}/presupuestos`} style={cardEnlace}>
+            <p style={label}>Resta pagar</p>
+            <h3 style={{ ...number, color: ROJO }}>
+              {formatMoney(totalFalta)}
+            </h3>
+            {/* Hoy casi ningún material está cotizado: sin esta línea el número
+                se lee como todo lo que falta de la obra, y es sólo lo cotizado. */}
+            {sinCotizar.length > 0 && (
+              <p style={{ ...note, margin: "6px 0 0" }}>
+                {sinCotizar.length} sin cotizar
+              </p>
+            )}
+          </Link>
+        )}
       </section>
 
       <section style={panelWithMargin}>
