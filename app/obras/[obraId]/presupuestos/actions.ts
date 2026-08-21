@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import type { Database } from "@/lib/database.types";
 import { convertirMonto } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { leerItems, sumaDeItems } from "@/lib/items-material";
+import type { ItemMaterial } from "@/lib/items-material";
 import { createClient } from "@/lib/supabase/server";
 
 type PresupuestoUpdate = Database["public"]["Tables"]["presupuestos"]["Update"];
@@ -62,9 +64,11 @@ function leerFormulario(formData: FormData) {
   return {
     rubroId: String(formData.get("rubro_id") ?? ""),
     tipo: String(formData.get("tipo") ?? "Materiales"),
+    numero: String(formData.get("numero") ?? "").trim(),
     fecha: String(formData.get("fecha") ?? "").trim(),
     validez: String(formData.get("validez_hasta") ?? "").trim(),
     monto: Number(formData.get("monto") ?? 0),
+    desdeItems: formData.get("monto_desde_items") === "on",
     moneda: String(formData.get("moneda") ?? "ARS"),
     detalle: String(formData.get("detalle") ?? "").trim(),
     observaciones: String(formData.get("observaciones") ?? "").trim(),
@@ -72,11 +76,60 @@ function leerFormulario(formData: FormData) {
   };
 }
 
-function validar(campos: ReturnType<typeof leerFormulario>) {
+/**
+ * Los items que cotizó el proveedor, guardados reemplazando los anteriores.
+ *
+ * Mismo criterio que el detalle del gasto: borrar y volver a insertar es más
+ * simple que averiguar qué cambió, y no se pierde nada —no tienen historia
+ * propia y nadie referencia sus `id`—.
+ *
+ * Sólo un presupuesto de materiales los lleva: la mano de obra no se desglosa
+ * en items.
+ */
+async function guardarItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  presupuestoId: string,
+  items: ItemMaterial[]
+) {
+  const { error: errorBorrado } = await supabase
+    .from("presupuesto_materiales")
+    .delete()
+    .eq("presupuesto_id", presupuestoId);
+
+  if (errorBorrado) return errorBorrado.message;
+  if (items.length === 0) return null;
+
+  const { error } = await supabase
+    .from("presupuesto_materiales")
+    .insert(items.map((item) => ({ ...item, presupuesto_id: presupuestoId })));
+
+  return error?.message ?? null;
+}
+
+function itemsDelPresupuesto(formData: FormData, tipo: string): ItemMaterial[] {
+  return tipo === "Materiales" ? leerItems(formData) : [];
+}
+
+/**
+ * El monto cotizado, que puede salir de sumar los items.
+ *
+ * Se recalcula acá y no se confía en el campo del formulario: llega de sólo
+ * lectura, pero llega igual, y el número que vale es el de los renglones.
+ */
+function montoCotizado(
+  campos: ReturnType<typeof leerFormulario>,
+  items: ItemMaterial[]
+) {
+  return campos.desdeItems ? sumaDeItems(items) : campos.monto;
+}
+
+function validar(campos: ReturnType<typeof leerFormulario>, monto: number) {
   if (!campos.rubroId) return "Elegí a qué rubro corresponde la cotización.";
   if (!campos.fecha) return "Poné la fecha de la cotización.";
-  if (!Number.isFinite(campos.monto) || campos.monto <= 0) {
-    return "El monto cotizado tiene que ser mayor a cero.";
+  if (!Number.isFinite(monto) || monto <= 0) {
+    return campos.desdeItems
+      ? "El monto sale de sumar los materiales, y hoy suman cero: cargá los items con su precio, o destildá la casilla para escribirlo a mano."
+      : "El monto cotizado tiene que ser mayor a cero.";
   }
   return null;
 }
@@ -91,7 +144,10 @@ export async function crearPresupuesto(formData: FormData) {
       `/obras/${slug}/presupuestos/nuevo?error=${encodeURIComponent(mensaje)}`
     );
 
-  const invalido = validar(campos);
+  const items = itemsDelPresupuesto(formData, campos.tipo);
+  const monto = montoCotizado(campos, items);
+
+  const invalido = validar(campos, monto);
   if (invalido) volver(invalido);
 
   const supabase = await createClient();
@@ -122,7 +178,7 @@ export async function crearPresupuesto(formData: FormData) {
     });
   }
 
-  const montos = await convertirMonto(campos.monto, campos.moneda, campos.fecha);
+  const montos = await convertirMonto(monto, campos.moneda, campos.fecha);
 
   if (!montos.ok) {
     if (archivo) await eliminarArchivo(archivo.id).catch(() => {});
@@ -134,30 +190,47 @@ export async function crearPresupuesto(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { error } = await supabase.from("presupuestos").insert({
-    obra_id: obraId,
-    rubro_id: campos.rubroId,
-    tipo: campos.tipo,
-    proveedor_id: proveedor.id,
-    fecha: campos.fecha,
-    validez_hasta: campos.validez === "" ? null : campos.validez,
-    monto: montos.ars,
-    monto_usd: montos.usd,
-    cotizacion: montos.cotizacion,
-    moneda: campos.moneda,
-    detalle: campos.detalle === "" ? null : campos.detalle,
-    observaciones: campos.observaciones === "" ? null : campos.observaciones,
-    cargado_por: user?.id ?? null,
-    comprobante_drive_id: archivo?.id ?? null,
-    comprobante_nombre: archivo?.nombre ?? null,
-    comprobante_mime: archivo?.mimeType ?? null,
-    comprobante_tamano: archivo?.tamano ?? null,
-  });
+  // Vuelve el `id` porque los items cuelgan de él: sin eso habría que salir a
+  // buscar el presupuesto recién creado.
+  const { data: creado, error } = await supabase
+    .from("presupuestos")
+    .insert({
+      obra_id: obraId,
+      rubro_id: campos.rubroId,
+      tipo: campos.tipo,
+      numero: campos.numero === "" ? null : campos.numero,
+      monto_desde_items: campos.desdeItems,
+      proveedor_id: proveedor.id,
+      fecha: campos.fecha,
+      validez_hasta: campos.validez === "" ? null : campos.validez,
+      monto: montos.ars,
+      monto_usd: montos.usd,
+      cotizacion: montos.cotizacion,
+      moneda: campos.moneda,
+      detalle: campos.detalle === "" ? null : campos.detalle,
+      observaciones: campos.observaciones === "" ? null : campos.observaciones,
+      cargado_por: user?.id ?? null,
+      comprobante_drive_id: archivo?.id ?? null,
+      comprobante_nombre: archivo?.nombre ?? null,
+      comprobante_mime: archivo?.mimeType ?? null,
+      comprobante_tamano: archivo?.tamano ?? null,
+    })
+    .select("id")
+    .single();
 
-  if (error) {
+  if (error || !creado) {
     if (archivo) await eliminarArchivo(archivo.id).catch(() => {});
-    volver(error.message);
+    volver(error?.message ?? "No se pudo guardar la cotización.");
+    return;
   }
+
+  const problema = await guardarItems(
+    supabase,
+    creado.id,
+    items
+  );
+
+  if (problema) volver(`La cotización se guardó, pero el detalle no: ${problema}`);
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/presupuestos`);
@@ -174,7 +247,10 @@ export async function actualizarPresupuesto(formData: FormData) {
       `/obras/${slug}/presupuestos/${id}/editar?error=${encodeURIComponent(mensaje)}`
     );
 
-  const invalido = validar(campos);
+  const items = itemsDelPresupuesto(formData, campos.tipo);
+  const monto = montoCotizado(campos, items);
+
+  const invalido = validar(campos, monto);
   if (invalido) volver(invalido);
 
   const supabase = await createClient();
@@ -198,7 +274,7 @@ export async function actualizarPresupuesto(formData: FormData) {
     return;
   }
 
-  const montos = await convertirMonto(campos.monto, campos.moneda, campos.fecha);
+  const montos = await convertirMonto(monto, campos.moneda, campos.fecha);
   if (!montos.ok) {
     volver(montos.error);
     return;
@@ -207,6 +283,8 @@ export async function actualizarPresupuesto(formData: FormData) {
   const cambios: PresupuestoUpdate = {
     rubro_id: campos.rubroId,
     tipo: campos.tipo,
+    numero: campos.numero === "" ? null : campos.numero,
+    monto_desde_items: campos.desdeItems,
     proveedor_id: proveedor.id,
     fecha: campos.fecha,
     validez_hasta: campos.validez === "" ? null : campos.validez,
@@ -254,6 +332,16 @@ export async function actualizarPresupuesto(formData: FormData) {
     if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
     volver(error.message);
   }
+
+  // Si dejó de ser de materiales, el detalle que tenía ya no significa nada:
+  // `itemsDelPresupuesto` devuelve vacío y el reemplazo lo borra.
+  const problema = await guardarItems(
+    supabase,
+    id,
+    items
+  );
+
+  if (problema) volver(`La cotización se guardó, pero el detalle no: ${problema}`);
 
   const seReemplazo = subidoAhora && actual.comprobante_drive_id;
   if ((seReemplazo || quitarComprobante) && actual.comprobante_drive_id) {

@@ -101,10 +101,16 @@ export async function eliminarMaterial(formData: FormData) {
   listo(volver);
 }
 
-/** El slug viaja en el form porque el catálogo no sabe de obras. */
+/**
+ * El slug viaja en el form porque el catálogo no sabe de obras.
+ *
+ * Se vuelve a la solapa **Catálogo**, que es donde están estos formularios: al
+ * resumen se lo dejaría mirando el aviso de "listo, se guardó" sin ver qué
+ * cambió.
+ */
 function rutaDeVuelta(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
-  return `/obras/${slug}/materiales`;
+  return `/obras/${slug}/materiales/catalogo`;
 }
 
 /** "Sin rubro" manda cadena vacía, y como uuid la base la rechazaría. */

@@ -39,28 +39,53 @@ export default async function PresupuestosPage({
 
   const supabase = await createClient();
 
-  const [{ data: comparacion }, { data: cotizaciones }, { data: todosLosRubros }] =
-    await Promise.all([
-      supabase
-        .from("obra_presupuesto")
-        .select("rubro_id, tipo, cotizado, gastado")
-        .eq("obra_id", obra.id),
-      supabase
-        .from("presupuestos")
-        .select(
-          "id, rubro_id, tipo, monto, moneda, monto_usd, fecha, validez_hasta, estado, detalle, comprobante_drive_id, proveedores(nombre)"
-        )
-        .eq("obra_id", obra.id)
-        .order("monto"),
-      supabase
-        .from("rubros")
-        .select("id, nombre, orden, activo, usa_materiales, usa_mano_obra")
-        .eq("obra_id", obra.id)
-        .order("orden"),
-    ]);
+  const [
+    { data: comparacion },
+    { data: cotizaciones },
+    { data: todosLosRubros },
+    { data: gastosCargados },
+  ] = await Promise.all([
+    supabase
+      .from("obra_presupuesto")
+      .select("rubro_id, tipo, cotizado, gastado")
+      .eq("obra_id", obra.id),
+    supabase
+      .from("presupuestos")
+      .select(
+        "id, rubro_id, tipo, numero, monto, moneda, monto_usd, fecha, validez_hasta, estado, detalle, comprobante_drive_id, proveedores(nombre), presupuesto_materiales(cantidad, precio_unitario, orden, materiales(nombre, unidad))"
+      )
+      .eq("obra_id", obra.id)
+      .order("monto"),
+    supabase
+      .from("rubros")
+      .select("id, nombre, orden, activo, usa_materiales, usa_mano_obra")
+      .eq("obra_id", obra.id)
+      .order("orden"),
+    // Qué se facturó contra cada presupuesto. Son varios cuando el proveedor
+    // parte el papel en dos facturas —una por socia, para repartir el crédito
+    // fiscal—, y desde la ficha no había forma de ver si estaba entero.
+    supabase
+      .from("gastos")
+      .select("presupuesto_id, monto")
+      .eq("obra_id", obra.id)
+      .neq("estado", "Anulado")
+      .not("presupuesto_id", "is", null),
+  ]);
 
   const lista = cotizaciones ?? [];
   const filas = comparacion ?? [];
+
+  const facturado = new Map<string, { monto: number; cuantos: number }>();
+
+  for (const g of gastosCargados ?? []) {
+    if (!g.presupuesto_id) continue;
+
+    const previo = facturado.get(g.presupuesto_id) ?? { monto: 0, cuantos: 0 };
+    facturado.set(g.presupuesto_id, {
+      monto: previo.monto + Number(g.monto),
+      cuantos: previo.cuantos + 1,
+    });
+  }
 
   // Un rubro entra a la grilla si está marcado en la obra, o si ya tiene algo
   // cargado aunque lo hayan desmarcado después.
@@ -279,6 +304,22 @@ export default async function PresupuestosPage({
                             {ordenadas.map((c) => {
                               const esAprobada = c.estado === "Aprobado";
 
+                              // Qué se cotizó, no sólo cuánto. Se ordena acá y
+                              // no en la consulta: ordenar un embebido de
+                              // PostgREST es más frágil que hacerlo con la
+                              // lista ya traída.
+                              const items = [
+                                ...(c.presupuesto_materiales ?? []),
+                              ].sort((a, b) => a.orden - b.orden);
+
+                              const sumaItems = items.reduce(
+                                (acc, i) =>
+                                  acc +
+                                  Number(i.cantidad) *
+                                    Number(i.precio_unitario ?? 0),
+                                0
+                              );
+
                               return (
                                 <div
                                   key={c.id}
@@ -304,8 +345,98 @@ export default async function PresupuestosPage({
                                     <p style={detalleCotizacion}>{c.detalle}</p>
                                   )}
 
+                                  {/* Qué se cotizó, a un clic y sin entrar a
+                                      editar: la ficha decía cuánto salía pero
+                                      no qué era. Arranca cerrado, como todos
+                                      los acordeones de la app, y el summary
+                                      queda con su display por defecto para no
+                                      perder el triangulito nativo. */}
+                                  {items.length > 0 && (
+                                    <details style={bloqueItems}>
+                                      <summary style={resumenItems}>
+                                        {items.length === 1
+                                          ? "1 material cotizado"
+                                          : `${items.length} materiales cotizados`}
+                                        {" · "}
+                                        {formatMoney(sumaItems)}
+                                      </summary>
+
+                                      <div style={tablaItems}>
+                                        <div style={encabezadoItems}>
+                                          <span>Material</span>
+                                          <span style={derechaItem}>Cantidad</span>
+                                          <span style={derechaItem}>
+                                            Precio unitario
+                                          </span>
+                                          <span style={derechaItem}>Subtotal</span>
+                                        </div>
+
+                                        {items.map((i, indice) => (
+                                          <div
+                                            key={`${c.id}-${indice}`}
+                                            style={renglonItem}
+                                          >
+                                            <span>
+                                              {i.materiales?.nombre ?? "—"}
+                                            </span>
+                                            <span style={derechaItem}>
+                                              {Number(
+                                                i.cantidad
+                                              ).toLocaleString("es-AR")}{" "}
+                                              {i.materiales?.unidad ?? ""}
+                                            </span>
+                                            {/* Sin precio va guion y no cero:
+                                                un cero se leería como gratis. */}
+                                            <span style={derechaItem}>
+                                              {i.precio_unitario === null
+                                                ? "—"
+                                                : formatMoney(
+                                                    Number(i.precio_unitario)
+                                                  )}
+                                            </span>
+                                            <span style={derechaItem}>
+                                              {i.precio_unitario === null
+                                                ? "—"
+                                                : formatMoney(
+                                                    Number(i.cantidad) *
+                                                      Number(i.precio_unitario)
+                                                  )}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </details>
+                                  )}
+
+                                  {/* Cuánto se facturó contra este papel. Con
+                                      dos facturas partidas entre las socias,
+                                      es la única forma de ver desde acá si
+                                      está entero o falta la otra mitad. */}
+                                  {(() => {
+                                    const f = facturado.get(c.id);
+                                    if (!f) return null;
+
+                                    const resta = Number(c.monto) - f.monto;
+
+                                    return (
+                                      <p style={facturadoContra}>
+                                        Facturado {formatMoney(f.monto)} en{" "}
+                                        {f.cuantos === 1
+                                          ? "1 gasto"
+                                          : `${f.cuantos} gastos`}
+                                        {resta > 0.01 &&
+                                          ` · restan ${formatMoney(resta)}`}
+                                      </p>
+                                    );
+                                  })()}
+
                                   <div style={pieCotizacion}>
                                     <span>
+                                      {/* El número va primero: es con lo que
+                                          el proveedor identifica el papel, y
+                                          lo que se busca al llegar la
+                                          factura. */}
+                                      {c.numero && `N° ${c.numero} · `}
                                       {formatDate(c.fecha)}
                                       {c.validez_hasta &&
                                         ` · vence ${formatDate(c.validez_hasta)}`}
@@ -556,6 +687,56 @@ const detalleCotizacion = {
   color: "#555555",
   margin: "8px 0 0",
   lineHeight: 1.5,
+};
+
+const bloqueItems = {
+  marginTop: "10px",
+};
+
+const facturadoContra = {
+  margin: "10px 0 0",
+  fontSize: "13px",
+  color: "#555555",
+};
+
+const resumenItems = {
+  fontSize: "13px",
+  color: "#555555",
+  cursor: "pointer",
+};
+
+const tablaItems = {
+  marginTop: "8px",
+  borderTop: "1px solid #e5e5e5",
+  fontSize: "13px",
+};
+
+// Las cuatro columnas del detalle, en el mismo orden que el formulario: no hay
+// que releer el encabezado al saltar de una pantalla a la otra.
+const filaItems = {
+  display: "grid",
+  gridTemplateColumns: "1fr 110px 120px 120px",
+  gap: "10px",
+  padding: "6px 0",
+};
+
+const encabezadoItems = {
+  ...filaItems,
+  color: "#999999",
+  fontSize: "11px",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase" as const,
+  borderBottom: "1px solid #e5e5e5",
+};
+
+const renglonItem = {
+  ...filaItems,
+  color: "#333333",
+  borderBottom: "1px solid #f2f2f2",
+};
+
+const derechaItem = {
+  textAlign: "right" as const,
 };
 
 const pieCotizacion = {

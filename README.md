@@ -31,6 +31,22 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 | **Documentos** | Planos y papeles, por ámbito y rubro, versionados |
 | **Fotos** | Archivos de obra, en Drive |
 | **Rubros** | Qué rubros usa esta obra |
+| **Materiales** | Cuánto material entró a la obra, y el catálogo de lo que se compra |
+
+### Materiales
+
+Tiene dos solapas, porque son dos preguntas distintas:
+
+- **Resumen** — cuántos ladrillos, cuántas bolsas de cemento y cuánta arena
+  llevás por rubro. Se arma solo con el detalle que cargás en cada gasto: acá no
+  hay nada que completar.
+- **Catálogo** — la lista de materiales que se ofrece al detallar una compra. Es
+  **la misma para todas las obras**, como la de proveedores, y ahí se agregan y
+  se corrigen los nombres y las unidades.
+
+Agregar puede cualquiera —hace falta al cargar un gasto—; modificar y eliminar
+es del administrador, porque lo que se toca ahí cambia en todas las obras. Y
+sólo se puede eliminar un material que no esté usado en ninguna compra.
 
 ### Rubros
 
@@ -55,6 +71,39 @@ urgencia que nadie cotizó.
 Conviven dos números: el **presupuesto estimado** (el que se carga a mano en
 Editar obra, calculado antes de arrancar) y el **presupuesto real** (la suma de
 las cotizaciones aprobadas, que se arma a medida que la obra avanza).
+
+Una cotización de materiales lleva además el **número que le puso el proveedor**
+y el **detalle de lo que cotizó**: 2.500 ladrillos, 40 bolsas de cemento, y a
+cuánto cada uno. Ese detalle se ve en la propia ficha, sin entrar a editarla.
+
+El **monto** puede escribirse a mano o salir de sumar los materiales: lo decide
+la casilla *"Sumar los materiales cotizados"*. Tildada, el campo se calcula solo
+y se actualiza al tocar cualquier renglón, así que corregir un precio no obliga a
+rehacer el total.
+
+Cargar el detalle tiene premio: al registrar la compra, si el proveedor es el
+mismo, el gasto ofrece **traer los items de ese presupuesto** en vez de
+escribirlos de nuevo. Después se sacan los que al final no vinieron y se corrigen
+las cantidades que cambiaron.
+
+No hace falta cotizar para detallar una compra: los presupuestos grandes se
+cargan primero en Presupuestos, y la compra chica se detalla directo en el
+gasto, como siempre. Y lo que se trae es una **copia**: corregir el presupuesto
+más adelante no cambia lo que ya se compró.
+
+#### Cuando el proveedor hace dos facturas
+
+Pasa que un presupuesto se paga con **dos facturas, una a nombre de cada socia**,
+para que cada una compute su parte del crédito fiscal. Eso son dos gastos
+apuntando al mismo presupuesto, cada uno con su titular de factura.
+
+Los **materiales van en uno solo**: entraron una sola vez, y repetirlos en la
+segunda factura haría que la solapa Materiales cuente el doble. La app se encarga
+—si ya están detallados en otra factura del mismo presupuesto, no los trae y lo
+dice—, pero deja traerlos igual por si de verdad fue una segunda entrega.
+
+Para saber si el presupuesto quedó facturado entero, tanto el desplegable como la
+ficha muestran cuánto se cargó contra él y cuánto resta.
 
 ### Avances
 

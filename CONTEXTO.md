@@ -30,6 +30,16 @@ Convenciones de código:
   para no arrastrar Supabase al bundle del navegador.
 - Server actions en `app/**/actions.ts`.
 - Estilos inline en objetos al final de cada archivo (no hay CSS aparte).
+- **Formularios**: el `field` de la grilla de dos columnas lleva siempre
+  `alignContent: "start"`. Sin eso, una celda con ayuda debajo estira a su
+  vecina y el input de al lado queda flotando a media altura: las filas dejan de
+  alinearse y la pantalla se lee torcida.
+- **La ayuda debajo de un campo es para lo que no se deduce mirándolo**: cuánto
+  hay en la cuenta, cuánto da el IVA, por qué el desplegable ofrece una sola
+  opción. Lo que ya dicen la etiqueta o el placeholder no se repite abajo, y
+  **"opcional" va al lado de la etiqueta** —en gris, no en un renglón propio—:
+  dice lo mismo, no corre el campo vecino y deja la ayuda libre para lo que de
+  verdad hay que explicar.
 - Los comentarios explican el **porqué**, no el qué. Mantener ese estilo.
 - `formatMoney` y `formatUSD` muestran **dos decimales** (los gastos se cargan al
   centavo). En dólares importa igual o más: $ 1.200.000 al cambio de 1.433,90 son
@@ -595,17 +605,131 @@ ella** (así se lee una factura, renglón por renglón), y se sacan con la "✕"
 roja. Sin filas, el "+" va suelto: no hay dónde ponerlo.
 
 La solapa **Materiales vive en Obra**, no en Economía: la plata de esas compras
-ya está en Gastos; acá interesan las cantidades. Arriba, "lo que se usó por
-rubro" —acordeones que se arman solos con el detalle de cada gasto, sumando las
-compras del mismo material en un renglón— y abajo el catálogo, también en
-acordeones por rubro. Sin precio cargado el costo va con guion y no con cero,
-que se leería como "salió gratis".
+ya está en Gastos; acá interesan las cantidades.
+
+Adentro tiene **dos solapas propias** (`components/MaterialesNav.tsx`, mismo
+patrón y estilo que `EditarNav`, con una ruta por solapa):
+
+- **Resumen** (`materiales`) — "lo que se usó por rubro": acordeones que se
+  arman solos con el detalle de cada gasto, sumando las compras del mismo
+  material en un renglón. Acá no se carga nada.
+- **Catálogo** (`materiales/catalogo`) — la lista que se ofrece al detallar una
+  compra, con el alta y la edición, también en acordeones por rubro.
+
+Estaban las dos apiladas en una sola pantalla y el catálogo quedaba abajo de
+todo el consumo: para corregir un nombre mal escrito había que bajar una pared
+de acordeones. Son dos preguntas distintas —qué entró a la obra, y qué se puede
+elegir al cargar—, y una se consulta mientras la otra se edita.
+
+Ojo con los server actions: viven en `materiales/actions.ts` (compartidos) pero
+`rutaDeVuelta` apunta a **`materiales/catalogo`**, que es donde están los
+formularios. Volver al resumen dejaría el "listo, se guardó" sin mostrar qué
+cambió. Por lo mismo, los enlaces de `ItemsDeMaterial` ("cargar un material
+nuevo al catálogo") van a la solapa del catálogo y no a la sección.
+
+Sin precio cargado el costo va con guion y no con cero, que se leería como
+"salió gratis".
 
 Los items viajan al server action como **tres listas paralelas**
 (`item_material`, `item_cantidad`, `item_precio`) que se cruzan por posición:
 es como el navegador manda un campo repetido, y evita inventar un formato propio
 adentro de un input. Al guardar se reemplaza el detalle entero (borrar e
 insertar): no tiene historia propia y nadie referencia sus `id`.
+
+### El presupuesto también lleva los materiales
+Un presupuesto de corralón **ya es** una lista de materiales con cantidades y
+precios: guardarlo como un monto solo (`presupuestos.monto`) era tirar casi todo
+el papel. Ahora lleva su **número** (`presupuestos.numero`, texto: viene
+"P-0012/26", con letras y barras) y sus items en `presupuesto_materiales`,
+espejo de `gasto_materiales` (`20260821120000_presupuesto_materiales.sql`).
+
+Al cargar un gasto de materiales, si el proveedor elegido tiene presupuestos con
+items aparece **"Traer de un presupuesto"**: se elige uno por número/fecha/monto
+y los items entran hechos. Después se sacan con la ✕ los que no vinieron y se
+corrigen las cantidades. `gastos.presupuesto_id` guarda de cuál salió.
+
+Cuatro decisiones que conviene no deshacer:
+
+- **La carga a mano en el gasto no se sacó.** Los presupuestos grandes se
+  cotizan primero; la compra chica se carga directo en el gasto, como siempre.
+  El presupuesto es de dónde se **copia**, no dónde viven los items.
+- **El gasto se queda con copia propia**, no apunta a la lista del presupuesto.
+  Lo cotizado y lo comprado son dos hechos distintos: si el gasto la
+  referenciara, corregir un presupuesto viejo reescribiría qué se compró. Por
+  eso `presupuesto_id` es `on delete set null` —la compra ocurrió igual— y los
+  items del gasto siguen colgando del gasto.
+- **No se elige solo aunque haya uno.** Un corralón puede tener varios
+  presupuestos abiertos en la misma obra, y traer el equivocado en silencio es
+  peor que un click de más. Se filtra por **proveedor y no por rubro**: la
+  compra puede ir a otro rubro que la cotización.
+- **El monto puede salir de los items, pero sólo en el presupuesto.** Con la
+  casilla *"Sumar los materiales cotizados"* el campo pasa a sólo lectura (gris)
+  y muestra la suma, que se actualiza sola al tocar un renglón. Destildada, se
+  escribe a mano como siempre. En el **gasto no existe la casilla**: ahí el monto
+  es el de la factura, que trae IVA, flete o descuentos que no son items —esa
+  decisión no cambió—. Lo que cambió es el presupuesto, donde el total del
+  corralón **es** la suma de sus renglones y rehacerla a mano se desincroniza.
+  Se guarda la intención (`presupuestos.monto_desde_items`) y no sólo el número,
+  igual que `gastos.cotizacion_manual`: sin eso, al reabrir un presupuesto no se
+  sabría si el monto se escribió o se calculó, y editar un renglón dejaría el
+  total viejo mintiendo. El monto se **recalcula en el server action**, que no le
+  cree al campo del formulario: llega de sólo lectura, pero llega igual.
+  La casilla se ata al tipo (`sumando = desdeItems && tipo === "Materiales"`) en
+  vez de resetear el estado: si no, pasar a mano de obra dejaba el monto de sólo
+  lectura y vacío, sin forma de escribirlo.
+
+#### Un presupuesto, dos facturas
+El proveedor puede partir un presupuesto en **dos facturas, una por socia**, para
+repartir el crédito fiscal: la factura es de un solo CUIT
+(`gastos.empresa_factura_id`) y así cada empresa computa su parte. En la app son
+**dos gastos con el mismo `presupuesto_id`** —la FK no es única, no hizo falta
+tocar nada— y cada uno con su titular. La plata cierra sola: el *Restante* del
+rubro suma los dos contra lo cotizado.
+
+Lo que sí hubo que resolver es el **doble conteo de materiales**. El material
+entró una sola vez; partir la factura es un acto fiscal, no una segunda entrega.
+Si se trae la lista del presupuesto en las dos facturas, Materiales muestra 6.600
+ladrillos donde entraron 3.300, **y nadie avisa**. Por eso:
+
+- El detalle va en **un** gasto y el otro queda sin items, enganchado igual al
+  mismo presupuesto. Por eso el desplegable dejó de llamarse "Traer de un
+  presupuesto" y ahora es **"Presupuesto del proveedor"**: hace dos cosas
+  —vincular y copiar— y sólo la primera es obligatoria.
+- Por eso también `getPresupuestosConItems` devuelve **todos** los de materiales
+  y no sólo los que tienen items: al segundo gasto hay que poder vincularlo.
+- Si los materiales ya están detallados en otra factura del mismo presupuesto,
+  **no se traen** y se explica por qué, en ámbar, con un *"Traerlos igual"* por
+  si de verdad fue una segunda entrega.
+- La etiqueta del desplegable y la ficha del presupuesto dicen **cuánto se
+  facturó contra él** ("ya cargado $ 1.000,00", "Facturado $ 1.000,00 en 1 gasto
+  · restan $ 9.208.280,90"), que es lo que deja ver si falta la otra mitad.
+
+Ojo con la **auto-exclusión**: al editar un gasto, lo suyo no cuenta como "otra
+factura" (`otrasFacturas` filtra por `gasto?.id`). Sin eso, abrir el gasto que
+tiene el detalle se avisaría a sí mismo y mostraría su propio monto como ya
+cargado.
+
+En la solapa Presupuestos, cada ficha abre **qué se cotizó** en un acordeón
+—"7 materiales cotizados · $ 9.209.280,90"— con la tabla material / cantidad /
+precio unitario / subtotal, en el mismo orden que el formulario. Antes la ficha
+decía cuánto salía pero no qué era, y para verlo había que entrar a Editar. Sin
+precio va **guion y no cero**, que se leería como gratis. Acá el `summary` no
+lleva `display: flex` —el contenido es una línea sola— así que no hace falta el
+truco del `span` para conservar el triangulito.
+
+Ojo con el componente: `ItemsDeMaterial` guarda las filas en estado propio, así
+que cambiarle `iniciales` no lo mueve. Traer otro presupuesto lo **remonta** con
+un `key` que sube. Y tiene un prop `origen` que sólo cambia los textos (la
+factura dice qué se compró; el presupuesto, qué se cotizó). Para que el
+formulario pueda usar la suma de monto, avisa el total por `onTotal`: se le pasa
+el `setState` de arriba **directamente**, porque su referencia es estable y si no
+el efecto se dispararía en cada render.
+
+`lib/items-material.ts` es el módulo puro que comparten los dos server actions:
+lee las tres listas paralelas del formulario. `getPresupuestosConItems`
+(`lib/presupuestos.ts`) devuelve los presupuestos que **tienen** items —uno sin
+detalle sería un renglón que al elegirlo no hace nada— sin filtrar por estado,
+porque del que se está por comprar es justamente del que todavía no se aprobó.
 
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
@@ -786,6 +910,22 @@ acción de borrar el pago del lote viaja como prop.
 - **Datos de prueba en 3 De Febrero**: el valor pactado del lote, las cuotas y la
   superficie (160 m²) son de prueba. Reemplazarlos por los reales cuando se
   cargue la obra en serio.
+- **Los presupuestos de compra van a llenar la solapa Presupuestos**. Hoy
+  `presupuestos` significa "el presupuesto del rubro": la ejecución
+  presupuestaria, "Resta pagar", el detalle por rubro y el avance ponderado
+  salen todos de la cotización **aprobada**, una sola por obra+rubro+tipo (índice
+  único `presupuestos_una_aprobada`). Pero el corralón pasa **un presupuesto por
+  entrega**, y ahora que llevan items van a entrar todos en la misma tabla. Por
+  ahora quedan en Pendiente, así que no tocan ninguna de esas cuentas y el
+  acordeón del rubro los lista como una cotización más. Cuando molesten hay dos
+  salidas: separarlos visualmente de la cotización del rubro, o decidir que "lo
+  cotizado" de materiales es la suma de varios aprobados —que es el mismo nudo
+  de "más de una cotización aprobada por rubro", más arriba—. Los datos ya
+  quedan cargados para cualquiera de las dos.
+- **Comparar cotizado contra comprado, item por item**: ahora que el presupuesto
+  y el gasto guardan las mismas filas, se puede contestar "el ladrillo se cotizó
+  a $450 y se facturó a $470" o "pediste 2.500 y vinieron 2.400". No está hecho:
+  hoy los items del gasto se traen del presupuesto y ahí se corta.
 
 ## Cómo retomar en una sesión nueva
 

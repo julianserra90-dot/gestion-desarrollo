@@ -478,6 +478,7 @@ export type Database = {
           monto_usd: number | null
           obra_id: string
           observaciones: string | null
+          presupuesto_id: string | null
           proveedor_id: string | null
           rubro_id: string | null
           tipo_factura: string | null
@@ -512,6 +513,7 @@ export type Database = {
           monto_usd?: number | null
           obra_id: string
           observaciones?: string | null
+          presupuesto_id?: string | null
           proveedor_id?: string | null
           rubro_id?: string | null
           tipo_factura?: string | null
@@ -546,6 +548,7 @@ export type Database = {
           monto_usd?: number | null
           obra_id?: string
           observaciones?: string | null
+          presupuesto_id?: string | null
           proveedor_id?: string | null
           rubro_id?: string | null
           tipo_factura?: string | null
@@ -600,6 +603,20 @@ export type Database = {
             columns: ["obra_id"]
             isOneToOne: false
             referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gastos_presupuesto_id_fkey"
+            columns: ["presupuesto_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["presupuesto_id"]
+          },
+          {
+            foreignKeyName: "gastos_presupuesto_id_fkey"
+            columns: ["presupuesto_id"]
+            isOneToOne: false
+            referencedRelation: "presupuestos"
             referencedColumns: ["id"]
           },
           {
@@ -1003,6 +1020,58 @@ export type Database = {
           },
         ]
       }
+      presupuesto_materiales: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          id: string
+          material_id: string
+          orden: number
+          precio_unitario: number | null
+          presupuesto_id: string
+        }
+        Insert: {
+          cantidad: number
+          creado_en?: string
+          id?: string
+          material_id: string
+          orden?: number
+          precio_unitario?: number | null
+          presupuesto_id: string
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          id?: string
+          material_id?: string
+          orden?: number
+          precio_unitario?: number | null
+          presupuesto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presupuesto_materiales_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presupuesto_materiales_presupuesto_id_fkey"
+            columns: ["presupuesto_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["presupuesto_id"]
+          },
+          {
+            foreignKeyName: "presupuesto_materiales_presupuesto_id_fkey"
+            columns: ["presupuesto_id"]
+            isOneToOne: false
+            referencedRelation: "presupuestos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       presupuestos: {
         Row: {
           cargado_por: string | null
@@ -1018,7 +1087,9 @@ export type Database = {
           id: string
           moneda: string
           monto: number
+          monto_desde_items: boolean
           monto_usd: number | null
+          numero: string | null
           obra_id: string
           observaciones: string | null
           proveedor_id: string
@@ -1040,7 +1111,9 @@ export type Database = {
           id?: string
           moneda?: string
           monto: number
+          monto_desde_items?: boolean
           monto_usd?: number | null
+          numero?: string | null
           obra_id: string
           observaciones?: string | null
           proveedor_id: string
@@ -1062,7 +1135,9 @@ export type Database = {
           id?: string
           moneda?: string
           monto?: number
+          monto_desde_items?: boolean
           monto_usd?: number | null
+          numero?: string | null
           obra_id?: string
           observaciones?: string | null
           proveedor_id?: string

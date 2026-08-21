@@ -6,6 +6,8 @@ import type { Database } from "@/lib/database.types";
 import { convertirMonto, getCotizacionDeFecha } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { getCaja } from "@/lib/caja";
+import { leerItems } from "@/lib/items-material";
+import type { ItemMaterial } from "@/lib/items-material";
 import { GASTO_COMPARTIDO, centavos, repartirPago } from "@/lib/reparto";
 import type { Reparto } from "@/lib/reparto";
 import type { MontoConvertido } from "@/lib/dolar";
@@ -211,44 +213,31 @@ function leerQuienPago(formData: FormData, esAjuste: boolean) {
 }
 
 /**
- * El detalle de materiales: qué se compró, cuánto y a cuánto.
- *
- * Viaja como tres listas paralelas —`item_material`, `item_cantidad`,
- * `item_precio`— que se cruzan por posición: es como el navegador manda un
- * campo repetido, y evita inventar un formato propio adentro de un input.
- *
- * El precio es opcional (a veces la factura no lo discrimina) pero el material
- * y la cantidad no: una fila a medio llenar no se guarda, no se rechaza el
- * gasto entero por eso.
+ * El detalle de materiales de la factura. La lectura del formulario vive en
+ * `lib/items-material.ts` porque el presupuesto carga la misma lista con el
+ * mismo componente; acá queda sólo cómo se guarda.
  */
-type ItemMaterial = {
-  material_id: string;
-  cantidad: number;
-  precio_unitario: number | null;
-  orden: number;
-};
+function itemsDelGasto(formData: FormData, tipoGasto: string): ItemMaterial[] {
+  // La mano de obra no se desglosa en items y un ajuste de saldo no compra
+  // nada: en esos casos no hay detalle que leer.
+  return tipoGasto === "Materiales" ? leerItems(formData) : [];
+}
 
-function leerItems(formData: FormData, esMateriales: boolean): ItemMaterial[] {
-  if (!esMateriales) return [];
-
-  const materiales = formData.getAll("item_material").map(String);
-  const cantidades = formData.getAll("item_cantidad").map(String);
-  const precios = formData.getAll("item_precio").map(String);
-
-  return materiales
-    .map((material_id, i) => ({
-      material_id,
-      cantidad: Number(cantidades[i] ?? 0),
-      precio_unitario:
-        (precios[i] ?? "").trim() === "" ? null : Number(precios[i]),
-      orden: i,
-    }))
-    .filter(
-      (item) =>
-        item.material_id !== "" &&
-        Number.isFinite(item.cantidad) &&
-        item.cantidad > 0
-    );
+/**
+ * De qué presupuesto salió esta compra.
+ *
+ * Lo manda el formulario cuando se trajeron los items de un presupuesto, y es
+ * sólo la procedencia: los items del gasto quedan como copia propia, así que
+ * corregir el presupuesto después no reescribe qué se compró.
+ *
+ * Vacío es lo normal en la compra chica, que se carga sin cotizar nada.
+ */
+function presupuestoDelGasto(
+  formData: FormData,
+  tipoGasto: string
+): string | null {
+  if (tipoGasto !== "Materiales") return null;
+  return String(formData.get("presupuesto_id") ?? "").trim() || null;
 }
 
 /**
@@ -387,6 +376,7 @@ export async function crearGasto(formData: FormData) {
       concepto,
       tipo_gasto: tipoGasto,
       proveedor_id: esAjuste ? null : proveedor.id,
+      presupuesto_id: presupuestoDelGasto(formData, tipoGasto),
       empresa_receptora_id: esAjuste ? receptora : null,
       empresa_pagadora_id:
         compartido || !loPoneAlguien ? null : empresaPagadora,
@@ -428,7 +418,7 @@ export async function crearGasto(formData: FormData) {
     const problema = await guardarItems(
       supabase,
       creado.id,
-      leerItems(formData, tipoGasto === "Materiales")
+      itemsDelGasto(formData, tipoGasto)
     );
 
     if (problema) {
@@ -534,6 +524,7 @@ export async function actualizarGasto(formData: FormData) {
     concepto,
     tipo_gasto: tipoGasto,
     proveedor_id: esAjuste ? null : proveedor.id,
+    presupuesto_id: presupuestoDelGasto(formData, tipoGasto),
     empresa_receptora_id: esAjuste ? receptora : null,
     empresa_pagadora_id:
       compartido || !loPoneAlguien ? null : empresaPagadora,
@@ -598,7 +589,7 @@ export async function actualizarGasto(formData: FormData) {
   const problema = await guardarItems(
     supabase,
     gastoId,
-    leerItems(formData, tipoGasto === "Materiales")
+    itemsDelGasto(formData, tipoGasto)
   );
 
   if (problema) {

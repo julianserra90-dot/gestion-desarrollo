@@ -6,7 +6,10 @@ import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
-import { getPresupuestosDeObra } from "@/lib/presupuestos";
+import {
+  getPresupuestosConItems,
+  getPresupuestosDeObra,
+} from "@/lib/presupuestos";
 import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import { crearGasto } from "../actions";
@@ -40,16 +43,22 @@ export default async function NuevoGastoPage({
     .eq("id", user?.id ?? "")
     .maybeSingle();
 
-  const [rubros, { data: socios }, { data: proveedores }, presupuestos] =
-    await Promise.all([
-      getRubrosActivos(obra.id),
-      supabase
-        .from("obra_socios")
-        .select("empresa_id, porcentaje, empresas(nombre)")
-        .eq("obra_id", obra.id),
-      supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
-      getPresupuestosDeObra(obra.id),
-    ]);
+  const [
+    rubros,
+    { data: socios },
+    { data: proveedores },
+    presupuestos,
+    presupuestosConItems,
+  ] = await Promise.all([
+    getRubrosActivos(obra.id),
+    supabase
+      .from("obra_socios")
+      .select("empresa_id, porcentaje, empresas(nombre)")
+      .eq("obra_id", obra.id),
+    supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
+    getPresupuestosDeObra(obra.id),
+    getPresupuestosConItems(obra.id),
+  ]);
 
   // El catálogo de materiales, para el detalle de la factura. Es común a todas
   // las obras, igual que el de proveedores.
@@ -110,6 +119,7 @@ export default async function NuevoGastoPage({
           proveedores={proveedores ?? []}
           saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
           presupuestos={presupuestos}
+          presupuestosConItems={presupuestosConItems}
           error={error}
           empresaFija={perfil?.empresa_id ?? undefined}
           cotizacion={cotizacion?.promedio ?? null}

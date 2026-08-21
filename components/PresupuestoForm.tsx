@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import ItemsDeMaterial, {
+  type ItemCargado,
+  type MaterialOpcion,
+} from "@/components/ItemsDeMaterial";
 import * as ui from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 
@@ -27,6 +31,8 @@ export type PresupuestoExistente = {
   id: string;
   rubro_id: string;
   tipo: string;
+  numero: string | null;
+  monto_desde_items: boolean;
   proveedor_id: string;
   fecha: string;
   validez_hasta: string | null;
@@ -50,6 +56,8 @@ export default function PresupuestoForm({
   cotizacion,
   rubroSugerido,
   tipoSugerido,
+  materiales = [],
+  itemsIniciales = [],
   textoBoton = "Guardar cotización",
 }: {
   action: (formData: FormData) => void;
@@ -65,6 +73,10 @@ export default function PresupuestoForm({
   /** Vienen de la solapa cuando se entra por "Cotizar" de un rubro puntual. */
   rubroSugerido?: string;
   tipoSugerido?: string;
+  /** El catálogo de materiales, para detallar qué se cotizó. */
+  materiales?: MaterialOpcion[];
+  /** Los items ya cargados, al editar. */
+  itemsIniciales?: ItemCargado[];
   textoBoton?: string;
 }) {
   const [rubroId, setRubroId] = useState(
@@ -82,7 +94,25 @@ export default function PresupuestoForm({
   const [moneda, setMoneda] = useState(presupuesto?.moneda ?? "ARS");
   const [reemplazar, setReemplazar] = useState(false);
 
-  const ingresado = Number(monto) || 0;
+  // Si el monto sale de sumar los items en vez de escribirse a mano. En el
+  // gasto esto no existiría —la factura trae IVA y flete que no son items—,
+  // pero el total de un presupuesto de corralón **es** la suma de sus
+  // renglones, y rehacerla a mano cada vez que cambia un precio es justo lo
+  // que se desincroniza.
+  const [desdeItems, setDesdeItems] = useState(
+    presupuesto?.monto_desde_items ?? false
+  );
+
+  // `setSumaItems` va tal cual al hijo: la referencia de un `setState` es
+  // estable, así que el efecto que la llama no se dispara de más.
+  const [sumaItems, setSumaItems] = useState(0);
+
+  // La mano de obra no tiene items que sumar, así que la casilla no se ofrece
+  // y el monto vuelve a escribirse a mano. Se deriva del tipo en vez de
+  // resetear el estado: si se vuelve a materiales, la elección sigue ahí.
+  const sumando = desdeItems && tipo === "Materiales";
+
+  const ingresado = sumando ? sumaItems : Number(monto) || 0;
   const total =
     moneda === "USD" ? (cotizacion ? ingresado * cotizacion : 0) : ingresado;
 
@@ -146,9 +176,6 @@ export default function PresupuestoForm({
                   </option>
                 ))}
               </select>
-              <span style={ayudaCampo}>
-                Sólo los rubros marcados en esta obra.
-              </span>
             </label>
 
             <label style={field}>
@@ -165,11 +192,16 @@ export default function PresupuestoForm({
                   </option>
                 ))}
               </select>
-              <span style={ayudaCampo}>
-                {tiposDisponibles.length === 1 && rubroElegido
-                  ? `En ${rubroElegido.nombre} sólo se cotiza ${tiposDisponibles[0].toLowerCase()}.`
-                  : "Un mismo rubro puede cotizarse por separado para las dos cosas."}
-              </span>
+              {/* Sólo cuando el rubro deja una opción sola: explica por qué el
+                  desplegable no ofrece la otra. El texto genérico —"un rubro
+                  puede cotizarse para las dos cosas"— se fue: se deduce de ver
+                  las dos opciones. */}
+              {tiposDisponibles.length === 1 && rubroElegido && (
+                <span style={ayudaCampo}>
+                  En {rubroElegido.nombre} sólo se cotiza{" "}
+                  {tiposDisponibles[0].toLowerCase()}.
+                </span>
+              )}
             </label>
 
             <div style={fieldAncho}>
@@ -212,11 +244,24 @@ export default function PresupuestoForm({
                 />
               )}
 
-              <span style={ayudaCampo}>
-                Queda en el mismo listado que usan los gastos, así que después
-                se puede elegir al cargar la factura.
-              </span>
             </div>
+
+            {/* El número con el que el proveedor identifica su presupuesto.
+                Va como texto porque no es un entero: lleva letras, barras y el
+                año adentro. Es lo que después permite reconocer de qué papel
+                salió una compra. */}
+            <label style={field}>
+              <span style={labelCampo}>
+                Número de presupuesto <span style={opcional}>opcional</span>
+              </span>
+              <input
+                type="text"
+                name="numero"
+                defaultValue={presupuesto?.numero ?? ""}
+                placeholder="Ej: P-0012/26"
+                style={ui.input}
+              />
+            </label>
 
             <label style={field}>
               <span style={labelCampo}>Fecha de la cotización</span>
@@ -230,19 +275,20 @@ export default function PresupuestoForm({
             </label>
 
             <label style={field}>
-              <span style={labelCampo}>Válida hasta</span>
+              <span style={labelCampo}>
+                Válida hasta <span style={opcional}>opcional</span>
+              </span>
               <input
                 type="date"
                 name="validez_hasta"
                 defaultValue={presupuesto?.validez_hasta ?? ""}
                 style={ui.input}
               />
-              <span style={ayudaCampo}>
-                Opcional. Hasta cuándo sostienen el precio.
-              </span>
             </label>
 
-            <label style={field}>
+            {/* Va en un `div` y no en un `label`: adentro hay una casilla que
+                es su propio label, y anidarlos rompe a dónde va el clic. */}
+            <div style={field}>
               <span style={labelCampo}>Monto cotizado</span>
               <input
                 type="number"
@@ -250,12 +296,33 @@ export default function PresupuestoForm({
                 min="0"
                 step="0.01"
                 placeholder="0"
-                value={monto}
+                value={sumando ? (sumaItems || "") : monto}
                 onChange={(e) => setMonto(e.target.value)}
+                readOnly={sumando}
                 required
-                style={ui.input}
+                style={sumando ? montoCalculado : ui.input}
               />
-            </label>
+
+              {/* Sólo en materiales: la mano de obra no tiene items que sumar. */}
+              {tipo === "Materiales" && (
+                <label style={casillaSuma}>
+                  <input
+                    type="checkbox"
+                    name="monto_desde_items"
+                    checked={desdeItems}
+                    onChange={(e) => setDesdeItems(e.target.checked)}
+                  />
+                  Sumar los materiales cotizados
+                </label>
+              )}
+
+              {sumando && (
+                <span style={ayudaCampo}>
+                  Sale del detalle de abajo, así que se actualiza solo al tocar
+                  un renglón. Uno sin precio suma cero.
+                </span>
+              )}
+            </div>
 
             <label style={field}>
               <span style={labelCampo}>Moneda</span>
@@ -278,22 +345,42 @@ export default function PresupuestoForm({
             </label>
 
             <div style={fieldAncho}>
-              <span style={labelCampo}>Detalle</span>
+              <span style={labelCampo}>
+                Detalle <span style={opcional}>opcional</span>
+              </span>
               <input
                 type="text"
                 name="detalle"
                 defaultValue={presupuesto?.detalle ?? ""}
-                placeholder="Ej: Mano de obra completa, materiales por cuenta de la obra"
+                placeholder="Qué incluye y qué no: es lo que hace comparables dos cotizaciones"
                 style={ui.input}
               />
-              <span style={ayudaCampo}>
-                Opcional. Qué incluye y qué no: es lo que hace comparables dos
-                cotizaciones.
-              </span>
             </div>
 
+            {/* Un presupuesto de corralón **ya es** una lista de materiales
+                con cantidades y precios: guardarlo como un monto solo era
+                tirar casi todo el papel. Cargarlo acá no agrega trabajo —es
+                transcribir lo que dice— y a cambio la compra lo trae hecho.
+
+                Sólo en materiales: la mano de obra no se desglosa en items. */}
+            {tipo === "Materiales" && (
+              <div style={fieldAncho}>
+                <span style={labelCampo}>Detallar materiales cotizados</span>
+                <ItemsDeMaterial
+                  materiales={materiales}
+                  rubroId={rubroId}
+                  slug={slug}
+                  iniciales={itemsIniciales}
+                  origen="presupuesto"
+                  onTotal={setSumaItems}
+                />
+              </div>
+            )}
+
             <div style={fieldAncho}>
-              <span style={labelCampo}>Cotización en PDF</span>
+              <span style={labelCampo}>
+                Cotización en PDF <span style={opcional}>opcional</span>
+              </span>
 
               {presupuesto?.comprobante_drive_id && !reemplazar ? (
                 <div style={comprobanteActual}>
@@ -326,21 +413,24 @@ export default function PresupuestoForm({
               ) : (
                 <>
                   <input type="file" name="comprobante" style={ui.input} />
-                  <span style={ayudaCampo}>
-                    {presupuesto?.comprobante_drive_id
-                      ? "Al guardar reemplaza el archivo anterior."
-                      : "Opcional. El presupuesto que mandó el gremio."}
-                  </span>
+                  {/* Sólo cuando reemplaza: que el archivo viejo se pisa no se
+                      deduce de ver el campo. */}
+                  {presupuesto?.comprobante_drive_id && (
+                    <span style={ayudaCampo}>
+                      Al guardar reemplaza el archivo anterior.
+                    </span>
+                  )}
                 </>
               )}
             </div>
 
             <label style={fieldAncho}>
-              <span style={labelCampo}>Observaciones</span>
+              <span style={labelCampo}>
+                Observaciones <span style={opcional}>opcional</span>
+              </span>
               <textarea
                 name="observaciones"
                 defaultValue={presupuesto?.observaciones ?? ""}
-                placeholder="Opcional"
                 style={textarea}
               />
             </label>
@@ -411,9 +501,14 @@ const grid = {
   gap: "20px",
 };
 
+// `alignContent: start` es lo que mantiene los campos alineados: sin eso, una
+// celda con ayuda debajo estira a su vecina y el input de al lado queda
+// flotando a media altura en vez de arrancar en la misma línea. Mismo criterio
+// que en Editar obra → Datos lote.
 const field = {
   display: "grid",
   gap: "8px",
+  alignContent: "start" as const,
 };
 
 const fieldAncho = {
@@ -429,6 +524,14 @@ const labelCampo = {
 const ayudaCampo = {
   fontSize: "13px",
   color: "#999999",
+};
+
+// "Opcional" al lado de la etiqueta y no en un renglón de ayuda debajo: dice lo
+// mismo, no corre el campo de al lado y deja la ayuda para lo que de verdad hay
+// que explicar.
+const opcional = {
+  color: "#aaaaaa",
+  fontWeight: 400 as const,
 };
 
 const textarea = {
@@ -486,6 +589,24 @@ const comprobanteActual = {
 const enlaceChico = {
   color: "#111111",
   fontSize: "14px",
+};
+
+// El monto calculado se ve distinto del que se escribe: gris de fondo, para
+// que no se pierda el tiempo intentando tipear adentro.
+const montoCalculado = {
+  ...ui.input,
+  background: "#f5f5f5",
+  color: "#555555",
+  cursor: "default" as const,
+};
+
+const casillaSuma = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  fontSize: "13px",
+  color: "#555555",
+  cursor: "pointer",
 };
 
 const quitarLabel = {

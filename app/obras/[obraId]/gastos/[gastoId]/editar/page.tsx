@@ -5,7 +5,10 @@ import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
-import { getPresupuestosDeObra } from "@/lib/presupuestos";
+import {
+  getPresupuestosConItems,
+  getPresupuestosDeObra,
+} from "@/lib/presupuestos";
 import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -35,7 +38,7 @@ export default async function EditarGastoPage({
   const { data: gasto } = await supabase
     .from("gastos")
     .select(
-      "id, fecha, rubro_id, proveedor_id, empresa_receptora_id, tipo_gasto, concepto, tipo_pago, tipo_factura, alicuota_iva, empresa_factura_id, monto, caja_ars, caja_usd, cotizacion, cotizacion_manual, monto_usd, moneda, observaciones, empresa_pagadora_id, compartido, comprobante_drive_id, comprobante_nombre, estado"
+      "id, fecha, rubro_id, proveedor_id, presupuesto_id, empresa_receptora_id, tipo_gasto, concepto, tipo_pago, tipo_factura, alicuota_iva, empresa_factura_id, monto, caja_ars, caja_usd, cotizacion, cotizacion_manual, monto_usd, moneda, observaciones, empresa_pagadora_id, compartido, comprobante_drive_id, comprobante_nombre, estado"
     )
     .eq("id", gastoId)
     .eq("obra_id", obra.id)
@@ -45,18 +48,24 @@ export default async function EditarGastoPage({
     return <AppShell>Gasto no encontrado</AppShell>;
   }
 
-  const [rubros, { data: socios }, { data: proveedores }, presupuestos] =
-    await Promise.all([
-      // El rubro del gasto viaja aunque esté desmarcado: si no, desaparecería
-      // del desplegable y se perdería al guardar.
-      getRubrosActivos(obra.id, gasto.rubro_id),
-      supabase
-        .from("obra_socios")
-        .select("empresa_id, porcentaje, empresas(nombre)")
-        .eq("obra_id", obra.id),
-      supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
-      getPresupuestosDeObra(obra.id),
-    ]);
+  const [
+    rubros,
+    { data: socios },
+    { data: proveedores },
+    presupuestos,
+    presupuestosConItems,
+  ] = await Promise.all([
+    // El rubro del gasto viaja aunque esté desmarcado: si no, desaparecería
+    // del desplegable y se perdería al guardar.
+    getRubrosActivos(obra.id, gasto.rubro_id),
+    supabase
+      .from("obra_socios")
+      .select("empresa_id, porcentaje, empresas(nombre)")
+      .eq("obra_id", obra.id),
+    supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
+    getPresupuestosDeObra(obra.id),
+    getPresupuestosConItems(obra.id),
+  ]);
 
   // El catálogo de materiales y el detalle ya cargado de este gasto.
   const [{ data: materiales }, { data: items }] = await Promise.all([
@@ -123,6 +132,7 @@ export default async function EditarGastoPage({
         proveedores={proveedores ?? []}
         saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
         presupuestos={presupuestos}
+        presupuestosConItems={presupuestosConItems}
         error={error}
         gasto={gasto}
         cotizacion={cotizacion?.promedio ?? null}

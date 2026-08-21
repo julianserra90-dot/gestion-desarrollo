@@ -7,7 +7,7 @@ import ItemsDeMaterial, {
   type MaterialOpcion,
 } from "@/components/ItemsDeMaterial";
 import * as ui from "@/components/ui";
-import { formatMoney, formatUSD } from "@/lib/format";
+import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
 import { semanaDeObra } from "@/lib/semanas";
 
@@ -68,6 +68,7 @@ export type GastoExistente = {
   fecha: string;
   rubro_id: string | null;
   proveedor_id: string | null;
+  presupuesto_id: string | null;
   empresa_receptora_id: string | null;
   tipo_gasto: string;
   concepto: string | null;
@@ -102,6 +103,48 @@ export type PresupuestoRubro = {
   proveedor: string | null;
 };
 
+/**
+ * Un presupuesto con items cargados, para traerlos a la compra.
+ *
+ * Es otra cosa que `PresupuestoRubro`, que viene sumado por rubro para avisar
+ * si el gasto se pasa: acá hace falta cada presupuesto suelto, porque de uno
+ * puntual es de donde se copian los items.
+ */
+export type PresupuestoConItems = {
+  id: string;
+  numero: string | null;
+  fecha: string;
+  monto: number;
+  proveedor_id: string;
+  items: ItemCargado[];
+  /** Lo ya cargado contra este presupuesto, en esta obra. */
+  gastos: { id: string; fecha: string; monto: number; tieneItems: boolean }[];
+};
+
+/**
+ * Lo que ya se cargó contra un presupuesto, sin contar el gasto que se está
+ * editando: lo suyo no es "otra factura".
+ */
+function otrasFacturas(p: PresupuestoConItems, gastoId?: string) {
+  return p.gastos.filter((g) => g.id !== gastoId);
+}
+
+/**
+ * "N° 4636 · 10/02/2026 · $ 9.209.280,90 — ya cargado $ 4.604.640,45".
+ *
+ * Lo ya cargado va en la etiqueta y no sólo al elegirlo: un proveedor puede
+ * partir un presupuesto en dos facturas —una por socia, para repartir el
+ * crédito fiscal— y hay que ver desde la lista cuál es el que va por la mitad.
+ */
+function etiquetaPresupuesto(p: PresupuestoConItems, gastoId?: string) {
+  const numero = p.numero ? `N° ${p.numero}` : "Sin número";
+  const base = `${numero} · ${formatDate(p.fecha)} · ${formatMoney(p.monto)}`;
+
+  const ya = otrasFacturas(p, gastoId).reduce((acc, g) => acc + g.monto, 0);
+
+  return ya > 0 ? `${base} — ya cargado ${formatMoney(ya)}` : base;
+}
+
 export default function GastoForm({
   action,
   obraId,
@@ -111,6 +154,7 @@ export default function GastoForm({
   proveedores,
   saldosCaja,
   presupuestos = [],
+  presupuestosConItems = [],
   error,
   empresaFija,
   gasto,
@@ -130,6 +174,8 @@ export default function GastoForm({
   saldosCaja: SaldosCaja;
   /** Cotizado y gastado por rubro, para avisar si el gasto se pasa. */
   presupuestos?: PresupuestoRubro[];
+  /** Los presupuestos con items, para traerlos en vez de recargarlos. */
+  presupuestosConItems?: PresupuestoConItems[];
   error?: string;
   /** Si el usuario pertenece a una empresa, el gasto va siempre a su nombre. */
   empresaFija?: string;
@@ -180,6 +226,19 @@ export default function GastoForm({
   const [reemplazar, setReemplazar] = useState(false);
   const [tipoGasto, setTipoGasto] = useState(gasto?.tipo_gasto ?? "Materiales");
   const [proveedorId, setProveedorId] = useState(gasto?.proveedor_id ?? "");
+
+  // De qué presupuesto se trajeron los items. Al editar arranca en el que
+  // quedó guardado, pero **no** se vuelven a traer: los items del gasto son
+  // copia propia y ya llegan en `itemsIniciales`.
+  const [presupuestoElegido, setPresupuestoElegido] = useState(
+    gasto?.presupuesto_id ?? ""
+  );
+  const [itemsTraidos, setItemsTraidos] = useState<ItemCargado[] | null>(null);
+
+  // Remontar el detalle es la forma de pisarlo: la lista de filas es estado
+  // suyo, y cambiarle las `iniciales` sola no lo movería.
+  const [vuelta, setVuelta] = useState(0);
+
   const [receptora, setReceptora] = useState(gasto?.empresa_receptora_id ?? "");
   const [rubroId, setRubroId] = useState(gasto?.rubro_id ?? "");
   const [usarCaja, setUsarCaja] = useState(
@@ -360,6 +419,52 @@ export default function GastoForm({
   const presupuesto = presupuestos.find(
     (p) => p.rubro_id === rubroId && p.tipo === tipoGasto
   );
+
+  // Los presupuestos con items de este proveedor. Se filtra por proveedor y no
+  // por rubro porque la compra puede ir a otro rubro que la cotización, y lo
+  // que importa es que sea el mismo papel.
+  const conItems =
+    tipoGasto === "Materiales" && proveedorId && proveedorId !== NUEVO
+      ? presupuestosConItems.filter((p) => p.proveedor_id === proveedorId)
+      : [];
+
+  const elegido = conItems.find((p) => p.id === presupuestoElegido);
+  const otras = elegido ? otrasFacturas(elegido, gasto?.id) : [];
+
+  // Si los materiales ya se detallaron en otra factura del mismo presupuesto,
+  // traerlos otra vez los contaría dos veces en Materiales. El material entró
+  // una sola vez: partir la factura entre las socias es un acto fiscal, no una
+  // segunda entrega.
+  const conDetalle = otras.find((g) => g.tieneItems);
+
+  const yaCargado = otras.reduce((acc, g) => acc + g.monto, 0);
+  const restaDelPresupuesto = (elegido?.monto ?? 0) - yaCargado;
+
+  /**
+   * Elige de qué presupuesto salió la compra, y trae sus items si corresponde.
+   *
+   * No se elige solo aunque haya uno: un corralón puede tener varios abiertos
+   * en la misma obra, y traer el equivocado en silencio es peor que un click
+   * de más. Volver a "sin presupuesto" deja la lista como llegó al abrir el
+   * formulario —al editar, lo que ya estaba cargado—, no la vacía.
+   */
+  function traerDePresupuesto(id: string) {
+    setPresupuestoElegido(id);
+
+    const p = conItems.find((x) => x.id === id);
+    const yaDetallado = p
+      ? otrasFacturas(p, gasto?.id).some((g) => g.tieneItems)
+      : false;
+
+    setItemsTraidos(p && !yaDetallado ? p.items : null);
+    setVuelta((n) => n + 1);
+  }
+
+  /** El escape: si de verdad es una segunda entrega, se traen igual. */
+  function traerIgual() {
+    setItemsTraidos(elegido?.items ?? null);
+    setVuelta((n) => n + 1);
+  }
 
   // Al editar, lo que este gasto ya aportaba al acumulado no se cuenta dos veces.
   const gastadoAntes =
@@ -951,11 +1056,86 @@ export default function GastoForm({
             {tipoGasto === "Materiales" && (
               <div style={fieldAncho}>
                 <span style={labelCampo}>Detallar materiales de compra</span>
+
+                {/* Si el proveedor ya cotizó con los items cargados, la compra
+                    los trae hechos: es el mismo papel en dos momentos y
+                    recargarlo a mano era el trabajo que sobraba. */}
+                {conItems.length > 0 && (
+                  <label style={traerDe}>
+                    <span style={labelCampo}>Presupuesto del proveedor</span>
+                    <select
+                      value={presupuestoElegido}
+                      onChange={(e) => traerDePresupuesto(e.target.value)}
+                      style={ui.input}
+                    >
+                      <option value="">Sin presupuesto (cargar a mano)</option>
+                      {conItems.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {etiquetaPresupuesto(p, gasto?.id)}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* El proveedor puede partir un presupuesto en dos
+                        facturas, una por socia, para repartir el crédito
+                        fiscal. La segunda queda enganchada al mismo papel pero
+                        sin repetir los materiales. */}
+                    {conDetalle ? (
+                      <span style={avisoDetalle}>
+                        Los materiales de este presupuesto ya están detallados
+                        en otra factura ({formatDate(conDetalle.fecha)}), así
+                        que no se traen de nuevo: el material entró una sola
+                        vez y contarlo dos veces inflaría Materiales.{" "}
+                        <button
+                          type="button"
+                          onClick={traerIgual}
+                          style={botonEnlace}
+                        >
+                          Traerlos igual
+                        </button>
+                      </span>
+                    ) : (
+                      <span style={ayudaCampo}>
+                        Reemplaza los items cargados. Después sacá con la ✕ los
+                        que al final no vinieron, y corregí las cantidades que
+                        cambiaron.
+                      </span>
+                    )}
+
+                    {otras.length > 0 && (
+                      <span style={ayudaCampo}>
+                        Ya hay {formatMoney(yaCargado)} cargados contra este
+                        presupuesto en{" "}
+                        {otras.length === 1
+                          ? "otra factura"
+                          : `otras ${otras.length} facturas`}
+                        {restaDelPresupuesto > 0.01 &&
+                          `, y quedan ${formatMoney(restaDelPresupuesto)}`}
+                        .
+                      </span>
+                    )}
+                  </label>
+                )}
+
+                {/* De qué papel salió la compra. Es sólo la procedencia: los
+                    items van igual como copia propia del gasto. */}
+                {presupuestoElegido !== "" && (
+                  <input
+                    type="hidden"
+                    name="presupuesto_id"
+                    value={presupuestoElegido}
+                  />
+                )}
+
+                {/* El `key` fuerza el remonte al traer otro presupuesto: las
+                    filas son estado del componente y `iniciales` sola no las
+                    movería. */}
                 <ItemsDeMaterial
+                  key={vuelta}
                   materiales={materiales}
                   rubroId={rubroId}
                   slug={slug}
-                  iniciales={itemsIniciales}
+                  iniciales={itemsTraidos ?? itemsIniciales}
                 />
               </div>
             )}
@@ -1286,14 +1466,43 @@ const grid = {
   gap: "20px",
 };
 
+// `alignContent: start` mantiene los campos alineados: sin eso, una celda con
+// ayuda debajo estira a su vecina y el input de al lado queda flotando a media
+// altura en vez de arrancar en la misma línea.
 const field = {
   display: "grid",
   gap: "8px",
+  alignContent: "start" as const,
 };
 
 const fieldAncho = {
   ...field,
   gridColumn: "1 / -1",
+};
+
+// Va pegado arriba del detalle, separado de él: es de dónde sale la lista, no
+// una fila más de la lista.
+const traerDe = {
+  ...field,
+  marginBottom: "12px",
+};
+
+// Ámbar, como todo lo que avisa sin frenar en esta app: no es un error, es que
+// el detalle ya está en otro lado.
+const avisoDetalle = {
+  fontSize: "13px",
+  color: "#92400e",
+  lineHeight: 1.5,
+};
+
+const botonEnlace = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  font: "inherit",
+  color: "#92400e",
+  textDecoration: "underline",
+  cursor: "pointer",
 };
 
 const labelCampo = {

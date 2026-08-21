@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as ui from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 
@@ -36,17 +36,40 @@ export type ItemCargado = {
 
 type Fila = ItemCargado & { clave: number };
 
+/**
+ * Qué papel se está detallando. Cambia sólo los textos: la factura dice qué se
+ * compró y el presupuesto qué se cotizó, y llamarlos igual confunde justo
+ * cuando los dos están en pantalla.
+ */
+type Origen = "factura" | "presupuesto";
+
+const VACIO: Record<Origen, string> = {
+  factura:
+    "Sin detalle. Si querés dejar registro de qué se compró, agregá los items de la factura.",
+  presupuesto:
+    "Sin detalle. Cargá los items que cotizó el proveedor: después la compra los trae sola.",
+};
+
 export default function ItemsDeMaterial({
   materiales,
   rubroId,
   slug,
   iniciales = [],
+  origen = "factura",
+  onTotal,
 }: {
   materiales: MaterialOpcion[];
   /** El rubro elegido en el formulario: sus materiales se ofrecen primero. */
   rubroId: string;
   slug: string;
   iniciales?: ItemCargado[];
+  origen?: Origen;
+  /**
+   * Avisa cuánto suman los items. Lo usa el presupuesto, donde el monto puede
+   * salir del detalle. Pasar el `setState` de arriba directamente: hace falta
+   * que la función sea estable o el efecto se dispara en cada render.
+   */
+  onTotal?: (total: number) => void;
 }) {
   const [filas, setFilas] = useState<Fila[]>(() =>
     iniciales.map((item, i) => ({ ...item, clave: i }))
@@ -87,6 +110,12 @@ export default function ItemsDeMaterial({
 
   const total = filas.reduce((acc, f) => acc + subtotal(f), 0);
 
+  // El formulario de arriba necesita el total para poder usarlo de monto. Va
+  // en un efecto y no en el render porque escribe estado del padre.
+  useEffect(() => {
+    onTotal?.(total);
+  }, [total, onTotal]);
+
   // Los del rubro que se está cargando arriba, el resto abajo: en una obra de
   // albañilería no hay que bajar veinte materiales de plomería para llegar al
   // ladrillo.
@@ -100,10 +129,10 @@ export default function ItemsDeMaterial({
     return (
       <p style={ui.note}>
         Todavía no hay materiales en el catálogo. Cargalos en{" "}
-        <Link href={`/obras/${slug}/materiales`} style={enlace}>
+        <Link href={`/obras/${slug}/materiales/catalogo`} style={enlace}>
           Materiales
         </Link>{" "}
-        (solapa Obra) y después volvé a este gasto.
+        (solapa Obra) y después volvé acá.
       </p>
     );
   }
@@ -111,10 +140,7 @@ export default function ItemsDeMaterial({
   return (
     <div style={contenedor}>
       {filas.length === 0 ? (
-        <p style={ui.note}>
-          Sin detalle. Si querés dejar registro de qué se compró, agregá los
-          items de la factura.
-        </p>
+        <p style={ui.note}>{VACIO[origen]}</p>
       ) : (
         <div style={tabla}>
           <div style={encabezado}>
@@ -241,7 +267,7 @@ export default function ItemsDeMaterial({
             el gasto a medio cargar. Al volver hay que recargar esta pantalla
             para que el material nuevo aparezca en el desplegable. */}
         <a
-          href={`/obras/${slug}/materiales`}
+          href={`/obras/${slug}/materiales/catalogo`}
           target="_blank"
           rel="noopener noreferrer"
           style={enlaceChico}

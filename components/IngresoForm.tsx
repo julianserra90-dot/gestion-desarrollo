@@ -363,9 +363,13 @@ const grid = {
   gap: "20px",
 };
 
+// `alignContent: start` mantiene los campos alineados: sin eso, una celda con
+// ayuda debajo estira a su vecina y el input de al lado queda flotando a media
+// altura en vez de arrancar en la misma línea.
 const field = {
   display: "grid",
   gap: "8px",
+  alignContent: "start" as const,
 };
 
 const fieldAncho = {
