@@ -51,7 +51,6 @@ export default async function EditarPagoLotePage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Lote · {obra.nombre}</p>
         <h2 style={ui.pageTitle}>Editar pago</h2>
-        <p style={ui.subtitle}>Corregí los datos de este pago del lote.</p>
       </section>
 
       {error && <p style={errorBox}>{error}</p>}

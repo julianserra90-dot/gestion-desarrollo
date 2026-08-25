@@ -70,9 +70,6 @@ export default async function EditarObraPage({
         <div>
           <p style={eyebrow}>{obra.nombre}</p>
           <h2 style={title}>Editar obra</h2>
-          <p style={subtitle}>
-            Cambiá los datos generales o quién participa en la obra.
-          </p>
         </div>
 
         <Link href={`/obras/${obra.slug}`} style={backLink}>
@@ -113,9 +110,6 @@ export default async function EditarObraPage({
 
       <section style={panel}>
         <h3 style={sectionTitle}>¿Falta una empresa?</h3>
-        <p style={text}>
-          Agregala acá y después seleccionala arriba como socia de la obra.
-        </p>
 
         <form action={crearEmpresa} style={inlineForm}>
           <input
@@ -250,11 +244,6 @@ const title = {
   fontSize: "36px",
   fontWeight: 400,
   margin: "8px 0",
-};
-
-const subtitle = {
-  color: "#666666",
-  margin: 0,
 };
 
 const backLink = {

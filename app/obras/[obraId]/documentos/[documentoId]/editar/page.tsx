@@ -54,9 +54,8 @@ export default async function EditarDocumentoPage({
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Editar documento</h2>
         <p style={ui.subtitle}>
-          Corregí dónde está archivado, cómo se llama o qué versión es. Cambiarle
-          el nombre lo mueve de línea: pasa a ser versión de los que ya se llaman
-          así.
+          Cambiarle el nombre lo mueve de línea: pasa a ser versión de los que
+          ya se llaman así.
         </p>
       </section>
 

@@ -104,9 +104,7 @@ export default async function ContratistasPage({
         <p style={ui.eyebrow}>Situación económica</p>
         <h2 style={ui.pageTitle}>Contratistas y proveedores</h2>
         <p style={ui.subtitle}>
-          Con quiénes se trabaja: qué hacen y a qué teléfono llamarlos. El
-          listado es <strong>el mismo para todas las obras</strong>, así que el
-          plomero que cargues acá aparece también en las demás.
+          El listado es <strong>el mismo para todas las obras</strong>.
         </p>
       </section>
 

@@ -43,10 +43,6 @@ export default async function NuevoPresupuestoPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Nueva cotización</h2>
-        <p style={ui.subtitle}>
-          Cargá lo que cotizó un gremio para un rubro. Después se comparan
-          todas y se aprueba la elegida.
-        </p>
       </section>
 
       {rubros.length === 0 ? (

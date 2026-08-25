@@ -85,10 +85,6 @@ export default async function NuevoGastoPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Nuevo gasto</h2>
-        <p style={ui.subtitle}>
-          Cargá el gasto por el total. El sistema lo reparte según la
-          participación de cada socia.
-        </p>
       </section>
 
       {rubros.length === 0 && (

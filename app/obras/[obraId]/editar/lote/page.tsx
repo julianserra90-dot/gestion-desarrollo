@@ -116,10 +116,6 @@ export default async function EditarDatosLotePage({
 
         <section style={ui.panelConMargen}>
           <h3 style={ui.sectionTitle}>Identificación del inmueble</h3>
-          <p style={{ ...ui.note, marginTop: 0, marginBottom: "20px" }}>
-            Como figura en la escritura. La nomenclatura catastral va desglosada
-            para poder leerla campo por campo.
-          </p>
 
           <div style={grid}>
             <label style={field}>

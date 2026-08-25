@@ -26,10 +26,6 @@ export default async function UsuariosPage({
         <div>
           <p style={ui.eyebrow}>Gestión de desarrollo</p>
           <h2 style={ui.pageTitle}>Usuarios</h2>
-          <p style={ui.subtitle}>
-            Quién entra a la app y a qué empresa pertenece. Cada usuario ve
-            únicamente las obras donde su empresa es socia.
-          </p>
         </div>
 
         <Link href="/" style={backLink}>

@@ -100,10 +100,6 @@ export default async function EditarGastoPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Editar gasto</h2>
-        <p style={ui.subtitle}>
-          Corregí los datos del gasto. Los totales y el saldo entre empresas se
-          recalculan solos.
-        </p>
       </section>
 
       {anulado && (

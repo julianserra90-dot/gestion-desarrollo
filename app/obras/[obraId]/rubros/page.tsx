@@ -63,9 +63,7 @@ export default async function RubrosPage({
         <p style={ui.eyebrow}>Configuración de obra</p>
         <h2 style={ui.pageTitle}>Rubros</h2>
         <p style={ui.subtitle}>
-          Marcá los rubros que se van a usar en esta obra. Los desplegables de
-          gastos, avances y fotos ofrecen sólo los marcados, así no hay que
-          buscar entre treinta y cuatro cada vez.
+          Los desplegables de gastos, avances y fotos ofrecen sólo los marcados.
         </p>
       </section>
 

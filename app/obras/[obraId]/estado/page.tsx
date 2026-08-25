@@ -119,10 +119,6 @@ export default async function EstadoDeObraPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Estado general</p>
         <h2 style={ui.pageTitle}>Cómo va la obra</h2>
-        <p style={ui.subtitle}>
-          El avance físico contra el calendario, que es lo que dice si la obra
-          va bien o va tarde.
-        </p>
       </section>
 
       {/* --- La ficha del proyecto ----------------------------------------- */}

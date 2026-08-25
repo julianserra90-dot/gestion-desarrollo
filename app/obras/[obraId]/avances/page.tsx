@@ -33,10 +33,6 @@ export default async function AvancesPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Seguimiento de obra</p>
         <h2 style={ui.pageTitle}>Avances</h2>
-        <p style={ui.subtitle}>
-          Entrá a un rubro para cargar lo que se avanzó y ver su historial
-          semana a semana.
-        </p>
       </section>
 
       <section style={ui.statsGrid}>

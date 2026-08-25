@@ -469,20 +469,6 @@ export default function PresupuestoForm({
           <strong>{formatMoney(total)}</strong>
         </div>
 
-        <div style={caja}>
-          <p style={tituloCaja}>Qué pasa al guardarla</p>
-          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.6 }}>
-            Queda como <strong>pendiente</strong>, al lado de las otras
-            cotizaciones del mismo rubro. Recién cuando la aprobés pasa a ser la
-            elegida y los gastos de ese rubro se comparan contra este monto.
-          </p>
-        </div>
-
-        <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
-          Aprobar una cotización no obliga a nada: si después hay una compra de
-          urgencia que nadie cotizó, el gasto se carga igual eligiendo otro
-          proveedor.
-        </p>
       </aside>
     </form>
   );
@@ -616,20 +602,6 @@ const quitarLabel = {
   fontSize: "14px",
   color: "#555555",
   cursor: "pointer",
-};
-
-const caja = {
-  border: "1px solid #111111",
-  padding: "16px",
-  marginTop: "20px",
-};
-
-const tituloCaja = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.08em",
-  color: "#555555",
-  margin: "0 0 10px",
 };
 
 const errorBox = {

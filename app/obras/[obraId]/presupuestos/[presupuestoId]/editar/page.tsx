@@ -60,10 +60,6 @@ export default async function EditarPresupuestoPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Editar cotización</h2>
-        <p style={ui.subtitle}>
-          Corregí los datos de la cotización. Si está aprobada, el presupuesto
-          del rubro se actualiza solo.
-        </p>
       </section>
 
       {presupuesto.estado === "Aprobado" && (

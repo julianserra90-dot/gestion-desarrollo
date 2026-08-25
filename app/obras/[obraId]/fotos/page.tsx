@@ -48,9 +48,6 @@ export default async function FotosPage({
         <div>
           <p style={ui.eyebrow}>Registro visual</p>
           <h2 style={ui.pageTitle}>Fotos de obra</h2>
-          <p style={ui.subtitle}>
-            Registro visual de avances, ordenado por fecha y rubro.
-          </p>
         </div>
 
         <Link href={`/obras/${obra.slug}/fotos/nuevo`} style={ui.button}>

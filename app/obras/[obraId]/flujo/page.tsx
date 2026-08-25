@@ -155,7 +155,6 @@ export default async function FlujoPage({
       <section style={ui.panelConMargen}>
         <div style={ui.toolbar}>
           <h3 style={{ ...ui.sectionTitle, margin: 0 }}>Mes a mes</h3>
-          <span style={ui.note}>Tocá un mes para ver su semana a semana.</span>
         </div>
 
         {meses.length === 0 ? (

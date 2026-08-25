@@ -31,10 +31,6 @@ export default async function PerfilPage({
         <div>
           <p style={ui.eyebrow}>Gestión de desarrollo</p>
           <h2 style={ui.pageTitle}>Mi perfil</h2>
-          <p style={ui.subtitle}>
-            Tu nombre es el que figura en los gastos, avances y archivos que
-            cargás.
-          </p>
         </div>
 
         <Link href="/" style={backLink}>

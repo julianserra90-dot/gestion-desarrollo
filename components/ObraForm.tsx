@@ -77,9 +77,6 @@ export default function ObraForm({
               placeholder="Ej: San Isidro, Buenos Aires"
               style={input}
             />
-            <span style={ayudaCampo}>
-              La localidad, que es lo que se lee en el listado de obras.
-            </span>
           </label>
 
           <label style={field}>
@@ -91,9 +88,6 @@ export default function ObraForm({
               placeholder="Ej: Av. Mitre 1240"
               style={input}
             />
-            <span style={ayudaCampo}>
-              Calle y altura, para avisos de obra y planos municipales.
-            </span>
           </label>
 
           <label style={field}>
@@ -155,7 +149,6 @@ export default function ObraForm({
               placeholder="0"
               style={input}
             />
-            <span style={ayudaCampo}>Lo que se construye, con muros.</span>
           </label>
 
           <label style={field}>
@@ -169,7 +162,6 @@ export default function ObraForm({
               placeholder="0"
               style={input}
             />
-            <span style={ayudaCampo}>La neta vendible de las unidades.</span>
           </label>
 
           <label style={field}>
@@ -213,8 +205,7 @@ export default function ObraForm({
               style={input}
             />
             <span style={ayudaCampo}>
-              A cuántos dólares el metro se arrancó la obra. Con esto y la
-              superficie, Estado compara contra lo que va dando de verdad.
+              A cuántos dólares el metro se arrancó la obra.
             </span>
           </label>
 
@@ -230,9 +221,7 @@ export default function ObraForm({
               style={input}
             />
             <span style={ayudaCampo}>
-              A cuánto se espera vender el metro. Va sobre la superficie de
-              venta, que es lo que se cobra, y con el costo sale el beneficio
-              estimado.
+              Va sobre la superficie de venta, no la construida.
             </span>
           </label>
         </div>

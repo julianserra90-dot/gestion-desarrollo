@@ -53,7 +53,7 @@ export default async function NuevoDocumentoPage({
         <p style={ui.subtitle}>
           {anterior
             ? `Cargá la versión actualizada de ${anterior.nombre}.`
-            : "Elegí dónde se archiva y con qué nombre. La versión se calcula sola."}
+            : "La versión se calcula sola."}
         </p>
       </section>
 

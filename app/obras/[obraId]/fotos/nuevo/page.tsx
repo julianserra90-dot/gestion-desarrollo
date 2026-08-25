@@ -32,8 +32,7 @@ export default async function NuevasFotosPage({
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Subir fotos</h2>
         <p style={ui.subtitle}>
-          Cargá una o varias fotos de un mismo momento de obra. Se reducen de
-          tamaño automáticamente antes de guardarse.
+          Se reducen de tamaño automáticamente antes de guardarse.
         </p>
       </section>
 

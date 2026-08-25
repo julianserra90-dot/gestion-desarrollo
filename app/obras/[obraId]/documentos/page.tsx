@@ -68,9 +68,6 @@ export default async function DocumentosPage({
         <div>
           <p style={ui.eyebrow}>Documentación</p>
           <h2 style={ui.pageTitle}>Documentos</h2>
-          <p style={ui.subtitle}>
-            Planos, permisos y archivos técnicos, ordenados por ámbito y rubro.
-          </p>
         </div>
 
         <Link href={`/obras/${obra.slug}/documentos/nuevo`} style={ui.button}>

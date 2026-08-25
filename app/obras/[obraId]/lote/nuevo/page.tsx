@@ -50,9 +50,6 @@ export default async function NuevoPagoLotePage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Lote · {obra.nombre}</p>
         <h2 style={ui.pageTitle}>Agregar pago</h2>
-        <p style={ui.subtitle}>
-          Una seña, una cuota, la escritura o un gasto de la operación.
-        </p>
       </section>
 
       {error && <p style={errorBox}>{error}</p>}

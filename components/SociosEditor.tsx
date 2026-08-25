@@ -58,10 +58,6 @@ export default function SociosEditor({
       <div style={encabezado}>
         <div>
           <h3 style={titulo}>Empresas socias</h3>
-          <p style={ayuda}>
-            Cada obra puede tener las que haga falta. Los porcentajes definen
-            cuánto le corresponde aportar a cada una.
-          </p>
         </div>
 
         <button type="button" onClick={repartirIgual} style={botonChico}>
@@ -146,13 +142,6 @@ const titulo = {
   fontSize: "18px",
   fontWeight: 400,
   margin: "0 0 6px",
-};
-
-const ayuda = {
-  color: "#666666",
-  fontSize: "14px",
-  margin: 0,
-  maxWidth: "460px",
 };
 
 const filas = {

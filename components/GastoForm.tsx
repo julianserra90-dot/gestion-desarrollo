@@ -535,8 +535,7 @@ export default function GastoForm({
               ) : (
                 <>
                   <span style={ayudaCampo}>
-                    Cargá cuánto querés pagar con la cuenta: eso es el gasto, no
-                    hace falta repetir el monto abajo.
+                    Eso es el gasto: no hace falta repetir el monto abajo.
                   </span>
 
                   <div style={grid}>
@@ -801,9 +800,6 @@ export default function GastoForm({
                     </option>
                   ))}
                 </select>
-                <span style={ayudaCampo}>
-                  A quién se le transfiere para nivelar.
-                </span>
               </label>
             )}
 
@@ -954,8 +950,7 @@ export default function GastoForm({
                 )}
 
                 <span style={ayudaCampo}>
-                  A nombre de quién está la factura: esa empresa computa el
-                  crédito fiscal. Arranca en la que pagó.
+                  Esa empresa computa el crédito fiscal.
                 </span>
               </label>
             )}
@@ -1174,11 +1169,13 @@ export default function GastoForm({
               ) : (
                 <>
                   <input type="file" name="comprobante" style={ui.input} />
-                  <span style={ayudaCampo}>
-                    {gasto?.comprobante_drive_id
-                      ? "Al guardar reemplaza el comprobante anterior."
-                      : "Opcional. PDF, foto o escaneo de la factura del gasto."}
-                  </span>
+                  {/* Sólo el aviso: que se pueda adjuntar un archivo lo dice el
+                      campo, pero que pise al que ya estaba, no. */}
+                  {gasto?.comprobante_drive_id && (
+                    <span style={ayudaCampo}>
+                      Al guardar reemplaza el comprobante anterior.
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -1441,11 +1438,6 @@ export default function GastoForm({
             )}
           </div>
         )}
-
-        <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
-          El gasto se registra por el 100%. El reparto sale del porcentaje de
-          participación de cada socia en esta obra.
-        </p>
           </>
         )}
       </aside>

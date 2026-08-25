@@ -79,10 +79,7 @@ export default async function LotePage({
           <div>
             <p style={ui.eyebrow}>Economía</p>
             <h2 style={ui.pageTitle}>Lote</h2>
-            <p style={ui.subtitle}>
-              La compra del terreno, aparte del costo de construir. Todo en
-              dólares.
-            </p>
+            <p style={ui.subtitle}>Todo en dólares.</p>
           </div>
 
           <Link href={`/obras/${obra.slug}/lote/nuevo`} style={ui.button}>
@@ -117,9 +114,6 @@ export default async function LotePage({
           <div style={ui.statCard}>
             <p style={ui.label}>Gastos administrativos</p>
             <h3 style={ui.statNumber}>{formatUSD(lote.asociadosUsd)}</h3>
-            <p style={{ ...ui.note, margin: "6px 0 0" }}>
-              Escribanía, sellos, comisión.
-            </p>
           </div>
         </section>
       )}
@@ -164,8 +158,7 @@ export default async function LotePage({
         <section style={ui.panelConMargen}>
           <h3 style={ui.sectionTitle}>Reparto del lote entre socias</h3>
           <p style={{ ...ui.note, marginTop: 0, marginBottom: "16px" }}>
-            Cada socia pone su porcentaje del terreno. Este reparto es del lote y
-            va aparte del balance de la obra.
+            Este reparto es del lote y va aparte del balance de la obra.
           </p>
 
           <table style={ui.table}>

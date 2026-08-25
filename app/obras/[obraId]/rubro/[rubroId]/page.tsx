@@ -94,11 +94,6 @@ export default async function RubroDetalle({
         <Volver href={`/obras/${obra.slug}`}>Balance</Volver>
         <p style={ui.eyebrow}>En qué se gastó</p>
         <h2 style={ui.pageTitle}>{rubro.nombre}</h2>
-        <p style={ui.subtitle}>
-          Lo gastado en este rubro contra lo cotizado. Cada tipo se compara por
-          separado: la cotización de la mano de obra no tiene nada que ver con
-          lo que se gastó en materiales.
-        </p>
       </section>
 
       {bloques.length === 0 ? (

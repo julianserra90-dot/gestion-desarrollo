@@ -52,9 +52,6 @@ export default async function EmpresasPage({
         <div>
           <p style={ui.eyebrow}>Gestión de desarrollo</p>
           <h2 style={ui.pageTitle}>Empresas</h2>
-          <p style={ui.subtitle}>
-            Las empresas que pueden participar como socias de una obra.
-          </p>
         </div>
 
         <Link href="/" style={backLink}>
