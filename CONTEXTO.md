@@ -40,6 +40,17 @@ Convenciones de código:
   **"opcional" va al lado de la etiqueta** —en gris, no en un renglón propio—:
   dice lo mismo, no corre el campo vecino y deja la ayuda libre para lo que de
   verdad hay que explicar.
+- **Los títulos alcanzan.** Se barrió la app de subtítulos que contaban de qué
+  se trataba la pantalla ("Registro visual de avances", "Corregí los datos del
+  gasto") y de ayudas que definían el campo que tenían encima ("La localidad,
+  que es lo que se lee en el listado"). Se leían como un manual pegado a la
+  pantalla y empujaban los datos para abajo. Lo que sobrevive es de tres clases:
+  un **número** que no está en ningún otro lado (el disponible de la cuenta, el
+  IVA, lo ya cargado contra un presupuesto), una **cotización de dólar** —a qué
+  cambio se guarda, de qué fecha, de dónde sale— o una **consecuencia que
+  sorprende** (que el archivo pise al anterior, que el catálogo sea el mismo en
+  todas las obras, que un ajuste de saldo no sume al total gastado). Si un texto
+  no entra en ninguna, no va: al escribir una pantalla nueva, ese es el filtro.
 - Los comentarios explican el **porqué**, no el qué. Mantener ese estilo.
 - `formatMoney` y `formatUSD` muestran **dos decimales** (los gastos se cargan al
   centavo). En dólares importa igual o más: $ 1.200.000 al cambio de 1.433,90 son
@@ -57,15 +68,29 @@ cargan por el 100% indicando quién pagó; el reparto sale del porcentaje. El
 Van en **una sola solapa, Ingresos**: "Dinero en cuenta" se fusionó adentro. Eran
 dos pantallas de lo mismo —todo ingreso suma a la cuenta, y la lista de
 movimientos de la cuenta repetía el listado de ingresos entero—. Quedó: cuatro
-tarjetas y **una sola tabla de movimientos** con el saldo que dejó cada uno. Las
-entradas dicen su origen y las salidas son los gastos que tocaron la cuenta. La
-ruta vieja `dinero-en-cuenta` **redirige** a `ingresos`, para no romper enlaces
-guardados.
+tarjetas y **una sola tabla de movimientos**, cada fila con lo que entró o salió
+y nada más. Las entradas dicen su origen y las salidas son los gastos que
+tocaron la cuenta. La ruta vieja `dinero-en-cuenta` **redirige** a `ingresos`,
+para no romper enlaces guardados.
+
+**Se edita desde una columna Editar**, la última, igual que en el listado de
+gastos. Antes el enlace era el texto del detalle: nada anunciaba que llevaba a
+un formulario, y se hacía clic esperando la ficha del movimiento para aparecer
+editándolo. La tabla mezcla ingresos y gastos y cada fila va al formulario que
+le toca, así que la columna sirve para las dos.
+
+**Cuánto queda lo contestan las tarjetas, y una sola vez.** La tabla llevaba una
+columna *Quedan* con el saldo corriente después de cada movimiento: la primera
+fila repetía la tarjeta de arriba y las de abajo eran saldos intermedios que
+nadie pregunta. Con la columna se fue también el acumulado —la lista se ordena
+del más nuevo al más viejo y listo—. Por lo mismo salió de las dos tarjetas de
+cuenta la nota *entró …*: con Gastos al lado, lo que entró es el saldo más lo
+gastado, un número que se deduce mirando.
 
 **Nada se valúa en pesos para mostrarlo.** Las cuatro tarjetas son *Cuenta en
 pesos · Cuenta en dólares · Gastos en pesos · Gastos en dólares*: son dos
 cuentas distintas, cada una en su moneda, y las dos primeras van en verde
-(saldos que no pueden ser negativos) con lo que entró como nota abajo. Antes
+(saldos que no pueden ser negativos). Antes
 arriba iban *Total ingresado · Aportes de socias · Inversores y compradores*,
 las tres valuadas en pesos: un aporte de US$ 5.000 aparecía como $ 7.725.000,
 que es un número que no existe en ningún lado —los dólares siguen siendo
@@ -77,6 +102,40 @@ Se fue con eso la tabla *entró / se usó / disponible*, que repetía los mismos
 cuatro números, y el corte **socias vs. terceros**, que sólo se podía expresar
 en pesos; sigue en la tabla de movimientos, fila por fila, y en el balance como
 `fondos_terceros`.
+
+### La agenda de inversores
+Solapa **Inversores**, al lado de Ingresos porque es su otra mitad: Ingresos
+dice qué entró, Inversores dice **cuánto falta que entre**.
+
+Un inversor era antes un nombre escrito a mano en cada ingreso
+(`ingresos.aportante`). Servía para saber de dónde vino la plata, pero no para
+la pregunta de todos los días —por cuánto firmó y cuánto le falta—: con el
+nombre suelto no hay a qué colgarle el compromiso, y dos aportes del mismo
+inversor sólo se juntaban si el nombre se escribía igual las dos veces. Ahora
+cada uno tiene ficha (`inversores`, por obra) y los ingresos cuelgan de ella
+(`ingresos.inversor_id`).
+
+Los **compradores de unidades van en la misma tabla**, con un `tipo` que toma
+los mismos valores que `ingresos.origen`. Tienen exactamente la misma forma
+—firman por un monto y lo pagan en cuotas—, así que dos tablas gemelas no se
+justificaban.
+
+**El compromiso se lleva en pesos y en dólares por separado**, como los dos
+lados de la cuenta: quien firmó por US$ 100.000 los debe en dólares, y aportar
+pesos no le baja esa deuda. Nada se valúa de un lado al otro. El dato para
+netear existe (cada ingreso guarda su `cotizacion`), pero es una decisión de
+negocio que no se tomó: mezclarlas obligaría a elegir a qué cambio se cancela
+una deuda, y esa elección cambia el saldo.
+
+Los dos montos pueden quedar en **cero, que significa "no se sabe"** y así lo
+dice la pantalla. Hacía falta para la migración: los inversores que ya estaban
+cargados a mano pasaron a la agenda con sus aportes, pero nadie sabe por cuánto
+firmaron. Un cero mostrado como saldo se leería "ya no debe nada", que es lo
+contrario.
+
+Borrar una ficha con aportes está **frenado por la base** (`restrict`): sería
+borrar plata que entró de verdad. Y `ingresos.aportante` quedó como respaldo de
+los nombres viejos —no se escribe más, se lee sólo si un ingreso no tiene ficha.
 
 La plata que **entra**: aportes de socias, inversores o compradores de unidades.
 La cuenta de la obra tiene **dos lados que no se mezclan**: pesos y dólares. Un
@@ -513,9 +572,9 @@ se veía cargada de una información que ya está en la fecha.
 semana escrita a mano; con la fecha, el rubro, el destino y el monto el gasto ya
 está identificado. Vacío se guarda como `null`, no como cadena en blanco. Ojo con
 eso al mostrarlo: un `null` en JSX **no dibuja nada y TypeScript no lo marca**,
-así que una columna Detalle vacía pasa desapercibida. En Ingresos el detalle es
-el texto del enlace a editar el gasto, así que ahí cae a "Sin detalle": sin nada
-no habría dónde hacer clic.
+así que una columna Detalle vacía pasa desapercibida. En la tabla de movimientos
+de Ingresos cae a "Sin detalle", para que la fila no quede con un hueco mudo que
+se confunda con un dato que faltó cargar.
 
 Hubo un intento de que la semana fuera un **dato cargado y corregible**
 (`gastos.semana`, con una casilla en el formulario), pensando en el pago del

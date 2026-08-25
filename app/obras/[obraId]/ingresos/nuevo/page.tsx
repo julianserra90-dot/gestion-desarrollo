@@ -3,6 +3,7 @@ import IngresoForm from "@/components/IngresoForm";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getInversores } from "@/lib/inversores";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -25,13 +26,14 @@ export default async function NuevoIngresoPage({
 
   const supabase = await createClient();
 
-  const [{ data: socios }, cotizacion, caja] = await Promise.all([
+  const [{ data: socios }, cotizacion, caja, inversores] = await Promise.all([
     supabase
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")
       .eq("obra_id", obra.id),
     getCotizacionActual(),
     getCaja(obra.id),
+    getInversores(obra.id),
   ]);
 
   const listaSocios = (socios ?? [])
@@ -49,10 +51,6 @@ export default async function NuevoIngresoPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Nuevo ingreso de fondos</h2>
-        <p style={ui.subtitle}>
-          Plata que entra a la obra. Queda disponible como dinero en cuenta
-          para pagar gastos.
-        </p>
       </section>
 
       {listaSocios.length === 0 ? (
@@ -68,6 +66,7 @@ export default async function NuevoIngresoPage({
           obraId={obra.id}
           slug={obra.slug}
           socios={listaSocios}
+          inversores={inversores}
           saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
           error={error}
           cotizacion={cotizacion?.promedio ?? null}

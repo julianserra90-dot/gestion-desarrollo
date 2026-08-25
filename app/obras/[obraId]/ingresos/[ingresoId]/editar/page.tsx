@@ -3,6 +3,7 @@ import IngresoForm from "@/components/IngresoForm";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getInversores } from "@/lib/inversores";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -28,7 +29,7 @@ export default async function EditarIngresoPage({
   const { data: ingreso } = await supabase
     .from("ingresos")
     .select(
-      "id, fecha, origen, empresa_id, aportante, concepto, monto, monto_usd, moneda, observaciones, comprobante_drive_id, comprobante_nombre"
+      "id, fecha, origen, empresa_id, aportante, inversor_id, concepto, monto, monto_usd, moneda, observaciones, comprobante_drive_id, comprobante_nombre"
     )
     .eq("id", ingresoId)
     .eq("obra_id", obra.id)
@@ -38,13 +39,14 @@ export default async function EditarIngresoPage({
     return <AppShell>Ingreso no encontrado</AppShell>;
   }
 
-  const [{ data: socios }, cotizacion, caja] = await Promise.all([
+  const [{ data: socios }, cotizacion, caja, inversores] = await Promise.all([
     supabase
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")
       .eq("obra_id", obra.id),
     getCotizacionActual(),
     getCaja(obra.id),
+    getInversores(obra.id),
   ]);
 
   const listaSocios = (socios ?? [])
@@ -62,10 +64,6 @@ export default async function EditarIngresoPage({
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
         <h2 style={ui.pageTitle}>Editar ingreso</h2>
-        <p style={ui.subtitle}>
-          Corregí los datos del ingreso. El dinero en cuenta y el balance entre
-          empresas se recalculan solos.
-        </p>
       </section>
 
       <IngresoForm
@@ -73,6 +71,7 @@ export default async function EditarIngresoPage({
         obraId={obra.id}
         slug={obra.slug}
         socios={listaSocios}
+        inversores={inversores}
         saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
         error={error}
         ingreso={ingreso}

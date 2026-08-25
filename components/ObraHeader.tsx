@@ -31,6 +31,9 @@ const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
       { key: "economia", label: "Balance", path: "" },
       { key: "gastos", label: "Gastos", path: "/gastos" },
       { key: "ingresos", label: "Ingresos", path: "/ingresos" },
+      // Al lado de Ingresos porque es su otra mitad: Ingresos dice qué entró,
+      // Inversores dice cuánto falta que entre.
+      { key: "inversores", label: "Inversores", path: "/inversores" },
       { key: "flujo", label: "Flujo", path: "/flujo" },
       { key: "lote", label: "Lote", path: "/lote" },
       { key: "dolares", label: "Dólares", path: "/dolares" },

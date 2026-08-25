@@ -24,6 +24,7 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 | **Presupuestos** | Cotizaciones por rubro; se aprueba la elegida |
 | **Gastos** | Cada gasto por el 100%, repartido según participación |
 | **Ingresos** | Plata que entra: aportes de socias, inversores, compradores |
+| **Inversores** | Por cuánto firmó cada inversor o comprador, y cuánto le falta poner |
 | **Dinero en cuenta** | Lo disponible para gastar, en pesos y en dólares |
 | **Lote** | La compra del terreno: valor, pagos, gastos administrativos, incidencia por m² |
 | **Dólares** | Todo valuado al dólar de la fecha de cada movimiento |
@@ -47,6 +48,26 @@ Tiene dos solapas, porque son dos preguntas distintas:
 Agregar puede cualquiera —hace falta al cargar un gasto—; modificar y eliminar
 es del administrador, porque lo que se toca ahí cambia en todas las obras. Y
 sólo se puede eliminar un material que no esté usado en ninguna compra.
+
+### Inversores
+
+La agenda de quién puso plata en la obra sin ser socia. Cada uno tiene su ficha
+con **por cuánto se comprometió**, y los aportes que va haciendo le bajan el
+saldo: la solapa contesta de un vistazo cuánto falta que entre.
+
+Entran también los **compradores de unidades**, porque tienen la misma forma:
+firman por un monto y lo pagan en cuotas. La ficha dice cuál es cuál.
+
+El compromiso se lleva **en pesos y en dólares por separado**, como los dos
+lados de la cuenta de la obra. Quien firmó por US$ 100.000 los debe en dólares,
+y aportar pesos no le baja esa deuda: son dos saldos que no se mezclan, y se
+puede firmar por las dos cosas a la vez.
+
+Se puede dejar el compromiso en cero: la ficha sirve igual para que los aportes
+de una persona caigan todos juntos, y la pantalla dice "sin cargar" en vez de
+mostrar un saldo inventado. Al cargar un ingreso de un inversor o un comprador
+se lo elige de esta agenda, así que hay que darlo de alta antes del primer
+aporte.
 
 ### Rubros
 

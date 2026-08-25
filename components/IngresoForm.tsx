@@ -7,6 +7,9 @@ import { formatMoney, formatUSD } from "@/lib/format";
 
 type Socio = { empresa_id: string; nombre: string; porcentaje: number };
 
+/** Una ficha de la agenda: quien no es socia aporta desde una de éstas. */
+type Inversor = { id: string; tipo: string; nombreCompleto: string };
+
 const DE_SOCIA = "Empresa socia";
 const ORIGENES = [DE_SOCIA, "Inversor", "Comprador"];
 
@@ -16,6 +19,7 @@ export type IngresoExistente = {
   origen: string;
   empresa_id: string | null;
   aportante: string | null;
+  inversor_id: string | null;
   concepto: string;
   monto: number;
   moneda: string;
@@ -30,6 +34,7 @@ export default function IngresoForm({
   obraId,
   slug,
   socios,
+  inversores,
   saldosCaja,
   error,
   ingreso,
@@ -40,6 +45,8 @@ export default function IngresoForm({
   obraId: string;
   slug: string;
   socios: Socio[];
+  /** La agenda de la obra, para elegir quién aporta en vez de escribirlo. */
+  inversores: Inversor[];
   /** Los dos lados de la cuenta, para mostrar cómo queda después del ingreso. */
   saldosCaja: { ars: number; usd: number };
   error?: string;
@@ -57,6 +64,7 @@ export default function IngresoForm({
   const [moneda, setMoneda] = useState(ingreso?.moneda ?? "ARS");
   const [origen, setOrigen] = useState(ingreso?.origen ?? DE_SOCIA);
   const [empresaId, setEmpresaId] = useState(ingreso?.empresa_id ?? "");
+  const [inversorId, setInversorId] = useState(ingreso?.inversor_id ?? "");
   const [reemplazar, setReemplazar] = useState(false);
 
   const ingresado = Number(monto) || 0;
@@ -67,6 +75,13 @@ export default function IngresoForm({
 
   const esDeSocia = origen === DE_SOCIA;
   const esUsd = moneda === "USD";
+
+  // La agenda ofrece sólo los del origen elegido: un ingreso de un inversor no
+  // puede colgar de la ficha de un comprador. Al cambiar el origen, lo que
+  // estaba elegido deja de valer, así que el desplegable vuelve a vacío en vez
+  // de mostrar un nombre que ya no está en la lista.
+  const deLaAgenda = inversores.filter((i) => i.tipo === origen);
+  const elegido = deLaAgenda.some((i) => i.id === inversorId) ? inversorId : "";
 
   // Al editar, el monto viejo ya está contado en el saldo de su lado: se
   // descuenta para que la vista previa no lo sume dos veces.
@@ -141,18 +156,43 @@ export default function IngresoForm({
             ) : (
               <label style={field}>
                 <span style={labelCampo}>
-                  Nombre {origen === "Inversor" ? "del inversor" : "del comprador"}
+                  Quién aporta
                 </span>
-                <input
-                  type="text"
-                  name="aportante"
-                  defaultValue={ingreso?.aportante ?? ""}
-                  placeholder={
-                    origen === "Inversor" ? "Ej: Juan Pérez" : "Ej: Familia García"
-                  }
+                <select
+                  name="inversor_id"
+                  value={elegido}
+                  onChange={(e) => setInversorId(e.target.value)}
                   required
                   style={ui.input}
-                />
+                  disabled={deLaAgenda.length === 0}
+                >
+                  <option value="">
+                    Seleccionar {origen === "Inversor" ? "inversor" : "comprador"}
+                  </option>
+                  {deLaAgenda.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.nombreCompleto}
+                    </option>
+                  ))}
+                </select>
+                {/* La agenda vacía no es un error del formulario: falta darlo
+                    de alta, y desde acá no se puede sin perder lo cargado. */}
+                <span style={ayudaCampo}>
+                  {deLaAgenda.length === 0 ? (
+                    <>
+                      Todavía no hay ninguno cargado.{" "}
+                      <Link
+                        href={`/obras/${slug}/inversores/nuevo`}
+                        style={enlaceChico}
+                      >
+                        Cargalo en Inversores
+                      </Link>{" "}
+                      y volvé.
+                    </>
+                  ) : (
+                    "El aporte le baja el saldo que le falta poner."
+                  )}
+                </span>
               </label>
             )}
 
@@ -243,11 +283,11 @@ export default function IngresoForm({
               ) : (
                 <>
                   <input type="file" name="comprobante" style={ui.input} />
-                  <span style={ayudaCampo}>
-                    {ingreso?.comprobante_drive_id
-                      ? "Al guardar reemplaza el comprobante anterior."
-                      : "Opcional. Transferencia, recibo o boleto de compraventa."}
-                  </span>
+                  {ingreso?.comprobante_drive_id && (
+                    <span style={ayudaCampo}>
+                      Al guardar reemplaza el comprobante anterior.
+                    </span>
+                  )}
                 </>
               )}
             </div>
@@ -330,21 +370,16 @@ export default function IngresoForm({
           )}
         </div>
 
-        <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
-          {esUsd ? (
-            <>
-              Los dólares quedan como dólares hasta que se usen. Para el balance
-              cuentan por {formatMoney(total)}, su valor al blue de la fecha
-              del aporte. Si después se venden mejor, esa diferencia le rinde a
-              la obra.
-            </>
-          ) : (
-            <>
-              La plata queda disponible en la obra. Al cargar un gasto se puede
-              marcar que se pague con este dinero en cuenta.
-            </>
-          )}
-        </p>
+        {/* Sólo la aclaración del dólar: que un aporte en pesos quede
+            disponible para gastar no hace falta explicarlo. */}
+        {esUsd && (
+          <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
+            Los dólares quedan como dólares hasta que se usen. Para el balance
+            cuentan por {formatMoney(total)}, su valor al blue de la fecha del
+            aporte. Si después se venden mejor, esa diferencia le rinde a la
+            obra.
+          </p>
+        )}
       </aside>
     </form>
   );

@@ -5,6 +5,7 @@ import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { nombreCompleto } from "@/lib/inversores";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -13,9 +14,9 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Ingresos y Dinero en cuenta eran dos pantallas de lo mismo: todo ingreso
  * suma a la cuenta, y la lista de movimientos de la cuenta repetía el listado
- * de ingresos entero. Acá queda una sola historia: cuánto entró, cómo están
- * los dos lados de la cuenta (los pesos quedan pesos y los dólares quedan
- * dólares hasta que se usan) y cada movimiento con el saldo que dejó.
+ * de ingresos entero. Acá queda una sola historia: cómo están los dos lados de
+ * la cuenta (los pesos quedan pesos y los dólares quedan dólares hasta que se
+ * usan) y qué movimientos la dejaron así.
  */
 
 type Movimiento = {
@@ -52,7 +53,7 @@ export default async function IngresosPage({
     supabase
       .from("ingresos")
       .select(
-        "id, fecha, creado_en, origen, aportante, concepto, monto, monto_usd, moneda, comprobante_drive_id, empresas(nombre)"
+        "id, fecha, creado_en, origen, aportante, concepto, monto, monto_usd, moneda, comprobante_drive_id, empresas(nombre), inversores(nombre, apellido)"
       )
       .eq("obra_id", obra.id),
     // Sólo los gastos que efectivamente tocaron la cuenta.
@@ -77,7 +78,15 @@ export default async function IngresosPage({
       entrada: true,
       etiqueta: i.origen,
       detalle: i.concepto,
-      quien: i.empresas?.nombre ?? i.aportante ?? "—",
+      // El nombre sale de la agenda; `aportante` queda de respaldo para los
+      // ingresos viejos, cargados antes de que la agenda existiera.
+      quien:
+        i.empresas?.nombre ??
+        (i.inversores
+          ? nombreCompleto(i.inversores.nombre, i.inversores.apellido)
+          : null) ??
+        i.aportante ??
+        "—",
       // Un aporte en dólares queda en dólares; uno en pesos, en pesos.
       ars: i.moneda === "USD" ? 0 : Number(i.monto),
       usd: i.moneda === "USD" ? Number(i.monto_usd ?? 0) : 0,
@@ -94,8 +103,8 @@ export default async function IngresosPage({
       // que la cuenta se hizo cargo de todo.
       etiqueta:
         Number(g.monto_caja) < Number(g.monto) ? "Gasto (parcial)" : "Gasto",
-      // El detalle del gasto es opcional, pero acá es el texto del enlace a
-      // editarlo: sin nada no habría dónde hacer clic.
+      // El detalle del gasto es opcional; sin esto la celda queda muda y
+      // parece un dato que faltó cargar.
       detalle: g.concepto ?? "Sin detalle",
       quien: g.proveedores?.nombre ?? "—",
       ars: -Number(g.caja_ars),
@@ -106,21 +115,10 @@ export default async function IngresosPage({
     })),
   ];
 
-  // Se acumula del más viejo al más nuevo para poder mostrar cómo quedó la
-  // cuenta después de cada movimiento, y recién ahí se da vuelta la lista.
+  // Del más nuevo al más viejo: lo último que pasó es lo que se viene a ver.
   movimientos.sort(
-    (a, b) => a.fecha.localeCompare(b.fecha) || a.orden.localeCompare(b.orden)
+    (a, b) => b.fecha.localeCompare(a.fecha) || b.orden.localeCompare(a.orden)
   );
-
-  let corrienteArs = 0;
-  let corrienteUsd = 0;
-  const conSaldo = movimientos.map((m) => {
-    corrienteArs += m.ars;
-    corrienteUsd += m.usd;
-    return { ...m, saldoArs: corrienteArs, saldoUsd: corrienteUsd };
-  });
-
-  conSaldo.reverse();
 
   // Los dólares que se vendieron para pagar gastos rindieron más (o menos) que
   // su valor de entrada. Esa diferencia le queda a la obra, no a quien los puso.
@@ -150,18 +148,12 @@ export default async function IngresosPage({
           <h3 style={{ ...ui.statNumber, color: ui.VERDE }}>
             {formatMoney(caja.arsSaldo)}
           </h3>
-          <p style={{ ...ui.note, margin: "6px 0 0" }}>
-            entró {formatMoney(caja.arsIngresado)}
-          </p>
         </div>
         <div style={ui.statCard}>
           <p style={ui.label}>Cuenta en dólares</p>
           <h3 style={{ ...ui.statNumber, color: ui.VERDE }}>
             {formatUSD(caja.usdSaldo)}
           </h3>
-          <p style={{ ...ui.note, margin: "6px 0 0" }}>
-            entró {formatUSD(caja.usdIngresado)}
-          </p>
         </div>
         <div style={ui.statCard}>
           <p style={ui.label}>Gastos en pesos</p>
@@ -189,7 +181,7 @@ export default async function IngresosPage({
       </div>
 
       <section style={ui.panel}>
-        {conSaldo.length === 0 ? (
+        {movimientos.length === 0 ? (
           <p style={ui.vacio}>
             Todavía no entró ni salió plata de la cuenta de esta obra.
           </p>
@@ -204,11 +196,11 @@ export default async function IngresosPage({
                 <th style={ui.th}>Comprobante</th>
                 <th style={ui.thRight}>Pesos</th>
                 <th style={ui.thRight}>Dólares</th>
-                <th style={ui.thRight}>Quedan</th>
+                <th style={ui.th}></th>
               </tr>
             </thead>
             <tbody>
-              {conSaldo.map((mov) => (
+              {movimientos.map((mov) => (
                 <tr key={mov.id}>
                   <td style={{ ...ui.td, ...compacta }}>
                     {formatDate(mov.fecha)}
@@ -219,13 +211,7 @@ export default async function IngresosPage({
                     </span>
                   </td>
                   <td style={ui.td}>{mov.quien}</td>
-                  {/* El detalle es el enlace a editar: acá conviven ingresos y
-                      gastos, y cada uno se edita en su formulario. */}
-                  <td style={ui.td}>
-                    <Link href={mov.href} style={detalleLink}>
-                      {mov.detalle}
-                    </Link>
-                  </td>
+                  <td style={ui.td}>{mov.detalle}</td>
                   <td style={{ ...ui.td, ...compacta }}>
                     {mov.entrada ? (
                       mov.comprobanteDriveId ? (
@@ -260,15 +246,15 @@ export default async function IngresosPage({
                       `${mov.usd > 0 ? "+" : "−"} ${formatUSD(Math.abs(mov.usd))}`
                     )}
                   </td>
-                  {/* Los dos saldos con el mismo peso: acá también son dos
-                      cuentas y no un número con su aclaración. En la columna
-                      se muestran siempre los dos, aunque uno esté en cero, para
-                      que las filas no queden de alturas distintas. */}
-                  <td style={ui.tdRight}>
-                    <strong>{formatMoney(mov.saldoArs)}</strong>
-                    <div style={saldoSecundario}>
-                      <strong>{formatUSD(mov.saldoUsd)}</strong>
-                    </div>
+                  {/* Editar en su propia columna, como en el listado de gastos.
+                      Antes el enlace era el texto del detalle: nada anunciaba
+                      que llevaba a un formulario, y se entraba a editar
+                      creyendo que se abría la ficha. Acá conviven ingresos y
+                      gastos, y cada uno va a su formulario. */}
+                  <td style={ui.td}>
+                    <Link href={mov.href} style={editarLink}>
+                      Editar
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -304,13 +290,9 @@ const tagSalida = {
 
 const compacta = { whiteSpace: "nowrap" as const };
 
-const saldoSecundario = {
+const editarLink = {
   color: "#111111",
-  marginTop: "4px",
-};
-
-const detalleLink = {
-  color: "#111111",
+  fontSize: "14px",
   textDecoration: "underline",
 };
 

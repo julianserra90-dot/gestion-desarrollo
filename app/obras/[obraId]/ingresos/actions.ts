@@ -16,8 +16,10 @@ const ORIGENES = [DE_SOCIA, "Inversor", "Comprador"];
  * Campos comunes al alta y a la edición.
  *
  * Según el origen se completa una cosa u otra: si la plata la pone una socia
- * queda apuntada la empresa; si la pone un inversor o un comprador se guarda
- * el nombre suelto, porque no están en el catálogo de empresas.
+ * queda apuntada la empresa; si la pone un inversor o un comprador, su ficha de
+ * la agenda de la obra. Antes era el nombre escrito a mano (`aportante`): dos
+ * aportes del mismo inversor sólo se juntaban si se escribía igual las dos
+ * veces, y no había a qué colgarle cuánto se había comprometido a poner.
  */
 function leerFormulario(formData: FormData) {
   const origen = String(formData.get("origen") ?? DE_SOCIA);
@@ -27,7 +29,7 @@ function leerFormulario(formData: FormData) {
     origen,
     esDeSocia,
     empresaId: String(formData.get("empresa_id") ?? ""),
-    aportante: String(formData.get("aportante") ?? "").trim(),
+    inversorId: String(formData.get("inversor_id") ?? ""),
     fecha: String(formData.get("fecha") ?? "").trim(),
     concepto: String(formData.get("concepto") ?? "").trim(),
     monto: Number(formData.get("monto") ?? 0),
@@ -48,8 +50,8 @@ function validar(campos: ReturnType<typeof leerFormulario>) {
   if (campos.esDeSocia && !campos.empresaId) {
     return "Elegí qué empresa socia pone la plata.";
   }
-  if (!campos.esDeSocia && !campos.aportante) {
-    return `Poné el nombre ${campos.origen === "Inversor" ? "del inversor" : "del comprador"}.`;
+  if (!campos.esDeSocia && !campos.inversorId) {
+    return `Elegí qué ${campos.origen === "Inversor" ? "inversor" : "comprador"} aporta. Si no está en la lista, cargalo primero en Inversores.`;
   }
 
   return null;
@@ -99,7 +101,7 @@ export async function crearIngreso(formData: FormData) {
     fecha: campos.fecha,
     origen: campos.origen,
     empresa_id: campos.esDeSocia ? campos.empresaId : null,
-    aportante: campos.esDeSocia ? null : campos.aportante,
+    inversor_id: campos.esDeSocia ? null : campos.inversorId,
     concepto: campos.concepto,
     monto: montos.ars,
     monto_usd: montos.usd,
@@ -160,7 +162,7 @@ export async function actualizarIngreso(formData: FormData) {
     fecha: campos.fecha,
     origen: campos.origen,
     empresa_id: campos.esDeSocia ? campos.empresaId : null,
-    aportante: campos.esDeSocia ? null : campos.aportante,
+    inversor_id: campos.esDeSocia ? null : campos.inversorId,
     concepto: campos.concepto,
     monto: montos.ars,
     monto_usd: montos.usd,
@@ -168,6 +170,8 @@ export async function actualizarIngreso(formData: FormData) {
     moneda: campos.moneda,
     observaciones: campos.observaciones === "" ? null : campos.observaciones,
   };
+  // `aportante` no se toca: quedó como estaba en los ingresos viejos, de
+  // respaldo del nombre con el que se cargaron antes de existir la agenda.
 
   let subidoAhora: string | null = null;
 

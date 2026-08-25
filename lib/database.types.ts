@@ -656,6 +656,7 @@ export type Database = {
           empresa_id: string | null
           fecha: string
           id: string
+          inversor_id: string | null
           moneda: string
           monto: number
           monto_usd: number | null
@@ -676,6 +677,7 @@ export type Database = {
           empresa_id?: string | null
           fecha: string
           id?: string
+          inversor_id?: string | null
           moneda?: string
           monto: number
           monto_usd?: number | null
@@ -696,6 +698,7 @@ export type Database = {
           empresa_id?: string | null
           fecha?: string
           id?: string
+          inversor_id?: string | null
           moneda?: string
           monto?: number
           monto_usd?: number | null
@@ -719,6 +722,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ingresos_inversor_id_fkey"
+            columns: ["inversor_id"]
+            isOneToOne: false
+            referencedRelation: "inversores"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ingresos_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
@@ -734,6 +744,64 @@ export type Database = {
           },
           {
             foreignKeyName: "ingresos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inversores: {
+        Row: {
+          apellido: string | null
+          comprometido_ars: number
+          comprometido_usd: number
+          creado_en: string
+          id: string
+          nombre: string
+          obra_id: string
+          observaciones: string | null
+          tipo: string
+        }
+        Insert: {
+          apellido?: string | null
+          comprometido_ars?: number
+          comprometido_usd?: number
+          creado_en?: string
+          id?: string
+          nombre: string
+          obra_id: string
+          observaciones?: string | null
+          tipo: string
+        }
+        Update: {
+          apellido?: string | null
+          comprometido_ars?: number
+          comprometido_usd?: number
+          creado_en?: string
+          id?: string
+          nombre?: string
+          obra_id?: string
+          observaciones?: string | null
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inversores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "inversores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "inversores_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
             referencedRelation: "obras"
