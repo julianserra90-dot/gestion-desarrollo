@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import * as ui from "@/components/ui";
+import { repartirComprobantes } from "@/lib/comprobantes";
 import { formatDate, formatMoney } from "@/lib/format";
 import { semanaDeObra } from "@/lib/semanas";
 
@@ -14,6 +15,11 @@ export type GastoFila = {
   concepto: string | null;
   monto: number;
   montoCaja: number;
+  /** IVA discriminado: 0 en todo lo que no sea factura A. */
+  iva: number;
+  /** El CUIT de la factura A, que puede no ser el de quien pagó. */
+  empresaFacturaId: string | null;
+  empresaPagadoraId: string | null;
   tipoFactura: string | null;
   tipoGasto: string;
   tipoPago: string | null;
@@ -98,6 +104,7 @@ export default function GastosLista({
   slug,
   inicioObra,
   ver,
+  socias,
 }: {
   gastos: GastoFila[];
   slug: string;
@@ -105,6 +112,8 @@ export default function GastosLista({
   inicioObra: string | null;
   /** Con qué filtro arranca la pantalla, si se entró por un atajo. */
   ver?: VistaGastos;
+  /** Las socias de la obra, para el desglose de comprobantes por empresa. */
+  socias: { id: string; nombre: string }[];
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [ocultarAnulados, setOcultarAnulados] = useState(false);
@@ -167,6 +176,55 @@ export default function GastosLista({
   const totalFiltrado = filtrados
     .filter((g) => g.estado !== "Anulado" && g.tipoGasto !== "Ajuste de saldo")
     .reduce((acc, g) => acc + g.monto, 0);
+
+  // A nombre de quién salió lo que se está viendo. Se rehace con cada filtro
+  // —por eso vive acá y no en la página—, así el desglose siempre habla de las
+  // filas de abajo y no de la obra entera. Es el mismo cálculo del Balance.
+  const reparto = useMemo(
+    () =>
+      repartirComprobantes(
+        filtrados
+          .filter(
+            (g) => g.estado !== "Anulado" && g.tipoGasto !== "Ajuste de saldo"
+          )
+          .map((g) => ({
+            monto: g.monto,
+            iva: g.iva,
+            tipoPago: g.tipoPago,
+            empresaFacturaId: g.empresaFacturaId,
+            empresaPagadoraId: g.empresaPagadoraId,
+            compartido: g.compartido,
+          })),
+        socias.map((s) => s.id)
+      ),
+    [filtrados, socias]
+  );
+
+  const porEmpresa = socias.map((s) => ({
+    nombre: s.nombre,
+    ...(reparto.porEmpresa.get(s.id) ?? {
+      facturado: 0,
+      efectivo: 0,
+      creditoFiscal: 0,
+    }),
+  }));
+
+  // Cada columna aparece sólo si hay algo que mostrar: entrando por Facturado
+  // no hay efectivo que poner, y entrando por Efectivo no hay crédito fiscal.
+  const hayFacturado = porEmpresa.some((e) => e.facturado > 0);
+  const hayEfectivo = porEmpresa.some((e) => e.efectivo > 0);
+  const hayCredito = porEmpresa.some((e) => e.creditoFiscal > 0);
+
+  // El desglose es la respuesta a "¿cuánto de esto es de cada una?", que es lo
+  // que se viene a buscar al entrar por una tarjeta del Balance. En la solapa
+  // Gastos, que se abre para cargar y revisar movimientos, sobra.
+  const mostrarPorEmpresa =
+    Boolean(ver) &&
+    socias.length > 1 &&
+    (hayFacturado || hayEfectivo || hayCredito);
+
+  const sinAsignar =
+    reparto.facturadoSinAsignar + reparto.efectivoSinAsignar;
 
   // Sin filtro guardado, todas las casillas están tildadas. Destildar una crea
   // el filtro con el resto; volver a tildarlas todas lo borra, así "sin
@@ -285,6 +343,66 @@ export default function GastosLista({
               <span style={totalContador}>{formatMoney(totalFiltrado)}</span>
             )}
           </p>
+
+          {mostrarPorEmpresa && (
+            <div style={desglose}>
+              <p style={desgloseTitulo}>A nombre de quién</p>
+
+              <table style={ui.table}>
+                <thead>
+                  <tr>
+                    <th style={ui.th}>Empresa</th>
+                    {hayFacturado && <th style={ui.thRight}>Facturado</th>}
+                    {hayEfectivo && <th style={ui.thRight}>Efectivo</th>}
+                    {hayCredito && <th style={ui.thRight}>Crédito fiscal</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {porEmpresa.map((e) => (
+                    <tr key={e.nombre}>
+                      <td style={ui.td}>{e.nombre}</td>
+                      {hayFacturado && (
+                        <td style={ui.tdRight}>
+                          {e.facturado > 0 ? formatMoney(e.facturado) : "—"}
+                        </td>
+                      )}
+                      {hayEfectivo && (
+                        <td style={ui.tdRight}>
+                          {e.efectivo > 0 ? formatMoney(e.efectivo) : "—"}
+                        </td>
+                      )}
+                      {hayCredito && (
+                        <td style={ui.tdRight}>
+                          {e.creditoFiscal > 0
+                            ? formatMoney(e.creditoFiscal)
+                            : "—"}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* El crédito fiscal es del CUIT de la factura y no hereda de
+                  quien pagó: sin ese dato no hay a quién dárselo, y la columna
+                  queda corta contra la tarjeta de la que se vino. */}
+              {hayCredito && (
+                <p style={ui.note}>
+                  El crédito fiscal lo computa sólo la empresa que figura en la
+                  factura A. Las B y C son consumidor final: cuentan como
+                  facturado, pero no dan crédito.
+                </p>
+              )}
+
+              {sinAsignar > 0 && (
+                <p style={ui.note}>
+                  {formatMoney(sinAsignar)} sin atribuir a ninguna empresa —se
+                  pagaron enteros con el dinero en cuenta y no llevan factura a
+                  nombre de una socia—.
+                </p>
+              )}
+            </div>
+          )}
 
           <table style={ui.table}>
             <thead>
@@ -436,6 +554,23 @@ const contador = {
 const totalContador = {
   color: "#111111",
   marginLeft: "10px",
+};
+
+// El desglose por empresa va encerrado y con fondo: es un resumen de lo que se
+// está viendo, no una fila más del listado que sigue abajo.
+const desglose = {
+  border: "1px solid #e5e5e5",
+  background: "#fafafa",
+  padding: "16px 20px",
+  marginBottom: "24px",
+};
+
+const desgloseTitulo = {
+  fontSize: "13px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.08em",
+  color: "#555555",
+  margin: "0 0 6px",
 };
 
 const contenidoTh = {

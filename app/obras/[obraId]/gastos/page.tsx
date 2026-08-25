@@ -46,13 +46,21 @@ export default async function GastosPage({
   const vista = VISTAS.find((v) => v === ver);
 
   const supabase = await createClient();
-  const { data: gastos } = await supabase
-    .from("gastos")
-    .select(
-      "id, fecha, concepto, monto, monto_caja, tipo_factura, tipo_gasto, tipo_pago, estado, compartido, comprobante_drive_id, proveedor_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
-    )
-    .eq("obra_id", obra.id)
-    .order("fecha", { ascending: false });
+  const [{ data: gastos }, { data: socias }] = await Promise.all([
+    supabase
+      .from("gastos")
+      .select(
+        "id, fecha, concepto, monto, monto_caja, iva, tipo_factura, tipo_gasto, tipo_pago, estado, compartido, empresa_factura_id, empresa_pagadora_id, comprobante_drive_id, proveedor_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
+      )
+      .eq("obra_id", obra.id)
+      .order("fecha", { ascending: false }),
+    // Las socias, para poder decir a nombre de quién salió cada comprobante de
+    // lo que se está viendo.
+    supabase
+      .from("obra_socios")
+      .select("empresa_id, empresas(nombre)")
+      .eq("obra_id", obra.id),
+  ]);
 
   const lista = gastos ?? [];
 
@@ -78,6 +86,9 @@ export default async function GastosPage({
     concepto: g.concepto,
     monto: Number(g.monto),
     montoCaja: Number(g.monto_caja),
+    iva: Number(g.iva ?? 0),
+    empresaFacturaId: g.empresa_factura_id,
+    empresaPagadoraId: g.empresa_pagadora_id,
     tipoFactura: g.tipo_factura,
     tipoGasto: g.tipo_gasto,
     tipoPago: g.tipo_pago,
@@ -138,6 +149,16 @@ export default async function GastosPage({
         slug={obra.slug}
         inicioObra={obra.fecha_inicio}
         ver={vista}
+        socias={(socias ?? [])
+          .filter((s) => s.empresa_id)
+          .map((s) => ({
+            id: s.empresa_id as string,
+            nombre: s.empresas?.nombre ?? "—",
+          }))
+          // Alfabético, igual que el balance entre empresas: las dos pantallas
+          // muestran los mismos números y conviene que los muestren en el
+          // mismo orden.
+          .sort((a, b) => a.nombre.localeCompare(b.nombre))}
       />
     </AppShell>
   );
