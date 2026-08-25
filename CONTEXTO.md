@@ -180,6 +180,11 @@ compartido**, porque no lo puso nadie de su bolsillo; y la **factura sigue siend
 de una sola empresa** —el crédito fiscal no se divide—, así que el titular hay
 que elegirlo a mano en vez de heredarlo de la pagadora, que no existe.
 
+Ese titular manda también en la columna **Facturado** del balance: un gasto
+compartido con factura a nombre de una socia se le atribuye **entero** a ella,
+no la mitad a cada una. La plata se sigue partiendo al medio; lo que no se parte
+es el comprobante.
+
 ### Lote (la compra del terreno)
 El terreno se lleva **aparte** de los gastos de construcción: es una compra de
 inmueble en dólares, y su valor no debe inflar el m² de obra. Decisión de diseño
@@ -284,14 +289,70 @@ contra los que hay. La de Dinero en cuenta lleva a Ingresos, que es donde está
 su detalle.
 
 Ojo: la de **crédito fiscal** lleva a las facturas A —las únicas que lo
-discriminan—, pero el total que se ve ahí es lo facturado, no el IVA. El
-desglose del crédito en sí no está en el listado desde que se sacó la columna
-de IVA.
+discriminan—, pero el total de la tarjeta del listado es lo facturado, no el
+IVA. El IVA aparece en el desglose por empresa, no gasto por gasto: la columna
+de IVA del listado se sacó y no volvió.
+
+**El desglose "A nombre de quién"**, arriba del listado: qué parte de lo que se
+está viendo es de cada socia —facturado, efectivo y crédito fiscal—, que es la
+pregunta que sigue a entrar por una tarjeta ("de estos $ 10.404.662, ¿cuánto es
+mío?"). Tres decisiones: se **rehace con cada filtro** (vive en `GastosLista`,
+no en la página, y se calcula sobre lo filtrado) así siempre habla de las filas
+de abajo; cada columna aparece **sólo si tiene algo** —entrando por Facturado no
+hay efectivo que poner, entrando por Efectivo no hay crédito—; y sale **sólo al
+llegar por una tarjeta** (`ver` presente), porque la solapa Gastos se abre para
+cargar y revisar movimientos, no para leer un resumen.
+
+Usa `repartirComprobantes` (`lib/comprobantes.ts`), el mismo cálculo puro que el
+balance entre empresas: los dos tienen que dar el mismo número, y sin filtrar
+nada el desglose es exactamente las columnas de comprobantes del Balance.
 
 El listado suma además el **total de lo que se está viendo** al lado del
 contador ("34 gastos de 36 · $ 43.250.000"). Deja afuera anulados y ajustes de
 saldo, igual que todos los totales de la app, así cuadra exacto con la tarjeta
 de la que se vino.
+
+#### La tabla "Balance entre empresas": tres bloques que no suman entre sí
+Las columnas contestan tres preguntas distintas sobre los mismos gastos, y por
+eso van agrupadas bajo un rótulo y separadas por una línea vertical: **sólo
+suman dentro de su bloque**.
+
+- **Comprobantes** (Facturado · Efectivo · Crédito fiscal): a nombre de quién
+  salió cada gasto. Toma el **monto entero** del gasto, no lo que salió del
+  bolsillo: la factura es por el total aunque una parte la haya cubierto el
+  dinero en cuenta —mismo criterio que el crédito fiscal, que computa el IVA
+  completo del comprobante—. El total de Facturado cuadra con la tarjeta
+  "Facturado" de arriba, y el de Efectivo con "En efectivo".
+- **Lo que puso** (De su bolsillo · Puso en cuenta · Ajustes · Total obra): de
+  dónde salió la plata. Los tres primeros suman **Total obra**, que es el
+  `pagado` de `obra_balance` y lo único que alimenta el saldo.
+- **El reparto** (Le corresponde · Saldo).
+
+**A quién se le facturó no es quién pagó.** Es el arreglo del que salió esta
+tabla: la columna Facturado atribuía por `empresa_pagadora_id`, así que una
+compra grande pagada "Entre las socias" se partía al medio aunque la factura
+saliera a nombre de una sola. Ahora el orden es `empresa_factura_id` →
+`empresa_pagadora_id` → partes iguales si es compartido. Las **B y C son
+consumidor final**: no llevan CUIT (el `check` de la base sólo admite titular en
+la A), así que van por quien pagó — pero siguen siendo facturado, porque lo son;
+lo único que se reserva para la A es el crédito fiscal, que es lo único que la A
+tiene de distinto. Los gastos viejos sin tipo de factura caen en el mismo lugar.
+
+Lo que no se puede atribuir —pagado entero con el dinero en cuenta y sin factura
+a nombre de una socia— **no se reparte**: va en una línea debajo de la tabla,
+mismo criterio que los pagos del lote sin socia. Así las columnas de
+comprobantes quedan cortas contra el total gastado sin que parezca un error.
+
+Todo esto se calcula en **`lib/comprobantes.ts`** —`repartirComprobantes`, puro y
+sin base— y no en la vista: `obra_balance.pagado_facturado` y `pagado_efectivo`
+—que atribuyen por pagadora y descuentan la caja— **quedaron sin uso**. Siguen
+ahí porque son otra pregunta válida ("de lo que puso de su bolsillo, cuánto
+tenía factura"), por si alguna vez hace falta.
+
+El módulo es puro porque lo usan los dos lados: el Balance en el servidor y el
+desglose del listado de gastos en el navegador, que lo rehace con cada filtro.
+Si el cálculo viviera en la página, el listado tendría que copiarlo y los dos
+números se irían separando.
 
 **Lo que se perdió a propósito**: la tabla "Total por empresa" —obra + terreno
 sumados— y su liquidación consolidada. Resolvía un caso real: una socia pone el
