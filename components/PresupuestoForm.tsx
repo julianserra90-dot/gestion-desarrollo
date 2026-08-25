@@ -68,7 +68,7 @@ export default function PresupuestoForm({
   error?: string;
   /** Si viene, el formulario edita esa cotización en vez de crear una. */
   presupuesto?: PresupuestoExistente;
-  /** Dólar oficial de hoy, sólo para la vista previa de la conversión. */
+  /** Dólar blue de hoy, sólo para la vista previa de la conversión. */
   cotizacion?: number | null;
   /** Vienen de la solapa cuando se entra por "Cotizar" de un rubro puntual. */
   rubroSugerido?: string;

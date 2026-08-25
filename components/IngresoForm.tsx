@@ -45,7 +45,7 @@ export default function IngresoForm({
   error?: string;
   /** Si viene, el formulario edita ese ingreso en vez de crear uno nuevo. */
   ingreso?: IngresoExistente;
-  /** Dólar oficial de hoy, sólo para la vista previa de la conversión. */
+  /** Dólar blue de hoy, sólo para la vista previa de la conversión. */
   cotizacion?: number | null;
   textoBoton?: string;
 }) {
@@ -334,7 +334,7 @@ export default function IngresoForm({
           {esUsd ? (
             <>
               Los dólares quedan como dólares hasta que se usen. Para el balance
-              cuentan por {formatMoney(total)}, su valor al oficial de la fecha
+              cuentan por {formatMoney(total)}, su valor al blue de la fecha
               del aporte. Si después se venden mejor, esa diferencia le rinde a
               la obra.
             </>

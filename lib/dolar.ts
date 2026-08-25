@@ -1,10 +1,14 @@
 /**
- * Cotización del dólar oficial, tomada de Ámbito Financiero.
+ * Cotización del dólar blue, tomada de Ámbito Financiero.
  *
  * SÓLO SERVIDOR.
  *
- * Se usa el promedio entre compra y venta, que es lo que se suele tomar como
- * referencia para valuar costos.
+ * Se usa el **promedio entre compra y venta** (compra 40 y venta 45 dan 42,50),
+ * que es lo que se suele tomar como referencia para valuar costos.
+ *
+ * Por qué el blue y no el oficial: la obra se paga con los dólares que se
+ * consiguen, no con los del banco. Valuar al oficial infla los dólares que
+ * parece haber costado cada gasto, y el m² sale más caro de lo que fue.
  *
  * Por qué la cotización histórica y no la de hoy: con la inflación argentina,
  * un gasto de $1.000.000 en enero no representa los mismos dólares que
@@ -13,7 +17,9 @@
  * SU fecha.
  */
 
-const BASE = "https://mercados.ambito.com/dolar/oficial";
+// "informal" es como Ámbito nombra al blue. Misma forma de respuesta que el
+// oficial, pero el histórico trae menos días y repite fechas (ver `getHistorico`).
+const BASE = "https://mercados.ambito.com/dolar/informal";
 
 export type Cotizacion = {
   compra: number;
@@ -131,9 +137,14 @@ async function getHistorico(
       const [fecha, compra, venta] = fila;
       const c = parsearNumero(compra);
       const v = parsearNumero(venta);
-      if (Number.isFinite(c) && Number.isFinite(v)) {
-        mapa.set(aIso(fecha), (c + v) / 2);
-      }
+      if (!Number.isFinite(c) || !Number.isFinite(v)) continue;
+
+      // El blue cotiza varias veces por día y el histórico repite la fecha —una
+      // fila por movimiento, no una por día—. Las filas vienen de la más nueva
+      // a la más vieja, así que la primera de cada fecha es el último valor de
+      // ese día: se queda esa y las siguientes no la pisan.
+      const iso = aIso(fecha);
+      if (!mapa.has(iso)) mapa.set(iso, (c + v) / 2);
     }
 
     cacheHistorico.set(clave, { valor: mapa, expira: Date.now() + TTL_HISTORICO });
@@ -217,11 +228,11 @@ export type MontoConvertido =
  *
  * Lo usan los gastos y los ingresos de fondos: en los dos casos se guarda el
  * valor en pesos (es lo que suman los totales) más el equivalente en dólares y
- * la cotización usada. La conversión va al dólar oficial de la fecha del
+ * la cotización usada. La conversión va al dólar blue de la fecha del
  * movimiento, no al del día en que se carga.
  *
  * `cotizacionManual` la pisa. Sirve para cuando el cambio del día fue otro: si
- * vendiste los dólares a mejor precio que el oficial, el gasto tiene que quedar
+ * vendiste los dólares a mejor precio que el blue, el gasto tiene que quedar
  * valuado a lo que realmente pagaste, no a lo que decía Ámbito.
  */
 export async function convertirMonto(

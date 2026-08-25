@@ -236,8 +236,8 @@ tiene ninguna, no se muestra "falta pagar": no habría contra qué compararlo.
 
 La cuenta de la obra tiene **dos lados que no se mezclan**: los pesos que entran
 quedan como pesos y los dólares como dólares, hasta que se usen. Recién al pagar
-un gasto se define a cuánto se vendieron esos dólares, que rara vez es el
-oficial —por eso hay cotización personalizada.
+un gasto se define a cuánto se vendieron esos dólares, que rara vez es el blue
+de referencia —por eso hay cotización personalizada.
 
 Al pagar un gasto se elige cuánto sale de cada lado. Si el saldo no llega, la
 cuenta pone lo que tiene y la diferencia queda a cargo de una socia, calculada

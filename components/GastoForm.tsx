@@ -181,7 +181,7 @@ export default function GastoForm({
   empresaFija?: string;
   /** Si viene, el formulario edita ese gasto en vez de crear uno nuevo. */
   gasto?: GastoExistente;
-  /** Dólar oficial de hoy, sólo para la vista previa de la conversión. */
+  /** Dólar blue de hoy, sólo para la vista previa de la conversión. */
   cotizacion?: number | null;
   /** Arranque de la obra: con eso la fecha elegida dice en qué semana cae. */
   inicioObra?: string | null;
@@ -615,8 +615,8 @@ export default function GastoForm({
                       ) : (
                         <span style={faltaCotizacion ? ayudaError : ayudaCampo}>
                           {faltaCotizacion
-                            ? "No se pudo traer el dólar oficial: cargá la cotización a mano."
-                            : `Se usa el dólar oficial de la fecha del gasto${cotizacion ? ` (hoy ≈ ${formatMoney(cotizacion)})` : ""}. Tildá si conseguiste otro cambio.`}
+                            ? "No se pudo traer el dólar blue: cargá la cotización a mano."
+                            : `Se usa el dólar blue de la fecha del gasto${cotizacion ? ` (hoy ≈ ${formatMoney(cotizacion)})` : ""}. Tildá si conseguiste otro cambio.`}
                         </span>
                       )}
                     </div>
@@ -1037,8 +1037,8 @@ export default function GastoForm({
                 ) : (
                   <span style={ayudaCampo}>
                     {cotizacion
-                      ? `Se usa el dólar oficial de la fecha del gasto (hoy ≈ ${formatMoney(cotizacion)}). Tildá si conseguiste otro cambio.`
-                      : "Se usa el dólar oficial de la fecha del gasto."}
+                      ? `Se usa el dólar blue de la fecha del gasto (hoy ≈ ${formatMoney(cotizacion)}). Tildá si conseguiste otro cambio.`
+                      : "Se usa el dólar blue de la fecha del gasto."}
                   </span>
                 )}
               </div>

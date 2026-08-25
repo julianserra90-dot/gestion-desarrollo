@@ -7,7 +7,7 @@
  * La cuenta tiene dos lados que no se mezclan solos. Los pesos que entran
  * quedan como pesos y los dólares como dólares, hasta que alguien los use para
  * pagar un gasto. Recién ahí se define a cuánto se vendieron esos dólares, que
- * rara vez es el oficial de Ámbito.
+ * rara vez es el blue de Ámbito.
  */
 
 import { createClient } from "@/lib/supabase/server";

@@ -258,8 +258,8 @@ export default async function DolaresPage({
         <p style={ui.eyebrow}>Situación económica</p>
         <h2 style={ui.pageTitle}>Dólares</h2>
         <p style={ui.subtitle}>
-          Cada movimiento valuado al dólar oficial de la fecha en que se hizo,
-          no al de hoy. Así el total refleja lo que la obra costó de verdad en
+          Cada movimiento valuado al dólar blue de la fecha en que se hizo, no
+          al de hoy. Así el total refleja lo que la obra costó de verdad en
           dólares, y lo que valían los aportes cuando entraron.
         </p>
       </section>
@@ -296,10 +296,18 @@ export default async function DolaresPage({
           </h3>
         </div>
         <div style={ui.statCard}>
-          <p style={ui.label}>Dólar oficial hoy</p>
+          <p style={ui.label}>Dólar blue hoy</p>
           <h3 style={ui.statNumber}>
             {convertidor.actual ? formatMoney(convertidor.actual.promedio) : "—"}
           </h3>
+          {/* Las dos puntas debajo del promedio: así se ve de dónde sale el
+              número que se está usando, sin tener que ir a mirar Ámbito. */}
+          {convertidor.actual && (
+            <p style={{ ...ui.note, margin: "6px 0 0" }}>
+              compra {formatMoney(convertidor.actual.compra)} · venta{" "}
+              {formatMoney(convertidor.actual.venta)}
+            </p>
+          )}
         </div>
       </section>
 
@@ -536,10 +544,10 @@ export default async function DolaresPage({
       )}
 
       <p style={{ ...ui.note, marginTop: "20px" }}>
-        Fuente: dólar oficial de Ámbito Financiero, promedio entre compra y
-        venta{convertidor.actual ? ` · última actualización ${convertidor.actual.fecha}` : ""}.
-        Para movimientos de días no hábiles se usa la cotización del día hábil
-        anterior.
+        Fuente: dólar blue de Ámbito Financiero, promedio entre compra y venta
+        {convertidor.actual ? ` · última actualización ${convertidor.actual.fecha}` : ""}.
+        Para movimientos de días sin cotización se usa la del día anterior más
+        cercano.
       </p>
     </AppShell>
   );

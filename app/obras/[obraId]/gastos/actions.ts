@@ -19,7 +19,7 @@ type GastoUpdate = Database["public"]["Tables"]["gastos"]["Update"];
  * Lee del formulario cuánto se saca de cada lado de la cuenta y qué cotización
  * usar.
  *
- * La cotización manual pisa a la oficial en todo el gasto, no sólo en la
+ * La cotización manual pisa a la del blue en todo el gasto, no sólo en la
  * conversión de los dólares que salen de la cuenta: si conseguiste otro cambio,
  * ese es el valor real de lo que pagaste.
  */
