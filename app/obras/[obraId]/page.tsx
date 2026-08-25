@@ -318,8 +318,14 @@ export default async function ObraDetalle({
             cosa: la plata que hay y la que falta. */}
         <Link href={`/obras/${obra.slug}/ingresos`} style={cardEnlace}>
           <p style={label}>Dinero en cuenta</p>
-          <h3 style={number}>{formatMoney(caja.arsSaldo)}</h3>
-          <p style={{ ...note, margin: "6px 0 0" }}>
+          {/* Los dos saldos con el mismo peso: no es un número principal con
+              una aclaración abajo, son las dos monedas de la misma cuenta y
+              ninguna manda sobre la otra. En verde porque es plata que está
+              —nunca puede ser negativa—, al revés del rojo de "Resta pagar". */}
+          <h3 style={{ ...number, color: VERDE }}>
+            {formatMoney(caja.arsSaldo)}
+          </h3>
+          <p style={{ ...number, color: VERDE, margin: "4px 0 0" }}>
             {formatUSD(caja.usdSaldo)}
           </p>
         </Link>

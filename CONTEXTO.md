@@ -22,7 +22,7 @@ en la nube y son los mismos para las dos.
   rápido.
 - **Google Drive** para archivos (fotos, comprobantes, documentos). En la base
   va sólo el id de Drive; se sirve por una ruta del server que verifica permiso.
-- **Ámbito Financiero** para la cotización del dólar oficial.
+- **Ámbito Financiero** para la cotización del dólar blue (endpoint `informal`).
 
 Convenciones de código:
 - Helpers de servidor en `lib/*.ts` (leen la base, marcados "SÓLO SERVIDOR").
@@ -271,6 +271,11 @@ cotización de la mano de obra no se mide contra lo gastado en materiales) y
 lleva a Presupuestos, que es donde está el desglose. Se probó como una tabla
 rubro por rubro en el Balance y sobraba, porque ese detalle ya estaba a un
 click.
+
+**Dinero en cuenta va en verde**, el contrario del rojo de Resta pagar: es plata
+que está, y sus dos saldos no pueden ser negativos. Los dos van con el **mismo
+tamaño** —no hay un número principal con una aclaración chica abajo—, porque son
+las dos monedas de la misma cuenta y ninguna manda sobre la otra.
 
 Dos cosas de ese número: un rubro que se pasó **no compensa** lo que falta en
 otro —no devuelve plata—, así que suma sólo lo que todavía hay que poner; y
@@ -857,6 +862,12 @@ Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
 - **El histórico de Ámbito excluye la fecha de fin** del rango y no devuelve nada
   para un rango de un solo día. Por eso `getCotizacionDeFecha` pide con margen
   (15 días atrás, 1 adelante). Sin esto todo caía al dólar de hoy.
+- **El histórico del blue repite fechas**: cotiza varias veces por día y trae una
+  fila por movimiento, no una por día. Vienen de la más nueva a la más vieja, así
+  que se guarda la **primera** de cada fecha —el último valor de ese día— y las
+  siguientes no la pisan; con un `set` a secas ganaba la más vieja. También trae
+  menos días que el oficial (el hueco más grande visto es de 5), que el fallback
+  al día anterior más cercano ya cubre.
 - **Conversión a dólares**: un monto en pesos no siempre da un número redondo de
   dólares (el centavo de dólar vale ~$15). Redondear siempre para abajo para no
   sobrestimar lo que salió de la cuenta.
