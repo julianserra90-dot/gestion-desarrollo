@@ -15,6 +15,9 @@ export type GastoFila = {
   concepto: string | null;
   monto: number;
   montoCaja: number;
+  /** Los dos lados de la cuenta que usó este gasto, cada uno en su moneda. */
+  cajaArs: number;
+  cajaUsd: number;
   /** IVA discriminado: 0 en todo lo que no sea factura A. */
   iva: number;
   /** El CUIT de la factura A, que puede no ser el de quien pagó. */
@@ -66,7 +69,15 @@ function valorDe(g: GastoFila, col: ColumnaFiltrable): string {
       return ajuste ? "—" : g.tipoFactura ? `Factura ${g.tipoFactura}` : "Efectivo";
     case "pago":
       if (g.compartido) return "Entre las socias";
-      if (g.montoCaja >= g.monto) return "Dinero en cuenta";
+      // De qué lado de la cuenta salió: son dos cuentas distintas, y no es lo
+      // mismo haber usado dólares que pesos —los dólares hubo que venderlos—.
+      // Al ser el valor de la columna, el filtro también los separa.
+      if (g.montoCaja >= g.monto) {
+        if (g.cajaArs > 0 && g.cajaUsd > 0) return "Dinero en cuenta (mixto)";
+        if (g.cajaUsd > 0) return "Dinero en cuenta (dólares)";
+        if (g.cajaArs > 0) return "Dinero en cuenta (pesos)";
+        return "Dinero en cuenta";
+      }
       return g.pagadora ?? "—";
   }
 }

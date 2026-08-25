@@ -56,12 +56,27 @@ cargan por el 100% indicando quién pagó; el reparto sale del porcentaje. El
 ### Ingresos de fondos y dinero en cuenta
 Van en **una sola solapa, Ingresos**: "Dinero en cuenta" se fusionó adentro. Eran
 dos pantallas de lo mismo —todo ingreso suma a la cuenta, y la lista de
-movimientos de la cuenta repetía el listado de ingresos entero—. Quedó: las
-tarjetas, los dos lados de la cuenta (entró / se usó / disponible, en pesos y
-dólares) y **una sola tabla de movimientos** con el saldo que dejó cada uno. Las
+movimientos de la cuenta repetía el listado de ingresos entero—. Quedó: cuatro
+tarjetas y **una sola tabla de movimientos** con el saldo que dejó cada uno. Las
 entradas dicen su origen y las salidas son los gastos que tocaron la cuenta. La
 ruta vieja `dinero-en-cuenta` **redirige** a `ingresos`, para no romper enlaces
 guardados.
+
+**Nada se valúa en pesos para mostrarlo.** Las cuatro tarjetas son *Cuenta en
+pesos · Cuenta en dólares · Gastos en pesos · Gastos en dólares*: son dos
+cuentas distintas, cada una en su moneda, y las dos primeras van en verde
+(saldos que no pueden ser negativos) con lo que entró como nota abajo. Antes
+arriba iban *Total ingresado · Aportes de socias · Inversores y compradores*,
+las tres valuadas en pesos: un aporte de US$ 5.000 aparecía como $ 7.725.000,
+que es un número que no existe en ningún lado —los dólares siguen siendo
+dólares hasta que un gasto los use, y ahí el cambio lo pone el gasto—. Lo único
+que sí se dice en pesos es cuánto **rindieron** los dólares que salieron, al
+cambio con que se cargó cada gasto, porque eso sí pasó de verdad.
+
+Se fue con eso la tabla *entró / se usó / disponible*, que repetía los mismos
+cuatro números, y el corte **socias vs. terceros**, que sólo se podía expresar
+en pesos; sigue en la tabla de movimientos, fila por fila, y en el balance como
+`fondos_terceros`.
 
 La plata que **entra**: aportes de socias, inversores o compradores de unidades.
 La cuenta de la obra tiene **dos lados que no se mezclan**: pesos y dólares. Un
@@ -275,7 +290,14 @@ click.
 **Dinero en cuenta va en verde**, el contrario del rojo de Resta pagar: es plata
 que está, y sus dos saldos no pueden ser negativos. Los dos van con el **mismo
 tamaño** —no hay un número principal con una aclaración chica abajo—, porque son
-las dos monedas de la misma cuenta y ninguna manda sobre la otra.
+dos cuentas distintas y ninguna manda sobre la otra. **El lado que está en cero
+no se muestra**: si todo entró en dólares, un "$ 0,00" arriba se lee como que no
+hay plata. Con la cuenta vacía queda el cero en pesos, que es cómo se dice "no
+hay". Mismo criterio en la columna "Quedan" de Ingresos, salvo que ahí se
+muestran siempre los dos para que las filas no queden de alturas distintas.
+
+`VERDE` y `ROJO` viven en `components/ui.ts` desde que los comparten el balance
+y los ingresos.
 
 Dos cosas de ese número: un rubro que se pasó **no compensa** lo que falta en
 otro —no devuelve plata—, así que suma sólo lo que todavía hay que poner; y
@@ -936,7 +958,12 @@ restaurar; el ▾ queda negro cuando esa columna filtra. El desplegable ofrece
 lo que se puede elegir. Sin filtro guardado todas las casillas están tildadas, y
 volver a tildarlas todas borra el filtro: "sin filtro" es el estado natural de
 la columna. Convive con el buscador de texto —el filtro acota, el buscador
-encuentra— y con "ocultar anulados". Lote: `components/PagosLoteLista.tsx` (buscador de texto). Las páginas
+encuentra— y con "ocultar anulados".
+
+La columna **Pagó** distingue de qué lado de la cuenta salió el gasto: "Dinero
+en cuenta (dólares)", "(pesos)" o "(mixto)". No es lo mismo haber usado dólares
+que pesos —los dólares hubo que venderlos, y a un cambio que decide el gasto—, y
+como es el texto de la celda el filtro los separa solo. Lote: `components/PagosLoteLista.tsx` (buscador de texto). Las páginas
 (server components) traen los datos y se los pasan al componente cliente; la
 acción de borrar el pago del lote viaja como prop.
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
+import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { repartirComprobantes } from "@/lib/comprobantes";
 import { formatMoney, formatUSD } from "@/lib/format";
@@ -146,6 +147,14 @@ export default async function ObraDetalle({
   const colsComprobantes = 2 + (hayCreditoFiscal ? 1 : 0);
   const colsPuso =
     1 + (hayBolsillo ? 1 : 0) + (hayAportes ? 1 : 0) + (hayAjustes ? 1 : 0);
+
+  // Los saldos de la cuenta, cada uno en su moneda y sólo los que tienen algo.
+  // Con la cuenta vacía queda el cero en pesos, que es cómo se lee "no hay".
+  const saldosCuenta = [
+    ...(caja.arsSaldo !== 0 ? [formatMoney(caja.arsSaldo)] : []),
+    ...(caja.usdSaldo !== 0 ? [formatUSD(caja.usdSaldo)] : []),
+  ];
+  if (saldosCuenta.length === 0) saldosCuenta.push(formatMoney(0));
 
   const aRepartir = Number(balance?.[0]?.total_a_repartir ?? 0);
 
@@ -318,16 +327,24 @@ export default async function ObraDetalle({
             cosa: la plata que hay y la que falta. */}
         <Link href={`/obras/${obra.slug}/ingresos`} style={cardEnlace}>
           <p style={label}>Dinero en cuenta</p>
-          {/* Los dos saldos con el mismo peso: no es un número principal con
-              una aclaración abajo, son las dos monedas de la misma cuenta y
-              ninguna manda sobre la otra. En verde porque es plata que está
-              —nunca puede ser negativa—, al revés del rojo de "Resta pagar". */}
-          <h3 style={{ ...number, color: VERDE }}>
-            {formatMoney(caja.arsSaldo)}
-          </h3>
-          <p style={{ ...number, color: VERDE, margin: "4px 0 0" }}>
-            {formatUSD(caja.usdSaldo)}
-          </p>
+          {/* Son dos cuentas distintas, cada una en su moneda: los dólares no
+              se valúan en pesos para mostrarlos. Van con el mismo cuerpo
+              —ninguna manda sobre la otra— y en verde, porque es plata que
+              está y nunca puede ser negativa, al revés del rojo de "Resta
+              pagar". El lado que está en cero no se muestra: si todo entró en
+              dólares, un "$ 0,00" arriba se lee como que no hay plata. */}
+          {saldosCuenta.map((saldo, i) => (
+            <p
+              key={saldo}
+              style={{
+                ...number,
+                color: VERDE,
+                margin: i === 0 ? "12px 0 0" : "4px 0 0",
+              }}
+            >
+              {saldo}
+            </p>
+          ))}
         </Link>
         {/* Lo que todavía hay que poner: lo aprobado menos lo pagado, rubro por
             rubro. En rojo porque es plata que falta, igual que el "falta pagar"
@@ -781,8 +798,7 @@ const tdRight = {
 const tdRightCorte = { ...tdRight, ...corte };
 
 // Verde: puso de más y le deben. Rojo: debe compensar. Negro: está en cero.
-const VERDE = "#15803d";
-const ROJO = "#b91c1c";
+const { VERDE, ROJO } = ui;
 
 function estiloSaldo(saldo: number) {
   if (saldo > 0) return { color: VERDE };

@@ -191,3 +191,8 @@ export const progressFill = {
   height: "8px",
   background: "#111111",
 };
+
+// Los dos colores con los que la app habla de plata: verde lo que está, rojo
+// lo que falta. Viven acá desde que el balance y los ingresos los comparten.
+export const VERDE = "#15803d";
+export const ROJO = "#b91c1c";

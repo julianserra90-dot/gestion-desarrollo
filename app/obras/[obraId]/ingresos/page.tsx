@@ -138,67 +138,46 @@ export default async function IngresosPage({
         <h2 style={ui.pageTitle}>Ingresos</h2>
       </section>
 
+      {/* Cuatro tarjetas y no una: son **dos cuentas distintas**, cada una en
+          su moneda. Un aporte en dólares no se valúa en pesos para mostrarlo,
+          porque los dólares siguen siendo dólares hasta que un gasto los use
+          —y ahí el cambio lo pone el gasto, no Ámbito—. Antes las tarjetas de
+          arriba estaban todas en pesos y un ingreso de US$ 5.000 aparecía como
+          $ 7.725.000, que es un número que no existe en ningún lado. */}
       <section style={ui.statsGrid}>
         <div style={ui.statCard}>
-          <p style={ui.label}>Total ingresado</p>
-          <h3 style={ui.statNumber}>{formatMoney(caja.ingresos)}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Aportes de socias</p>
-          <h3 style={ui.statNumber}>{formatMoney(caja.ingresosSocias)}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Inversores y compradores</p>
-          <h3 style={ui.statNumber}>{formatMoney(caja.ingresosTerceros)}</h3>
-        </div>
-        <div style={ui.statCard}>
-          <p style={ui.label}>Dinero en cuenta</p>
-          <h3 style={ui.statNumber}>{formatMoney(caja.arsSaldo)}</h3>
+          <p style={ui.label}>Cuenta en pesos</p>
+          <h3 style={{ ...ui.statNumber, color: ui.VERDE }}>
+            {formatMoney(caja.arsSaldo)}
+          </h3>
           <p style={{ ...ui.note, margin: "6px 0 0" }}>
-            {formatUSD(caja.usdSaldo)}
+            entró {formatMoney(caja.arsIngresado)}
           </p>
         </div>
-      </section>
-
-      <section style={ui.panelConMargen}>
-        <h3 style={ui.sectionTitle}>Dinero en cuenta</h3>
-
-        <table style={ui.table}>
-          <thead>
-            <tr>
-              <th style={ui.th}></th>
-              <th style={ui.thRight}>Pesos</th>
-              <th style={ui.thRight}>Dólares</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={ui.td}>Entró</td>
-              <td style={ui.tdRight}>{formatMoney(caja.arsIngresado)}</td>
-              <td style={ui.tdRight}>{formatUSD(caja.usdIngresado)}</td>
-            </tr>
-            <tr>
-              <td style={ui.td}>Se usó en gastos</td>
-              <td style={ui.tdRight}>− {formatMoney(caja.arsUsado)}</td>
-              <td style={ui.tdRight}>− {formatUSD(caja.usdUsado)}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td style={tdTotal}>Disponible</td>
-              <td style={tdTotalRight}>{formatMoney(caja.arsSaldo)}</td>
-              <td style={tdTotalRight}>{formatUSD(caja.usdSaldo)}</td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {caja.usdUsado > 0 && (
-          <p style={{ ...ui.note, marginTop: "16px", marginBottom: 0 }}>
-            Los {formatUSD(caja.usdUsado)} que salieron rindieron{" "}
-            <strong>{formatMoney(usadoDeDolares)}</strong>, al cambio con que se
-            cargó cada gasto.
+        <div style={ui.statCard}>
+          <p style={ui.label}>Cuenta en dólares</p>
+          <h3 style={{ ...ui.statNumber, color: ui.VERDE }}>
+            {formatUSD(caja.usdSaldo)}
+          </h3>
+          <p style={{ ...ui.note, margin: "6px 0 0" }}>
+            entró {formatUSD(caja.usdIngresado)}
           </p>
-        )}
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Gastos en pesos</p>
+          <h3 style={ui.statNumber}>{formatMoney(caja.arsUsado)}</h3>
+        </div>
+        <div style={ui.statCard}>
+          <p style={ui.label}>Gastos en dólares</p>
+          <h3 style={ui.statNumber}>{formatUSD(caja.usdUsado)}</h3>
+          {/* Lo único que sí se dice en pesos, porque es lo que realmente
+              pasó: a cuánto se vendieron esos dólares al pagar. */}
+          {caja.usdUsado > 0 && (
+            <p style={{ ...ui.note, margin: "6px 0 0" }}>
+              rindieron {formatMoney(usadoDeDolares)}
+            </p>
+          )}
+        </div>
       </section>
 
       <div style={ui.toolbar}>
@@ -281,9 +260,15 @@ export default async function IngresosPage({
                       `${mov.usd > 0 ? "+" : "−"} ${formatUSD(Math.abs(mov.usd))}`
                     )}
                   </td>
+                  {/* Los dos saldos con el mismo peso: acá también son dos
+                      cuentas y no un número con su aclaración. En la columna
+                      se muestran siempre los dos, aunque uno esté en cero, para
+                      que las filas no queden de alturas distintas. */}
                   <td style={ui.tdRight}>
                     <strong>{formatMoney(mov.saldoArs)}</strong>
-                    <div style={saldoSecundario}>{formatUSD(mov.saldoUsd)}</div>
+                    <div style={saldoSecundario}>
+                      <strong>{formatUSD(mov.saldoUsd)}</strong>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -294,18 +279,6 @@ export default async function IngresosPage({
     </AppShell>
   );
 }
-
-const tdTotal = {
-  padding: "14px 12px",
-  borderTop: "2px solid #111111",
-  color: "#111111",
-  fontWeight: 600,
-};
-
-const tdTotalRight = {
-  ...tdTotal,
-  textAlign: "right" as const,
-};
 
 // Mismo lenguaje que las etiquetas de comprobante: colores suaves, nada de
 // recuadros negros. La entrada dice su origen (socia, inversor, comprador) y
@@ -332,8 +305,7 @@ const tagSalida = {
 const compacta = { whiteSpace: "nowrap" as const };
 
 const saldoSecundario = {
-  fontSize: "13px",
-  color: "#999999",
+  color: "#111111",
   marginTop: "4px",
 };
 
