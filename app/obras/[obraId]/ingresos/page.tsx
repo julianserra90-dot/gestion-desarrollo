@@ -27,6 +27,8 @@ type Movimiento = {
   etiqueta: string;
   detalle: string;
   quien: string;
+  /** Sólo si "quien" es un inversor con ficha: adónde lleva su nombre. */
+  quienHref: string | null;
   /** Positivo si entra, negativo si sale. */
   ars: number;
   usd: number;
@@ -53,7 +55,7 @@ export default async function IngresosPage({
     supabase
       .from("ingresos")
       .select(
-        "id, fecha, creado_en, origen, aportante, concepto, monto, monto_usd, moneda, comprobante_drive_id, empresas(nombre), inversores(nombre, apellido)"
+        "id, fecha, creado_en, origen, aportante, concepto, monto, monto_usd, moneda, comprobante_drive_id, inversor_id, empresas(nombre), inversores(nombre, apellido)"
       )
       .eq("obra_id", obra.id),
     // Sólo los gastos que efectivamente tocaron la cuenta.
@@ -87,6 +89,11 @@ export default async function IngresosPage({
           : null) ??
         i.aportante ??
         "—",
+      // Sólo un inversor con ficha tiene adónde ir; una empresa o un aportante
+      // viejo (texto suelto) no tienen página propia.
+      quienHref: i.inversor_id
+        ? `/obras/${obra.slug}/inversores/${i.inversor_id}/editar`
+        : null,
       // Un aporte en dólares queda en dólares; uno en pesos, en pesos.
       ars: i.moneda === "USD" ? 0 : Number(i.monto),
       usd: i.moneda === "USD" ? Number(i.monto_usd ?? 0) : 0,
@@ -110,6 +117,7 @@ export default async function IngresosPage({
       ars: -Number(g.caja_ars),
       usd: -Number(g.caja_usd),
       href: `/obras/${obra.slug}/gastos/${g.id}/editar`,
+      quienHref: null,
       tipoFactura: g.tipo_factura,
       comprobanteDriveId: g.comprobante_drive_id,
     })),
@@ -210,7 +218,15 @@ export default async function IngresosPage({
                       {mov.etiqueta}
                     </span>
                   </td>
-                  <td style={ui.td}>{mov.quien}</td>
+                  <td style={ui.td}>
+                    {mov.quienHref ? (
+                      <Link href={mov.quienHref} style={quienLink}>
+                        {mov.quien}
+                      </Link>
+                    ) : (
+                      mov.quien
+                    )}
+                  </td>
                   <td style={ui.td}>{mov.detalle}</td>
                   <td style={{ ...ui.td, ...compacta }}>
                     {mov.entrada ? (
@@ -293,6 +309,11 @@ const compacta = { whiteSpace: "nowrap" as const };
 const editarLink = {
   color: "#111111",
   fontSize: "14px",
+  textDecoration: "underline",
+};
+
+const quienLink = {
+  color: "#111111",
   textDecoration: "underline",
 };
 
