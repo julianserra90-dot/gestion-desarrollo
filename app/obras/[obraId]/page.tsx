@@ -11,6 +11,13 @@ import { getLote } from "@/lib/lote";
 import { createClient } from "@/lib/supabase/server";
 import { ordenarPorTipo } from "@/lib/tipos-gasto";
 
+/** Del texto en minúscula de cada casilla al valor exacto de `presupuestos.tipo`. */
+const TIPO_COMBO: Record<string, string> = {
+  materiales: "Materiales",
+  "mano de obra": "Mano de obra",
+  "mano de obra y materiales": "Mano de obra y materiales",
+};
+
 export default async function ObraDetalle({
   params,
 }: {
@@ -68,7 +75,9 @@ export default async function ObraDetalle({
     // mano de obra no existe.
     supabase
       .from("rubros")
-      .select("id, nombre, orden, activo, usa_materiales, usa_mano_obra")
+      .select(
+        "id, nombre, orden, activo, usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales"
+      )
       .eq("obra_id", obra.id)
       .order("orden"),
     getCaja(obra.id),
@@ -265,14 +274,16 @@ export default async function ObraDetalle({
       if (r.usa_mano_obra) {
         combos.push({ id: r.id, rubro: r.nombre, tipo: "mano de obra" });
       }
+      if (r.usa_mano_obra_y_materiales) {
+        combos.push({
+          id: r.id,
+          rubro: r.nombre,
+          tipo: "mano de obra y materiales",
+        });
+      }
       return combos;
     })
-    .filter(
-      (c) =>
-        !cotizados.has(
-          `${c.id}-${c.tipo === "materiales" ? "Materiales" : "Mano de obra"}`
-        )
-    );
+    .filter((c) => !cotizados.has(`${c.id}-${TIPO_COMBO[c.tipo]}`));
 
   // El terreno va aparte de la obra: es una compra de inmueble y no entra en el
   // balance de arriba. Acá va sólo quién puso cuánto y, si el precio pactado no

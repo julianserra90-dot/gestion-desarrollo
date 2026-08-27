@@ -11,9 +11,14 @@ import { createClient } from "@/lib/supabase/server";
 
 type PresupuestoUpdate = Database["public"]["Tables"]["presupuestos"]["Update"];
 
-/** Los materiales los cotiza un proveedor; la mano de obra, un contratista. */
+/**
+ * Los materiales los cotiza un proveedor; la mano de obra —sola o junto con
+ * los materiales— la cotiza un contratista.
+ */
 function tipoProveedorPara(tipo: string) {
-  return tipo === "Mano de obra" ? "Contratista" : "Proveedor";
+  return tipo === "Mano de obra" || tipo === "Mano de obra y materiales"
+    ? "Contratista"
+    : "Proveedor";
 }
 
 /**
@@ -447,9 +452,10 @@ export async function cambiarTiposDeRubro(rubroId: string, formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const mat = formData.get("usa_materiales") === "on";
   const mo = formData.get("usa_mano_obra") === "on";
+  const combinado = formData.get("usa_mano_obra_y_materiales") === "on";
 
-  // Un rubro sin ninguna de las dos no sirve para nada, y la base lo rechaza.
-  if (!mat && !mo) {
+  // Un rubro sin ninguna de las tres no sirve para nada, y la base lo rechaza.
+  if (!mat && !mo && !combinado) {
     volverAListado(
       slug,
       "Un rubro tiene que llevar al menos materiales o mano de obra."
@@ -460,7 +466,11 @@ export async function cambiarTiposDeRubro(rubroId: string, formData: FormData) {
 
   const { error } = await supabase
     .from("rubros")
-    .update({ usa_materiales: mat, usa_mano_obra: mo })
+    .update({
+      usa_materiales: mat,
+      usa_mano_obra: mo,
+      usa_mano_obra_y_materiales: combinado,
+    })
     .eq("id", rubroId);
 
   if (error) volverAListado(slug, error.message);

@@ -13,7 +13,17 @@ import {
   desaprobarPresupuesto,
 } from "./actions";
 
-const TIPOS = ["Materiales", "Mano de obra"] as const;
+const TIPOS = ["Materiales", "Mano de obra", "Mano de obra y materiales"] as const;
+
+/** A qué casilla del rubro corresponde cada tipo, para saber si se ofrece. */
+const FLAG_DEL_TIPO: Record<
+  (typeof TIPOS)[number],
+  "usa_materiales" | "usa_mano_obra" | "usa_mano_obra_y_materiales"
+> = {
+  Materiales: "usa_materiales",
+  "Mano de obra": "usa_mano_obra",
+  "Mano de obra y materiales": "usa_mano_obra_y_materiales",
+};
 
 /** La aprobada primera, después las pendientes, las descartadas al final. */
 const ORDEN_ESTADO: Record<string, number> = {
@@ -58,7 +68,9 @@ export default async function PresupuestosPage({
       .order("monto"),
     supabase
       .from("rubros")
-      .select("id, nombre, orden, activo, usa_materiales, usa_mano_obra")
+      .select(
+        "id, nombre, orden, activo, usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales"
+      )
       .eq("obra_id", obra.id)
       .order("nombre"),
     // Qué se facturó contra cada presupuesto. Son varios cuando el proveedor
@@ -108,7 +120,7 @@ export default async function PresupuestosPage({
    */
   const tiposDe = (r: (typeof rubros)[number]) =>
     TIPOS.filter((t) => {
-      if (t === "Materiales" ? r.usa_materiales : r.usa_mano_obra) return true;
+      if (r[FLAG_DEL_TIPO[t]]) return true;
       const f = buscar(r.id, t);
       return (
         lista.some((c) => c.rubro_id === r.id && c.tipo === t) ||
@@ -211,6 +223,7 @@ export default async function PresupuestosPage({
                     slug={obra.slug}
                     usaMateriales={rubro.usa_materiales}
                     usaManoObra={rubro.usa_mano_obra}
+                    usaCombinado={rubro.usa_mano_obra_y_materiales}
                     accion={cambiarTiposDeRubro}
                   />
                 </div>

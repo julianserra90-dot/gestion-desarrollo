@@ -9,7 +9,12 @@
  * vez de desaparecer, porque suma al total de ese rubro lo mismo.
  */
 
-export const TIPOS_DE_GASTO = ["Materiales", "Mano de obra", "Administrativo"];
+export const TIPOS_DE_GASTO = [
+  "Materiales",
+  "Mano de obra",
+  "Mano de obra y materiales",
+  "Administrativo",
+];
 
 export type ParteDeRubro = {
   etiqueta: string;

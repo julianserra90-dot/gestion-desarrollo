@@ -119,7 +119,9 @@ async function resolverMontos(
  * honorarios, gastos municipales— a "Varios".
  */
 function tipoProveedorPara(tipoGasto: string) {
-  if (tipoGasto === "Mano de obra") return "Contratista";
+  if (tipoGasto === "Mano de obra" || tipoGasto === "Mano de obra y materiales") {
+    return "Contratista";
+  }
   if (tipoGasto === "Administrativo") return "Varios";
   return "Proveedor";
 }

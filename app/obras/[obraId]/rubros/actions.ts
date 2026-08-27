@@ -64,7 +64,9 @@ export async function guardarRubros(formData: FormData) {
   // Presupuestos— viajan con su valor actual, para que guardar acá no las pise.
   const { data: actuales, error: errorLectura } = await supabase
     .from("rubros")
-    .select("id, orden, obra_id, usa_materiales, usa_mano_obra")
+    .select(
+      "id, orden, obra_id, usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales"
+    )
     .eq("obra_id", obraId);
 
   if (errorLectura) {
@@ -92,6 +94,7 @@ export async function guardarRubros(formData: FormData) {
       activo: formData.get(`activo_${rubro.id}`) === "on",
       usa_materiales: rubro.usa_materiales,
       usa_mano_obra: rubro.usa_mano_obra,
+      usa_mano_obra_y_materiales: rubro.usa_mano_obra_y_materiales,
     });
   }
 

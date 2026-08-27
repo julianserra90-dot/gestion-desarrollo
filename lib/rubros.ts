@@ -18,6 +18,8 @@ export type RubroOpcion = {
   usaMateriales: boolean;
   /** Si en este rubro se contrata mano de obra. */
   usaManoObra: boolean;
+  /** Si en este rubro se cotiza mano de obra y materiales juntos, en un solo papel. */
+  usaCombinado: boolean;
 };
 
 export async function getRubrosActivos(
@@ -28,7 +30,9 @@ export async function getRubrosActivos(
 
   const { data } = await supabase
     .from("rubros")
-    .select("id, nombre, activo, usa_materiales, usa_mano_obra")
+    .select(
+      "id, nombre, activo, usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales"
+    )
     .eq("obra_id", obraId)
     .order("nombre");
 
@@ -39,5 +43,6 @@ export async function getRubrosActivos(
       nombre: r.nombre,
       usaMateriales: r.usa_materiales,
       usaManoObra: r.usa_mano_obra,
+      usaCombinado: r.usa_mano_obra_y_materiales,
     }));
 }

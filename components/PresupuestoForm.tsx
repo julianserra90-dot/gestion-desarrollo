@@ -14,15 +14,28 @@ type Rubro = {
   nombre: string;
   usaMateriales: boolean;
   usaManoObra: boolean;
+  usaCombinado: boolean;
 };
 export type Proveedor = { id: string; nombre: string; tipo: string };
 
-const TIPOS = ["Materiales", "Mano de obra"];
+const TIPOS = ["Materiales", "Mano de obra", "Mano de obra y materiales"];
 
-/** Los materiales los cotiza un proveedor; la mano de obra, un contratista. */
+/**
+ * Los materiales los cotiza un proveedor; la mano de obra, un contratista. El
+ * combinado también lo cotiza un contratista: es el mismo gremio, sólo que
+ * ahora su precio incluye el material.
+ */
 const TIPO_PROVEEDOR: Record<string, string> = {
   Materiales: "Proveedor",
   "Mano de obra": "Contratista",
+  "Mano de obra y materiales": "Contratista",
+};
+
+/** A qué casilla del rubro corresponde cada tipo, para saber si se ofrece. */
+const FLAG_DEL_TIPO: Record<string, keyof Rubro> = {
+  Materiales: "usaMateriales",
+  "Mano de obra": "usaManoObra",
+  "Mano de obra y materiales": "usaCombinado",
 };
 
 const NUEVO = "__nuevo__";
@@ -131,9 +144,7 @@ export default function PresupuestoForm({
   // demolición es puro trabajo.
   const rubroElegido = rubros.find((r) => r.id === rubroId);
   const tiposDisponibles = rubroElegido
-    ? TIPOS.filter((t) =>
-        t === "Materiales" ? rubroElegido.usaMateriales : rubroElegido.usaManoObra
-      )
+    ? TIPOS.filter((t) => rubroElegido[FLAG_DEL_TIPO[t]])
     : TIPOS;
 
   function cambiarRubro(nuevoRubro: string) {
@@ -142,9 +153,12 @@ export default function PresupuestoForm({
     const r = rubros.find((x) => x.id === nuevoRubro);
     if (!r) return;
 
-    // Cambiar de rubro puede dejar el tipo elegido sin sentido.
-    if (tipo === "Materiales" && !r.usaMateriales) cambiarTipo("Mano de obra");
-    else if (tipo === "Mano de obra" && !r.usaManoObra) cambiarTipo("Materiales");
+    // Cambiar de rubro puede dejar el tipo elegido sin sentido: se acomoda al
+    // primero que el rubro nuevo sí admite.
+    if (!r[FLAG_DEL_TIPO[tipo]]) {
+      const otro = TIPOS.find((t) => r[FLAG_DEL_TIPO[t]]);
+      if (otro) cambiarTipo(otro);
+    }
   }
 
   return (

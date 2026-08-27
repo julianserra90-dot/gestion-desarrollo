@@ -17,27 +17,38 @@ type Rubro = {
   nombre: string;
   usaMateriales: boolean;
   usaManoObra: boolean;
+  usaCombinado: boolean;
 };
 export type Proveedor = { id: string; nombre: string; tipo: string };
 
 const TIPOS_GASTO = [
   "Materiales",
   "Mano de obra",
+  "Mano de obra y materiales",
   "Administrativo",
   "Ajuste de saldo",
 ];
 const AJUSTE = "Ajuste de saldo";
-const ADMINISTRATIVO = "Administrativo";
+const COMBINADO = "Mano de obra y materiales";
 
 /**
  * Cada tipo de gasto se le paga a una categoría de proveedor distinta:
- * materiales a un proveedor, mano de obra a un contratista, y lo administrativo
- * —impuestos, honorarios, gastos municipales— a la categoría "Varios".
+ * materiales a un proveedor, mano de obra —sola o junto con los materiales—
+ * a un contratista, y lo administrativo —impuestos, honorarios, gastos
+ * municipales— a la categoría "Varios".
  */
 const TIPO_PROVEEDOR: Record<string, string> = {
   Materiales: "Proveedor",
   "Mano de obra": "Contratista",
+  [COMBINADO]: "Contratista",
   Administrativo: "Varios",
+};
+
+/** A qué casilla del rubro corresponde cada tipo cotizable, para saber si se ofrece. */
+const FLAG_DEL_TIPO: Record<string, keyof Rubro> = {
+  Materiales: "usaMateriales",
+  "Mano de obra": "usaManoObra",
+  [COMBINADO]: "usaCombinado",
 };
 
 /** Cómo se rotula el desplegable de proveedor según la categoría. */
@@ -364,7 +375,7 @@ export default function GastoForm({
   /**
    * Cambiar de rubro puede dejar el tipo elegido sin sentido: si se pasa a un
    * rubro que sólo se compra, "mano de obra" no corresponde. Se acomoda solo
-   * al que sí admite.
+   * al primero que el rubro nuevo sí admite.
    */
   function cambiarRubro(nuevoRubro: string) {
     setRubroId(nuevoRubro);
@@ -372,23 +383,28 @@ export default function GastoForm({
     const r = rubros.find((x) => x.id === nuevoRubro);
     if (!r || esAjuste) return;
 
-    if (tipoGasto === "Materiales" && !r.usaMateriales && r.usaManoObra) {
-      cambiarTipoGasto("Mano de obra");
-    } else if (tipoGasto === "Mano de obra" && !r.usaManoObra && r.usaMateriales) {
-      cambiarTipoGasto("Materiales");
+    const flag = FLAG_DEL_TIPO[tipoGasto];
+    if (flag && !r[flag]) {
+      const otro = Object.keys(FLAG_DEL_TIPO).find((t) => r[FLAG_DEL_TIPO[t]]);
+      if (otro) cambiarTipoGasto(otro);
     }
   }
 
   // El desplegable de tipo ofrece sólo lo que el rubro admite. Sin rubro
-  // elegido se ofrecen los dos: todavía no hay con qué decidir.
+  // elegido se ofrecen los tres: todavía no hay con qué decidir.
   const rubroElegido = rubros.find((r) => r.id === rubroId);
   const tiposDisponibles = TIPOS_GASTO.filter((t) => {
     // Ajuste y Administrativo no dependen del rubro: un impuesto o un honorario
     // no se cotiza, va en cualquier rubro.
-    if (t === AJUSTE || t === ADMINISTRATIVO || !rubroElegido) return true;
-    if (t === "Materiales") return rubroElegido.usaMateriales;
-    return rubroElegido.usaManoObra;
+    const flag = FLAG_DEL_TIPO[t];
+    if (!flag || !rubroElegido) return true;
+    return rubroElegido[flag];
   });
+
+  // Sólo los tres tipos que de verdad se cotizan, para el aviso de más abajo:
+  // Ajuste y Administrativo siempre están, así que no cuentan como "la única
+  // opción" de nada.
+  const cotizablesDelRubro = tiposDisponibles.filter((t) => FLAG_DEL_TIPO[t]);
 
   const reparto = socios.map((socio) => {
     const leCorresponde = (total * socio.porcentaje) / 100;
@@ -774,11 +790,13 @@ export default function GastoForm({
                 ))}
               </select>
 
-              {rubroElegido && tiposDisponibles.length < TIPOS_GASTO.length && (
+              {/* Sólo cuando el rubro deja una única forma de cotizarlo: con
+                  dos o las tres disponibles no hay nada que explicar. */}
+              {rubroElegido && cotizablesDelRubro.length === 1 && (
                 <span style={ayudaCampo}>
                   En {rubroElegido.nombre} sólo se carga{" "}
-                  {rubroElegido.usaMateriales ? "material" : "mano de obra"}.
-                  Cambialo en la solapa Rubros si hace falta.
+                  {cotizablesDelRubro[0].toLowerCase()}. Cambialo en la solapa
+                  Rubros si hace falta.
                 </span>
               )}
             </label>
