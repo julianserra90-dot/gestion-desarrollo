@@ -60,7 +60,7 @@ export default async function ContratistasPage({
       .from("rubros")
       .select("id, nombre")
       .is("obra_id", null)
-      .order("orden"),
+      .order("nombre"),
     supabase.from("gastos").select("proveedor_id, obra_id"),
     supabase.from("presupuestos").select("proveedor_id, obra_id"),
     supabase

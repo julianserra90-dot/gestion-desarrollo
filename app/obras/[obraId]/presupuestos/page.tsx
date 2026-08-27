@@ -60,7 +60,7 @@ export default async function PresupuestosPage({
       .from("rubros")
       .select("id, nombre, orden, activo, usa_materiales, usa_mano_obra")
       .eq("obra_id", obra.id)
-      .order("orden"),
+      .order("nombre"),
     // Qué se facturó contra cada presupuesto. Son varios cuando el proveedor
     // parte el papel en dos facturas —una por socia, para repartir el crédito
     // fiscal—, y desde la ficha no había forma de ver si estaba entero.

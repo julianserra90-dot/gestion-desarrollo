@@ -51,7 +51,7 @@ export async function getAvancePorRubro(
         .select("id, nombre, orden")
         .eq("obra_id", obraId)
         .eq("activo", true)
-        .order("orden"),
+        .order("nombre"),
       supabase
         .from("avances")
         .select("rubro_id, porcentaje, fecha_hasta")

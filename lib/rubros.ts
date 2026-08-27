@@ -30,7 +30,7 @@ export async function getRubrosActivos(
     .from("rubros")
     .select("id, nombre, activo, usa_materiales, usa_mano_obra")
     .eq("obra_id", obraId)
-    .order("orden");
+    .order("nombre");
 
   return (data ?? [])
     .filter((r) => r.activo || r.id === incluir)

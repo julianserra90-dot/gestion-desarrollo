@@ -29,7 +29,7 @@ export default async function RubrosPage({
         .from("rubros")
         .select("id, nombre, orden, activo")
         .eq("obra_id", obra.id)
-        .order("orden"),
+        .order("nombre"),
       supabase.from("gastos").select("rubro_id").eq("obra_id", obra.id),
       supabase.from("avances").select("rubro_id").eq("obra_id", obra.id),
       supabase.from("foto_registros").select("rubro_id").eq("obra_id", obra.id),
