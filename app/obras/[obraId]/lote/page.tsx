@@ -114,11 +114,20 @@ export default async function LotePage({
               {lote.valorUsd === null ? "—" : formatUSD(lote.valorUsd)}
             </h3>
           </div>
+          <Link
+            href={`/obras/${obra.slug}/lote?ver=administrativos#pagos`}
+            style={cardEnlace}
+          >
+            <p style={ui.label}>Gastos administrativos</p>
+            <h3 style={ui.statNumber}>{formatUSD(lote.asociadosUsd)}</h3>
+          </Link>
           {/* Lleva al detalle de esos pagos, más abajo en esta misma pantalla:
-              es la pregunta que sigue al número —"¿qué se fue pagando?"—. */}
-          <Link href={`/obras/${obra.slug}/lote?ver=compra#pagos`} style={cardEnlace}>
+              es la pregunta que sigue al número —"¿qué se fue pagando?"—. Es
+              lo que se puso en total (cuotas de compra + administrativos), no
+              sólo la compra: para eso está el "Saldo pendiente" de al lado. */}
+          <Link href={`/obras/${obra.slug}/lote#pagos`} style={cardEnlace}>
             <p style={ui.label}>Pago a la fecha</p>
-            <h3 style={ui.statNumber}>{formatUSD(lote.pagadoCompraUsd)}</h3>
+            <h3 style={ui.statNumber}>{formatUSD(lote.totalUsd)}</h3>
           </Link>
           <div style={ui.statCard}>
             <p style={ui.label}>Saldo pendiente</p>
@@ -129,35 +138,25 @@ export default async function LotePage({
               <p style={{ ...ui.note, margin: "6px 0 0" }}>Compra saldada.</p>
             )}
           </div>
-          <Link
-            href={`/obras/${obra.slug}/lote?ver=administrativos#pagos`}
-            style={cardEnlace}
-          >
-            <p style={ui.label}>Gastos administrativos</p>
-            <h3 style={ui.statNumber}>{formatUSD(lote.asociadosUsd)}</h3>
-          </Link>
         </section>
       )}
 
-      {hayDatos && (
+      {hayDatos && (incidenciaVenta !== null || lote.sinCotizar > 0) && (
         <section style={ui.panelConMargen}>
-          <div style={dosColumnas}>
-            <div style={filaResumen}>
-              <span>Total abonado por lote</span>
-              <strong>{formatUSD(lote.totalUsd)}</strong>
-            </div>
-            {/* Siempre sobre la superficie de venta: la incidencia es cuánto
-                del m² que se vende es tierra, no cuánto del que se construye. */}
-            {incidenciaVenta !== null && (
+          {incidenciaVenta !== null && (
+            <div style={dosColumnas}>
+              {/* Siempre sobre la superficie de venta: la incidencia es cuánto
+                  del m² que se vende es tierra, no cuánto del que se
+                  construye. */}
               <div style={filaResumen}>
                 <span>Incidencia de lote</span>
                 <strong>{formatUSD(incidenciaVenta)} /m²</strong>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {lote.sinCotizar > 0 && (
-            <p style={{ ...ui.note, marginTop: "14px" }}>
+            <p style={{ ...ui.note, marginTop: incidenciaVenta !== null ? "14px" : 0 }}>
               Hay movimientos sin cotización que quedan fuera del cálculo en
               dólares.
             </p>
