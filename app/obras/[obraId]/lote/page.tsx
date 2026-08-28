@@ -296,6 +296,8 @@ export default async function LotePage({
             usd: p.usd,
             empresa: p.empresa,
             compartido: p.compartido,
+            comprobanteDriveId: p.comprobanteDriveId,
+            comprobanteNombre: p.comprobanteNombre,
           }))}
           slug={obra.slug}
           obraId={obra.id}

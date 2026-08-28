@@ -15,6 +15,8 @@ export type PagoEnEdicion = {
   observaciones: string | null;
   empresaId: string | null;
   compartido: boolean;
+  comprobanteDriveId: string | null;
+  comprobanteNombre: string | null;
 };
 
 export type SocioOpcion = { id: string; nombre: string };
@@ -37,6 +39,7 @@ export default function PagoLoteForm({
   textoBoton?: string;
 }) {
   const [moneda, setMoneda] = useState(pago?.moneda ?? "USD");
+  const [reemplazar, setReemplazar] = useState(false);
 
   return (
     <form action={action}>
@@ -146,6 +149,49 @@ export default function PagoLoteForm({
           </span>
         </label>
 
+        <div style={fieldAncho}>
+          <span style={labelCampo}>
+            Comprobante <span style={opcional}>opcional</span>
+          </span>
+
+          {pago?.comprobanteDriveId && !reemplazar ? (
+            <div style={comprobanteActual}>
+              <span style={{ flex: 1 }}>
+                {pago.comprobanteNombre ?? "Archivo cargado"}
+              </span>
+
+              <a
+                href={`/ver/${pago.comprobanteDriveId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={enlaceChico}
+              >
+                Ver
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setReemplazar(true)}
+                style={ui.secondaryButton}
+              >
+                Reemplazar
+              </button>
+
+              <label style={quitarLabel}>
+                <input type="checkbox" name="quitar_comprobante" />
+                Quitar
+              </label>
+            </div>
+          ) : (
+            <>
+              <input type="file" name="comprobante" style={ui.input} />
+              {pago?.comprobanteDriveId && (
+                <span style={ayuda}>Al guardar reemplaza el archivo anterior.</span>
+              )}
+            </>
+          )}
+        </div>
+
         <label style={fieldAncho}>
           <span style={labelCampo}>Observaciones</span>
           <input
@@ -195,6 +241,35 @@ const labelCampo = {
 const ayuda = {
   fontSize: "13px",
   color: "#999999",
+};
+
+const opcional = {
+  color: "#aaaaaa",
+  fontWeight: 400 as const,
+};
+
+const comprobanteActual = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  border: "1px solid #dcdcdc",
+  padding: "10px 12px",
+  fontSize: "14px",
+  flexWrap: "wrap" as const,
+};
+
+const enlaceChico = {
+  color: "#111111",
+  fontSize: "14px",
+};
+
+const quitarLabel = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  fontSize: "14px",
+  color: "#555555",
+  cursor: "pointer",
 };
 
 const acciones = {

@@ -41,6 +41,8 @@ export type PagoLote = {
   empresa: string | null;
   /** true = lo pusieron todas las socias en partes iguales. */
   compartido: boolean;
+  comprobanteDriveId: string | null;
+  comprobanteNombre: string | null;
 };
 
 /**
@@ -107,7 +109,7 @@ export async function getLote(
     supabase
       .from("lote_pagos")
       .select(
-        "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, empresas(nombre)"
+        "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, comprobante_drive_id, comprobante_nombre, empresas(nombre)"
       )
       .eq("obra_id", obraId)
       .order("fecha", { ascending: false }),
@@ -147,6 +149,8 @@ export async function getLote(
     empresaId: p.empresa_id,
     empresa: p.empresas?.nombre ?? null,
     compartido: p.compartido ?? false,
+    comprobanteDriveId: p.comprobante_drive_id,
+    comprobanteNombre: p.comprobante_nombre,
   }));
 
   const sumaUsd = (filtro: (p: PagoLote) => boolean) =>
@@ -228,7 +232,7 @@ export async function getPagoLote(
   const { data } = await supabase
     .from("lote_pagos")
     .select(
-      "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, empresas(nombre)"
+      "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, comprobante_drive_id, comprobante_nombre, empresas(nombre)"
     )
     .eq("id", pagoId)
     .eq("obra_id", obraId)
@@ -251,6 +255,8 @@ export async function getPagoLote(
     empresaId: data.empresa_id,
     empresa: data.empresas?.nombre ?? null,
     compartido: data.compartido ?? false,
+    comprobanteDriveId: data.comprobante_drive_id,
+    comprobanteNombre: data.comprobante_nombre,
   };
 }
 

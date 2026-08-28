@@ -72,6 +72,8 @@ export default async function EditarPagoLotePage({
             observaciones: pago.observaciones,
             empresaId: pago.empresaId,
             compartido: pago.compartido,
+            comprobanteDriveId: pago.comprobanteDriveId,
+            comprobanteNombre: pago.comprobanteNombre,
           }}
           textoBoton="Guardar cambios"
         />

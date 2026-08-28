@@ -813,6 +813,10 @@ export type Database = {
         Row: {
           categoria: string
           compartido: boolean
+          comprobante_drive_id: string | null
+          comprobante_mime: string | null
+          comprobante_nombre: string | null
+          comprobante_tamano: number | null
           concepto: string
           creado_en: string
           empresa_id: string | null
@@ -826,6 +830,10 @@ export type Database = {
         Insert: {
           categoria: string
           compartido?: boolean
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
           concepto: string
           creado_en?: string
           empresa_id?: string | null
@@ -839,6 +847,10 @@ export type Database = {
         Update: {
           categoria?: string
           compartido?: boolean
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
           concepto?: string
           creado_en?: string
           empresa_id?: string | null

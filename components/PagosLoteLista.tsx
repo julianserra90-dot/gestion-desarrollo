@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import BotonDescarga from "@/components/BotonDescarga";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { CATEGORIAS_LOTE } from "@/lib/lote-tipos";
@@ -16,6 +17,8 @@ export type PagoFila = {
   usd: number | null;
   empresa: string | null;
   compartido: boolean;
+  comprobanteDriveId: string | null;
+  comprobanteNombre: string | null;
 };
 
 export default function PagosLoteLista({
@@ -125,6 +128,7 @@ export default function PagosLoteLista({
               <th style={ui.th}>Pagado por</th>
               <th style={ui.thRight}>Monto en $</th>
               <th style={ui.thRight}>Monto en U$D</th>
+              <th style={ui.th}>Comprobante</th>
               <th style={ui.th} />
             </tr>
           </thead>
@@ -154,6 +158,27 @@ export default function PagosLoteLista({
                   {pago.usd === null ? "—" : formatUSD(pago.usd)}
                 </td>
                 <td style={ui.td}>
+                  {pago.comprobanteDriveId ? (
+                    <span style={chipComprobante}>
+                      <Link
+                        href={`/ver/${pago.comprobanteDriveId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={enlace}
+                      >
+                        Ver
+                      </Link>
+                      <BotonDescarga
+                        fileId={pago.comprobanteDriveId}
+                        variante="icono"
+                        etiqueta={`Descargar ${pago.comprobanteNombre ?? "comprobante"}`}
+                      />
+                    </span>
+                  ) : (
+                    <span style={{ color: "#aaaaaa" }}>—</span>
+                  )}
+                </td>
+                <td style={ui.td}>
                   <div style={acciones}>
                     <Link
                       href={`/obras/${slug}/lote/${pago.id}/editar`}
@@ -179,6 +204,13 @@ export default function PagosLoteLista({
     </>
   );
 }
+
+const chipComprobante = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  whiteSpace: "nowrap" as const,
+};
 
 const filtros = {
   display: "flex",
