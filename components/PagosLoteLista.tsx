@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import BotonDescarga from "@/components/BotonDescarga";
 import * as ui from "@/components/ui";
@@ -37,6 +38,11 @@ export default function PagosLoteLista({
    *  resto). Sin esto, arrancan todas tildadas. */
   categoriaInicial?: readonly string[];
 }) {
+  // El visor de comprobantes vuelve adonde estaba, filtro incluido: sin el
+  // "ver" de la URL, "Volver" caía siempre en el Lote sin filtrar.
+  const ver = useSearchParams().get("ver");
+  const volverALote = `/obras/${slug}/lote${ver ? `?ver=${ver}` : ""}#pagos`;
+
   const [busqueda, setBusqueda] = useState("");
 
   // Sólo las categorías que de verdad tiene esta obra: filtrar por una que no
@@ -161,9 +167,7 @@ export default function PagosLoteLista({
                   {pago.comprobanteDriveId ? (
                     <span style={chipComprobante}>
                       <Link
-                        href={`/ver/${pago.comprobanteDriveId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href={`/ver/${pago.comprobanteDriveId}?volver=${encodeURIComponent(volverALote)}`}
                         style={enlace}
                       >
                         Ver
