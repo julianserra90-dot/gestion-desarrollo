@@ -5,20 +5,27 @@ import PagosLoteLista from "@/components/PagosLoteLista";
 import * as ui from "@/components/ui";
 import { formatUSD } from "@/lib/format";
 import { getLote, incidenciaPorM2 } from "@/lib/lote";
+import { CATEGORIAS_ASOCIADAS } from "@/lib/lote-tipos";
 import { getObraPorSlug } from "@/lib/obras";
 import { superficieVenta } from "@/lib/superficies";
 import { getTotalesUsd } from "@/lib/totales-usd";
 import { eliminarPagoLote } from "./actions";
+
+/** Los atajos que llegan desde las tarjetas de arriba. */
+const CATEGORIAS_POR_VISTA: Record<string, readonly string[]> = {
+  compra: ["Compra"],
+  administrativos: CATEGORIAS_ASOCIADAS,
+};
 
 export default async function LotePage({
   params,
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; ver?: string }>;
 }) {
   const { obraId } = await params;
-  const { error } = await searchParams;
+  const { error, ver } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -35,6 +42,9 @@ export default async function LotePage({
     ),
     getTotalesUsd(obra.id),
   ]);
+
+  // Lo que venga de más en la URL se ignora: la pantalla abre sin filtro.
+  const categoriasFiltro = ver ? CATEGORIAS_POR_VISTA[ver] : undefined;
 
   const incidenciaVenta = incidenciaPorM2(lote.valorUsd, superficieVenta(obra));
   const inversionTotal = construccion.gastadoUsd + lote.totalUsd;
@@ -98,10 +108,12 @@ export default async function LotePage({
               {lote.valorUsd === null ? "—" : formatUSD(lote.valorUsd)}
             </h3>
           </div>
-          <div style={ui.statCard}>
+          {/* Lleva al detalle de esos pagos, más abajo en esta misma pantalla:
+              es la pregunta que sigue al número —"¿qué se fue pagando?"—. */}
+          <Link href={`/obras/${obra.slug}/lote?ver=compra#pagos`} style={cardEnlace}>
             <p style={ui.label}>Pago a la fecha</p>
             <h3 style={ui.statNumber}>{formatUSD(lote.pagadoCompraUsd)}</h3>
-          </div>
+          </Link>
           <div style={ui.statCard}>
             <p style={ui.label}>Saldo pendiente</p>
             <h3 style={ui.statNumber}>
@@ -111,10 +123,13 @@ export default async function LotePage({
               <p style={{ ...ui.note, margin: "6px 0 0" }}>Compra saldada.</p>
             )}
           </div>
-          <div style={ui.statCard}>
+          <Link
+            href={`/obras/${obra.slug}/lote?ver=administrativos#pagos`}
+            style={cardEnlace}
+          >
             <p style={ui.label}>Gastos administrativos</p>
             <h3 style={ui.statNumber}>{formatUSD(lote.asociadosUsd)}</h3>
-          </div>
+          </Link>
         </section>
       )}
 
@@ -250,7 +265,7 @@ export default async function LotePage({
 
       {/* --- Historial de pagos -------------------------------------------- */}
 
-      <section style={ui.panelConMargen}>
+      <section id="pagos" style={ui.panelConMargen}>
         <h3 style={ui.sectionTitle}>Pagos</h3>
 
         <PagosLoteLista
@@ -268,6 +283,7 @@ export default async function LotePage({
           slug={obra.slug}
           obraId={obra.id}
           eliminar={eliminarPagoLote}
+          categoriaInicial={categoriasFiltro}
         />
       </section>
     </AppShell>
@@ -279,6 +295,14 @@ const encabezado = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: "24px",
+};
+
+// Misma tarjeta que ui.statCard, pero lleva al detalle de esos pagos.
+const cardEnlace = {
+  ...ui.statCard,
+  display: "block",
+  color: "#111111",
+  textDecoration: "none",
 };
 
 const dosColumnas = {

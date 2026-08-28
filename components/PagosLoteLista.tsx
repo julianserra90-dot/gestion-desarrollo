@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { CATEGORIAS_LOTE } from "@/lib/lote-tipos";
 
 export type PagoFila = {
   id: string;
@@ -22,19 +23,45 @@ export default function PagosLoteLista({
   slug,
   obraId,
   eliminar,
+  categoriaInicial,
 }: {
   pagos: PagoFila[];
   slug: string;
   obraId: string;
   eliminar: (formData: FormData) => void;
+  /** Con qué categorías arranca tildado el filtro: llega de la tarjeta desde la
+   *  que se entró ("Pago a la fecha" → Compra, "Gastos administrativos" → el
+   *  resto). Sin esto, arrancan todas tildadas. */
+  categoriaInicial?: readonly string[];
 }) {
   const [busqueda, setBusqueda] = useState("");
 
+  // Sólo las categorías que de verdad tiene esta obra: filtrar por una que no
+  // aparece en ningún pago no tendría sentido.
+  const categoriasPresentes = CATEGORIAS_LOTE.filter((c) =>
+    pagos.some((p) => p.categoria === c)
+  );
+
+  const [activas, setActivas] = useState(
+    () => new Set(categoriaInicial ?? categoriasPresentes)
+  );
+
+  function alternar(categoria: string) {
+    setActivas((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(categoria)) siguiente.delete(categoria);
+      else siguiente.add(categoria);
+      return siguiente;
+    });
+  }
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return pagos;
 
     return pagos.filter((p) => {
+      if (!activas.has(p.categoria)) return false;
+      if (!q) return true;
+
       const quien = p.compartido ? "entre las socias" : p.empresa ?? "";
       const campos = [
         p.concepto,
@@ -45,7 +72,7 @@ export default function PagosLoteLista({
       ];
       return campos.some((c) => c?.toLowerCase().includes(q));
     });
-  }, [pagos, busqueda]);
+  }, [pagos, busqueda, activas]);
 
   if (pagos.length === 0) {
     return (
@@ -55,16 +82,39 @@ export default function PagosLoteLista({
 
   return (
     <>
-      <input
-        type="search"
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        placeholder="Buscar por concepto, tipo, quién pagó…"
-        style={{ ...ui.input, marginBottom: "16px", maxWidth: "360px" }}
-      />
+      <div style={filtros}>
+        <input
+          type="search"
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+          placeholder="Buscar por concepto, tipo, quién pagó…"
+          style={{ ...ui.input, maxWidth: "360px" }}
+        />
+
+        {/* Con una sola categoría cargada, tildar y destildar no filtra nada:
+            no vale la pena mostrar el control. */}
+        {categoriasPresentes.length > 1 && (
+          <div style={chips}>
+            {categoriasPresentes.map((categoria) => (
+              <label
+                key={categoria}
+                style={activas.has(categoria) ? chipActivo : chip}
+              >
+                <input
+                  type="checkbox"
+                  checked={activas.has(categoria)}
+                  onChange={() => alternar(categoria)}
+                  style={chipCheckbox}
+                />
+                {categoria}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
       {filtrados.length === 0 ? (
-        <p style={ui.vacio}>Ningún pago coincide con la búsqueda.</p>
+        <p style={ui.vacio}>Ningún pago coincide con el filtro.</p>
       ) : (
         <table style={ui.table}>
           <thead>
@@ -129,6 +179,39 @@ export default function PagosLoteLista({
     </>
   );
 }
+
+const filtros = {
+  display: "flex",
+  alignItems: "center",
+  gap: "16px",
+  flexWrap: "wrap" as const,
+  marginBottom: "16px",
+};
+
+const chips = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap" as const,
+};
+
+const chip = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  fontSize: "13px",
+  color: "#999999",
+  cursor: "pointer",
+  whiteSpace: "nowrap" as const,
+};
+
+const chipActivo = {
+  ...chip,
+  color: "#111111",
+};
+
+const chipCheckbox = {
+  margin: 0,
+};
 
 const acciones = {
   display: "flex",
