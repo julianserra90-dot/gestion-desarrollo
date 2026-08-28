@@ -122,7 +122,7 @@ async function asegurarCarpeta(nombre: string, padreId?: string): Promise<string
   return id;
 }
 
-export type TipoArchivo = "documentos" | "fotos" | "comprobantes";
+export type TipoArchivo = "documentos" | "fotos" | "comprobantes" | "portada";
 
 /**
  * Devuelve la carpeta donde va un archivo, creando el árbol si hace falta:

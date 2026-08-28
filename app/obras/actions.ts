@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { normalizar } from "@/lib/ambitos";
-import { eliminarArchivo } from "@/lib/drive";
+import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { createClient } from "@/lib/supabase/server";
 
 type Socio = { empresa_id: string; porcentaje: number };
@@ -90,6 +90,105 @@ export async function actualizarObra(formData: FormData) {
   redirect(`/obras/${slug}`);
 }
 
+/**
+ * Guarda la imagen de portada. Llega ya recortada a 16:9 desde el navegador
+ * —el recorte lo elige el usuario ahí, con el mouse—, así que acá no hay
+ * coordenadas que calcular: es un archivo más para subir a Drive.
+ *
+ * Se llama directo como función desde el cliente (no por un `<form action>`),
+ * pero sigue siendo una server action normal: mismo patrón de subir primero y
+ * recién después escribir la fila, para no perder el archivo si algo falla.
+ */
+export async function subirImagenObra(formData: FormData) {
+  const obraId = String(formData.get("obra_id") ?? "");
+  const slug = String(formData.get("slug") ?? "");
+  const imagen = formData.get("imagen");
+
+  const volver = (mensaje: string): never =>
+    volverCon(`/obras/${slug}/editar`, mensaje);
+
+  if (!(imagen instanceof File) || imagen.size === 0) {
+    volver("No se recibió la imagen.");
+  }
+
+  const supabase = await createClient();
+
+  const { data: actual } = await supabase
+    .from("obras")
+    .select("imagen_drive_id")
+    .eq("id", obraId)
+    .maybeSingle();
+
+  const subida = await subirArchivo({
+    archivo: imagen as File,
+    nombre: (imagen as File).name || "portada.jpg",
+    obraSlug: slug,
+    tipo: "portada",
+  }).catch((e) => {
+    volver(`No se pudo subir la imagen: ${e instanceof Error ? e.message : "error"}`);
+  });
+
+  if (!subida) return;
+
+  const { error } = await supabase
+    .from("obras")
+    .update({
+      imagen_drive_id: subida.id,
+      imagen_nombre: subida.nombre,
+      imagen_mime: subida.mimeType,
+      imagen_tamano: subida.tamano,
+    })
+    .eq("id", obraId);
+
+  if (error) {
+    await eliminarArchivo(subida.id).catch(() => {});
+    volver(error.message);
+  }
+
+  // Recién ahora se borra la anterior: si el guardado hubiera fallado, la
+  // portada vieja sigue siendo la que se ve.
+  if (actual?.imagen_drive_id) {
+    await eliminarArchivo(actual.imagen_drive_id).catch(() => {});
+  }
+
+  revalidatePath("/", "layout");
+  redirect(`/obras/${slug}/editar`);
+}
+
+export async function eliminarImagenObra(formData: FormData) {
+  const obraId = String(formData.get("obra_id") ?? "");
+  const slug = String(formData.get("slug") ?? "");
+
+  const supabase = await createClient();
+
+  const { data: actual } = await supabase
+    .from("obras")
+    .select("imagen_drive_id")
+    .eq("id", obraId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("obras")
+    .update({
+      imagen_drive_id: null,
+      imagen_nombre: null,
+      imagen_mime: null,
+      imagen_tamano: null,
+    })
+    .eq("id", obraId);
+
+  if (error) {
+    volverCon(`/obras/${slug}/editar`, error.message);
+  }
+
+  if (actual?.imagen_drive_id) {
+    await eliminarArchivo(actual.imagen_drive_id).catch(() => {});
+  }
+
+  revalidatePath("/", "layout");
+  redirect(`/obras/${slug}/editar`);
+}
+
 export async function archivarObra(formData: FormData) {
   const obraId = String(formData.get("obra_id") ?? "");
 
@@ -163,7 +262,7 @@ export async function eliminarObraConTodo(formData: FormData) {
 
   const { data: obra } = await supabase
     .from("obras")
-    .select("nombre, archivada_en")
+    .select("nombre, archivada_en, imagen_drive_id")
     .eq("id", obraId)
     .maybeSingle();
 
@@ -221,6 +320,7 @@ export async function eliminarObraConTodo(formData: FormData) {
   ]);
 
   const enDrive = [
+    obra.imagen_drive_id,
     ...(fotos ?? []).map((f) => f.drive_file_id),
     ...(adjuntos ?? []).map((a) => a.drive_file_id),
     ...(gastos ?? []).map((g) => g.comprobante_drive_id),

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -987,6 +987,10 @@ export type Database = {
           fecha_fin_estimada: string | null
           fecha_inicio: string | null
           id: string
+          imagen_drive_id: string | null
+          imagen_mime: string | null
+          imagen_nombre: string | null
+          imagen_tamano: number | null
           lote_circunscripcion: string | null
           lote_detalle: string | null
           lote_manzana: string | null
@@ -1016,6 +1020,10 @@ export type Database = {
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
+          imagen_drive_id?: string | null
+          imagen_mime?: string | null
+          imagen_nombre?: string | null
+          imagen_tamano?: number | null
           lote_circunscripcion?: string | null
           lote_detalle?: string | null
           lote_manzana?: string | null
@@ -1045,6 +1053,10 @@ export type Database = {
           fecha_fin_estimada?: string | null
           fecha_inicio?: string | null
           id?: string
+          imagen_drive_id?: string | null
+          imagen_mime?: string | null
+          imagen_nombre?: string | null
+          imagen_tamano?: number | null
           lote_circunscripcion?: string | null
           lote_detalle?: string | null
           lote_manzana?: string | null

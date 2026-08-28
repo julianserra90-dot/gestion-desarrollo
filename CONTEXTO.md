@@ -922,6 +922,31 @@ La **incidencia va siempre sobre la superficie de venta**, nunca sobre la de
 construcción: lo que se recupera es lo vendible, así que es contra eso que se
 mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 
+### Imagen de portada
+El listado de obras (`/`) muestra una imagen por obra, siempre **16:9**, para
+que las tarjetas queden parejas entre sí tenga o no imagen cada una (sin
+imagen va un bloque gris del mismo tamaño, no se achica la tarjeta). Se carga
+desde Editar obra → Datos obra, con un recorte a mano en el navegador
+(`components/ImagenPortadaForm.tsx`): el usuario arrastra para mover y desliza
+para acercar, sobre un `<canvas>` que nunca deja ver un borde vacío —el zoom
+mínimo ya cubre el marco entero, como `object-fit: cover`—. Lo que se sube a
+Drive **ya sale recortado** a 960×540: no se guardan coordenadas de recorte,
+es una imagen más, lista para mostrar tal cual en cualquier lado.
+
+Mismas cuatro columnas que gastos/presupuestos/lote_pagos para su comprobante
+(`imagen_drive_id`, `imagen_nombre`, `imagen_mime`, `imagen_tamano`), esta vez
+en `obras` directo —una imagen por obra, no hace falta tabla aparte—. Subida y
+borrado son server actions normales (`subirImagenObra`/`eliminarImagenObra` en
+`app/obras/actions.ts`) que el componente llama **directo como función**, sin
+`<form action>`: el archivo ya llega recortado desde el cliente, así que no
+hay nada que un formulario nativo agregue.
+
+Ojo, esto ya nos pasó: el componente necesita `key={obra.imagen_drive_id}` en
+la página de Editar. Guardar redirige a la misma ruta, y sin la key React
+reusa la instancia vieja —se queda mostrando "Guardando..." con el recorte
+anterior en vez de la portada nueva—. Mismo problema que el filtro de Pagos
+del lote, mismo arreglo.
+
 ### Solapas agrupadas (hecho en la otra máquina)
 Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
 Ingresos, Flujo, Lote, Dólares, Beneficio) y **Obra** (Estado, Presupuestos,

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import EditarNav from "@/components/EditarNav";
+import ImagenPortadaForm from "@/components/ImagenPortadaForm";
 import ObraForm from "@/components/ObraForm";
 import { createClient } from "@/lib/supabase/server";
 import { crearEmpresa } from "@/app/empresas/actions";
@@ -8,8 +9,10 @@ import {
   actualizarObra,
   archivarObra,
   desarchivarObra,
+  eliminarImagenObra,
   eliminarObra,
   eliminarObraConTodo,
+  subirImagenObra,
 } from "../../actions";
 
 export default async function EditarObraPage({
@@ -26,7 +29,7 @@ export default async function EditarObraPage({
   const { data: obra } = await supabase
     .from("obras")
     .select(
-      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada, presupuesto, valor_m2_usd, valor_venta_m2_usd, domicilio, unidades_funcionales, pisos, sup_construccion_m2, sup_venta_m2, archivada_en"
+      "id, slug, nombre, ubicacion, estado, fecha_inicio, fecha_fin_estimada, presupuesto, valor_m2_usd, valor_venta_m2_usd, domicilio, unidades_funcionales, pisos, sup_construccion_m2, sup_venta_m2, archivada_en, imagen_drive_id, imagen_nombre"
     )
     .eq("slug", obraId)
     .maybeSingle();
@@ -94,6 +97,23 @@ export default async function EditarObraPage({
           </form>
         </section>
       )}
+
+      <ImagenPortadaForm
+        // Fuerza a remontar cuando cambia la imagen guardada: sin esto, al
+        // guardar (que redirige a esta misma ruta) React reutiliza el mismo
+        // componente y se queda mostrando "Guardando..." con el recorte
+        // viejo en vez de la portada nueva.
+        key={obra.imagen_drive_id ?? "sin-imagen"}
+        obraId={obra.id}
+        slug={obra.slug}
+        imagenActual={
+          obra.imagen_drive_id
+            ? { driveId: obra.imagen_drive_id, nombre: obra.imagen_nombre }
+            : null
+        }
+        subirAction={subirImagenObra}
+        eliminarAction={eliminarImagenObra}
+      />
 
       <ObraForm
         action={actualizarObra}

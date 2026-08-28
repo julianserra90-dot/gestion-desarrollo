@@ -16,7 +16,7 @@ export default async function Home({
   const consultaObras = supabase
     .from("obras")
     .select(
-      "id, slug, nombre, ubicacion, domicilio, unidades_funcionales, pisos, estado, fecha_inicio, fecha_fin_estimada"
+      "id, slug, nombre, ubicacion, domicilio, unidades_funcionales, pisos, estado, fecha_inicio, fecha_fin_estimada, imagen_drive_id"
     )
     .order("nombre");
 
@@ -135,38 +135,55 @@ export default async function Home({
 
           return (
             <Link key={obra.id} href={`/obras/${obra.slug}`} style={obraCard}>
-              <div>
-                <p style={eyebrow}>{obra.estado}</p>
-                <h2 style={obraTitle}>{obra.nombre}</h2>
-                {obra.domicilio && (
-                  <p style={obraAddress}>{obra.domicilio}</p>
-                )}
-                <p style={obraLocation}>{obra.ubicacion}</p>
-              </div>
+              {/* Siempre 16:9, tenga o no imagen cargada: así las tarjetas
+                  quedan de la misma altura entre sí y no saltan cuando se le
+                  agrega una imagen a una obra que no tenía. */}
+              {obra.imagen_drive_id ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/archivos/${obra.imagen_drive_id}`}
+                  alt=""
+                  loading="lazy"
+                  style={obraImagen}
+                />
+              ) : (
+                <div style={obraImagen} />
+              )}
 
-              <div style={progressBlock}>
-                <div style={progressTop}>
-                  <span>Avance</span>
-                  <strong>{avance}%</strong>
+              <div style={obraContenido}>
+                <div>
+                  <p style={eyebrow}>{obra.estado}</p>
+                  <h2 style={obraTitle}>{obra.nombre}</h2>
+                  {obra.domicilio && (
+                    <p style={obraAddress}>{obra.domicilio}</p>
+                  )}
+                  <p style={obraLocation}>{obra.ubicacion}</p>
                 </div>
 
-                <div style={progressBackground}>
-                  <div
-                    style={{
-                      ...progressFill,
-                      width: `${avance}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={meta}>
-                {detalles.map((d) => (
-                  <div key={d.etiqueta} style={metaRow}>
-                    <span>{d.etiqueta}</span>
-                    <strong>{d.valor}</strong>
+                <div style={progressBlock}>
+                  <div style={progressTop}>
+                    <span>Avance</span>
+                    <strong>{avance}%</strong>
                   </div>
-                ))}
+
+                  <div style={progressBackground}>
+                    <div
+                      style={{
+                        ...progressFill,
+                        width: `${avance}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={meta}>
+                  {detalles.map((d) => (
+                    <div key={d.etiqueta} style={metaRow}>
+                      <span>{d.etiqueta}</span>
+                      <strong>{d.valor}</strong>
+                    </div>
+                  ))}
+                </div>
               </div>
             </Link>
           );
@@ -271,14 +288,31 @@ const obraGrid = {
 
 const obraCard = {
   border: "1px solid #e5e5e5",
-  padding: "28px",
-  minHeight: "320px",
   textDecoration: "none",
   color: "#111111",
   display: "flex",
   flexDirection: "column" as const,
-  justifyContent: "space-between",
   background: "#ffffff",
+  overflow: "hidden" as const,
+};
+
+// object-fit: cover corta los bordes que sobran en vez de deformar la
+// imagen; con la proporción fija (16:9) da igual el tamaño con que se subió.
+const obraImagen = {
+  width: "100%",
+  aspectRatio: "16 / 9",
+  objectFit: "cover" as const,
+  display: "block",
+  background: "#f2f2f2",
+};
+
+const obraContenido = {
+  padding: "28px",
+  minHeight: "260px",
+  display: "flex",
+  flexDirection: "column" as const,
+  justifyContent: "space-between",
+  flex: 1,
 };
 
 // Tres escalones de jerarquía: el nombre manda, el domicilio identifica, la
