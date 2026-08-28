@@ -269,6 +269,11 @@ export default async function LotePage({
         <h3 style={ui.sectionTitle}>Pagos</h3>
 
         <PagosLoteLista
+          // La key fuerza a remontar cuando cambia la tarjeta desde la que se
+          // entra: sin esto, React reutiliza el mismo componente al navegar
+          // entre "?ver=compra" y "?ver=administrativos" y el filtro con el
+          // que arrancó la primera vez queda pegado.
+          key={ver ?? "todos"}
           pagos={lote.pagos.map((p) => ({
             id: p.id,
             fecha: p.fecha,
