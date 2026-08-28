@@ -279,8 +279,12 @@ fecha de cada pago), no se persiste. Todo se mide en dólares porque así se com
 un inmueble.
 
 La vista Lote (solapa bajo Economía) muestra valor lote / pago a la fecha /
-saldo pendiente / gastos administrativos / total desembolsado / incidencia por m²
-construido / inversión total (lote + construcción).
+saldo pendiente / gastos administrativos / total abonado por lote / incidencia
+de lote (US$ por m² de venta). "Gastado en construcción" e "Inversión total
+(lote + construcción)" se sacaron de este panel: esa pregunta —cuánto sale el
+desarrollo entero— ya la contesta el pie de la torta de Economía/Dólares (más
+abajo, "inversión total = obra + lote"), y repetida acá con otro nombre
+("desembolsado") confundía más de lo que aclaraba.
 
 **Qué se edita dónde.** La solapa Lote quedó para lo que se consulta y lo que
 pasa todos los meses: los números, el reparto y los pagos. Lo demás se fue:

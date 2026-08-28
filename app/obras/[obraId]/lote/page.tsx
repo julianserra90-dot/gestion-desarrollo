@@ -8,7 +8,6 @@ import { getLote, incidenciaPorM2 } from "@/lib/lote";
 import { CATEGORIAS_ASOCIADAS } from "@/lib/lote-tipos";
 import { getObraPorSlug } from "@/lib/obras";
 import { superficieVenta } from "@/lib/superficies";
-import { getTotalesUsd } from "@/lib/totales-usd";
 import { eliminarPagoLote } from "./actions";
 
 /** Los atajos que llegan desde las tarjetas de arriba. */
@@ -32,22 +31,18 @@ export default async function LotePage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [lote, construccion] = await Promise.all([
-    getLote(
-      obra.id,
-      obra.lote_valor_usd,
-      obra.lote_superficie_m2,
-      obra.lote_vendedor,
-      obra.lote_detalle
-    ),
-    getTotalesUsd(obra.id),
-  ]);
+  const lote = await getLote(
+    obra.id,
+    obra.lote_valor_usd,
+    obra.lote_superficie_m2,
+    obra.lote_vendedor,
+    obra.lote_detalle
+  );
 
   // Lo que venga de más en la URL se ignora: la pantalla abre sin filtro.
   const categoriasFiltro = ver ? CATEGORIAS_POR_VISTA[ver] : undefined;
 
   const incidenciaVenta = incidenciaPorM2(lote.valorUsd, superficieVenta(obra));
-  const inversionTotal = construccion.gastadoUsd + lote.totalUsd;
 
   const hayDatos = lote.valorUsd !== null || lote.pagos.length > 0;
 
@@ -149,28 +144,20 @@ export default async function LotePage({
         <section style={ui.panelConMargen}>
           <div style={dosColumnas}>
             <div style={filaResumen}>
-              <span>Total desembolsado en el lote</span>
+              <span>Total abonado por lote</span>
               <strong>{formatUSD(lote.totalUsd)}</strong>
             </div>
             {/* Siempre sobre la superficie de venta: la incidencia es cuánto
                 del m² que se vende es tierra, no cuánto del que se construye. */}
             {incidenciaVenta !== null && (
               <div style={filaResumen}>
-                <span>Incidencia por m² de venta</span>
+                <span>Incidencia de lote</span>
                 <strong>{formatUSD(incidenciaVenta)} /m²</strong>
               </div>
             )}
-            <div style={filaResumen}>
-              <span>Gastado en construcción</span>
-              <strong>{formatUSD(construccion.gastadoUsd)}</strong>
-            </div>
-            <div style={{ ...filaResumen, ...filaTotal }}>
-              <span>Inversión total (lote + construcción)</span>
-              <strong>{formatUSD(inversionTotal)}</strong>
-            </div>
           </div>
 
-          {(lote.sinCotizar > 0 || construccion.sinCotizar > 0) && (
+          {lote.sinCotizar > 0 && (
             <p style={{ ...ui.note, marginTop: "14px" }}>
               Hay movimientos sin cotización que quedan fuera del cálculo en
               dólares.
@@ -341,12 +328,6 @@ const filaResumen = {
   padding: "10px 0",
   color: "#444444",
   borderTop: "1px solid #eeeeee",
-};
-
-const filaTotal = {
-  borderTop: "2px solid #111111",
-  color: "#111111",
-  fontSize: "17px",
 };
 
 const thDer = {
