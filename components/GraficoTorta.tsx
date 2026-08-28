@@ -90,10 +90,14 @@ export default function GraficoTorta({
 
     // Un rubro con poca plata puesta (Impuestos, Varios) puede redondear a 0%,
     // y un cero se lee como "no se le asignó nada" cuando en realidad tiene un
-    // monto real al lado. "<1%" deja claro que hay algo, aunque sea chico.
+    // monto real al lado. Por debajo de 1% se muestra con decimales —hasta dos,
+    // sólo los que hagan falta— para que se note cuánto es en verdad, en vez de
+    // esconder dos porciones bien distintas atrás del mismo "<1%".
     const pctExacto = (d.valor / total) * 100;
     const porcentaje =
-      pctExacto > 0 && pctExacto < 1 ? "<1%" : `${Math.round(pctExacto)}%`;
+      pctExacto > 0 && pctExacto < 1
+        ? `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(pctExacto)}%`
+        : `${Math.round(pctExacto)}%`;
 
     return {
       ...d,
