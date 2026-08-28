@@ -125,89 +125,121 @@ export default function PagosLoteLista({
       {filtrados.length === 0 ? (
         <p style={ui.vacio}>Ningún pago coincide con el filtro.</p>
       ) : (
-        <table style={ui.table}>
-          <thead>
-            <tr>
-              <th style={ui.th}>Fecha</th>
-              <th style={ui.th}>Tipo</th>
-              <th style={ui.th}>Concepto</th>
-              <th style={ui.th}>Pagado por</th>
-              <th style={ui.thRight}>Monto en $</th>
-              <th style={ui.thRight}>Monto en U$D</th>
-              <th style={ui.th}>Comprobante</th>
-              <th style={ui.th} />
-            </tr>
-          </thead>
-          <tbody>
-            {filtrados.map((pago) => (
-              <tr key={pago.id}>
-                <td style={ui.td}>{formatDate(pago.fecha)}</td>
-                <td style={ui.td}>{pago.categoria}</td>
-                <td style={ui.td}>{pago.concepto}</td>
-                <td style={ui.td}>
-                  {pago.compartido ? (
-                    "Entre las socias"
-                  ) : (
-                    pago.empresa ?? (
-                      <span style={{ color: "#b00020" }}>Sin asignar</span>
-                    )
-                  )}
-                </td>
-                {/* Cada pago ocupa una sola columna de moneda: la que se cargó.
-                    Un pago en dólares repetido en las dos era el mismo número
-                    dos veces. La de dólares siempre tiene algo, porque el lote
-                    se mide en dólares. */}
-                <td style={ui.tdRight}>
-                  {pago.moneda === "ARS" ? formatMoney(pago.monto) : "—"}
-                </td>
-                <td style={ui.tdRight}>
-                  {pago.usd === null ? "—" : formatUSD(pago.usd)}
-                </td>
-                <td style={ui.td}>
-                  {pago.comprobanteDriveId ? (
-                    <span style={chipComprobante}>
+        // Ancho fijo mínimo por columna, pero table-layout sigue en "auto":
+        // guardan una distancia pareja entre sí sin forzar el contenido a
+        // pisarse si una fila necesita más lugar. El contenedor scrollea en
+        // vez de apretar las columnas en una pantalla angosta.
+        <div style={contenedorTabla}>
+          <table style={ui.table}>
+            <colgroup>
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "19%" }} />
+              <col style={{ width: "15%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={ui.th}>Fecha</th>
+                <th style={ui.th}>Tipo</th>
+                <th style={ui.th}>Concepto</th>
+                <th style={ui.th}>Pagado por</th>
+                <th style={ui.thRight}>Monto en $</th>
+                <th style={ui.thRight}>Monto en U$D</th>
+                <th style={thCentrado}>Comprobante</th>
+                <th style={ui.th} />
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((pago) => (
+                <tr key={pago.id}>
+                  <td style={ui.td}>{formatDate(pago.fecha)}</td>
+                  <td style={ui.td}>{pago.categoria}</td>
+                  <td style={ui.td}>{pago.concepto}</td>
+                  <td style={ui.td}>
+                    {pago.compartido ? (
+                      "Entre las socias"
+                    ) : (
+                      pago.empresa ?? (
+                        <span style={{ color: "#b00020" }}>Sin asignar</span>
+                      )
+                    )}
+                  </td>
+                  {/* Cada pago ocupa una sola columna de moneda: la que se
+                      cargó. Un pago en dólares repetido en las dos era el
+                      mismo número dos veces. La de dólares siempre tiene algo,
+                      porque el lote se mide en dólares. */}
+                  <td style={ui.tdRight}>
+                    {pago.moneda === "ARS" ? formatMoney(pago.monto) : "—"}
+                  </td>
+                  <td style={ui.tdRight}>
+                    {pago.usd === null ? "—" : formatUSD(pago.usd)}
+                  </td>
+                  <td style={tdCentrado}>
+                    {pago.comprobanteDriveId ? (
+                      <span style={chipComprobante}>
+                        <Link
+                          href={`/ver/${pago.comprobanteDriveId}?volver=${encodeURIComponent(volverALote)}`}
+                          style={enlace}
+                        >
+                          Ver
+                        </Link>
+                        <BotonDescarga
+                          fileId={pago.comprobanteDriveId}
+                          variante="icono"
+                          etiqueta={`Descargar ${pago.comprobanteNombre ?? "comprobante"}`}
+                        />
+                      </span>
+                    ) : (
+                      <span style={{ color: "#aaaaaa" }}>—</span>
+                    )}
+                  </td>
+                  <td style={ui.td}>
+                    <div style={acciones}>
                       <Link
-                        href={`/ver/${pago.comprobanteDriveId}?volver=${encodeURIComponent(volverALote)}`}
+                        href={`/obras/${slug}/lote/${pago.id}/editar`}
                         style={enlace}
                       >
-                        Ver
+                        Editar
                       </Link>
-                      <BotonDescarga
-                        fileId={pago.comprobanteDriveId}
-                        variante="icono"
-                        etiqueta={`Descargar ${pago.comprobanteNombre ?? "comprobante"}`}
-                      />
-                    </span>
-                  ) : (
-                    <span style={{ color: "#aaaaaa" }}>—</span>
-                  )}
-                </td>
-                <td style={ui.td}>
-                  <div style={acciones}>
-                    <Link
-                      href={`/obras/${slug}/lote/${pago.id}/editar`}
-                      style={enlace}
-                    >
-                      Editar
-                    </Link>
-                    <form action={eliminar}>
-                      <input type="hidden" name="obra_id" value={obraId} />
-                      <input type="hidden" name="slug" value={slug} />
-                      <input type="hidden" name="pago_id" value={pago.id} />
-                      <button type="submit" style={botonQuitar}>
-                        Quitar
-                      </button>
-                    </form>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      <form action={eliminar}>
+                        <input type="hidden" name="obra_id" value={obraId} />
+                        <input type="hidden" name="slug" value={slug} />
+                        <input type="hidden" name="pago_id" value={pago.id} />
+                        <button type="submit" style={botonQuitar}>
+                          Quitar
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
 }
+
+// Si la tabla no entra (pantalla angosta, columnas con nombres largos), scrollea
+// ella sola en vez de apretar el resto de la página de costado.
+const contenedorTabla = {
+  overflowX: "auto" as const,
+};
+
+const thCentrado = {
+  ...ui.th,
+  textAlign: "center" as const,
+};
+
+const tdCentrado = {
+  ...ui.td,
+  textAlign: "center" as const,
+};
 
 const chipComprobante = {
   display: "inline-flex",
