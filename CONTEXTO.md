@@ -994,12 +994,14 @@ Decisión: el lote NO se sumó a la tarjeta "Total gastado" de arriba, porque es
 cuadra con "facturado + efectivo" y meterle el lote la rompía. En su lugar está
 la "inversión total". Si se quiere, se puede reconsiderar.
 
-Cada rubro se **desglosa por tipo de gasto** dentro de su propia porción, en
-**tonos del mismo color**: si Albañilería es verde, su material y su mano de obra
-son dos verdes. El tono dice "esto sigue siendo albañilería" y el corte dice
-"hasta acá fue material" — con colores distintos se perdía a qué rubro pertenecía
-cada pedazo. La leyenda repite el desglose indentado bajo el rubro, atrás de un
-"+".
+Cada rubro se **desglosa por tipo de gasto**, pero sólo en la leyenda, indentado
+bajo el rubro atrás de un "+": material y mano de obra tienen ahí su propio
+tono (`aclarar`, en `GraficoTorta.tsx`) y color de fila. En el **anillo no**: se
+probó pintando el tono también en el arco (una porción, dos tonos) y el tono más
+claro se leía como un color suelto que no está en la leyenda —como si a la
+torta le faltara repartir un pedazo—, en vez de leerse como parte del rubro. En
+el anillo cada rubro es un solo arco, en su color base, así una vuelta completa
+son exactamente las filas de la leyenda y nada más.
 
 El "+" aparece **aunque el rubro tenga un solo tipo**. Al principio se desglosaba
 sólo con dos o más —partir una porción en una sola parte no cambia nada en el

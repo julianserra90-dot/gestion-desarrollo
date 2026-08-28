@@ -12,11 +12,16 @@
  * gastos sin rubro—.
  *
  * Y puede llevar `partes`: el desglose interno del rubro (materiales, mano de
- * obra, administrativo). En el anillo se dibujan como arcos en **tonos del
- * mismo color** —el tono dice "esto sigue siendo albañilería" y el corte dice
- * "hasta acá fue material"—. En la leyenda el desglose arranca cerrado, atrás
- * de un "+": es detalle, no compite con la lectura principal. Es un `details`
+ * obra, administrativo), en tonos del mismo color de la porción. Vive **sólo en
+ * la leyenda**, indentado bajo el rubro y detrás de un "+": arranca cerrado
+ * porque es detalle, no compite con la lectura principal. Es un `details`
  * nativo porque este componente corre en el servidor.
+ *
+ * En el anillo no se pinta el tono: se probó y el tono más claro (la mano de
+ * obra) se leía como un color suelto que no está en la leyenda, como si a la
+ * torta le faltara repartir un pedazo. Cada rubro es un solo arco en su color
+ * base, así una vuelta completa del anillo son exactamente las filas de la
+ * leyenda.
  *
  * El "+" aparece aunque el rubro tenga **un solo tipo**: que toda la instalación
  * sanitaria haya sido mano de obra es un dato, y si unos rubros lo muestran y
@@ -91,25 +96,15 @@ export default function GraficoTorta({
     };
   });
 
-  // Los arcos salen de recorrer las porciones en orden: una por rubro, o una
-  // por parte si el rubro se desglosa. Lo que las partes no cubran (un ajuste
-  // de saldo, por ejemplo) se dibuja al final en el color base, para que el
-  // anillo no quede con un hueco.
-  const arcos: { color: string; valor: number }[] = [];
-
-  for (const p of porciones) {
-    if (p.partes.length === 0) {
-      arcos.push({ color: p.base, valor: p.valor });
-      continue;
-    }
-
-    for (const parte of p.partes) {
-      arcos.push({ color: parte.color, valor: parte.valor });
-    }
-
-    const resto = p.valor - p.partes.reduce((s, x) => s + x.valor, 0);
-    if (resto > 0.01) arcos.push({ color: p.base, valor: resto });
-  }
+  // Un arco por porción, en su color base: el desglose por tipo (materiales,
+  // mano de obra) se lee en tonos adentro de la leyenda, atrás del "+", pero no
+  // en el anillo. Se probó tiñendo el arco por tipo y el tono de "mano de obra"
+  // se veía como un color suelto que no está en la leyenda —como si a la torta
+  // le faltara repartir un pedazo—, en vez de leerse como parte del rubro.
+  const arcos: { color: string; valor: number }[] = porciones.map((p) => ({
+    color: p.base,
+    valor: p.valor,
+  }));
 
   const fila = (p: (typeof porciones)[number]) => (
     <span style={filaLeyenda}>
