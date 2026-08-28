@@ -88,11 +88,18 @@ export default function GraficoTorta({
       color: aclarar(base, j * PASO_DE_TONO),
     }));
 
+    // Un rubro con poca plata puesta (Impuestos, Varios) puede redondear a 0%,
+    // y un cero se lee como "no se le asignó nada" cuando en realidad tiene un
+    // monto real al lado. "<1%" deja claro que hay algo, aunque sea chico.
+    const pctExacto = (d.valor / total) * 100;
+    const porcentaje =
+      pctExacto > 0 && pctExacto < 1 ? "<1%" : `${Math.round(pctExacto)}%`;
+
     return {
       ...d,
       base,
       partes,
-      porcentaje: Math.round((d.valor / total) * 100),
+      porcentaje,
     };
   });
 
@@ -109,7 +116,7 @@ export default function GraficoTorta({
   const fila = (p: (typeof porciones)[number]) => (
     <span style={filaLeyenda}>
       <span style={{ ...swatch, background: p.base }} />
-      <span style={pct}>{p.porcentaje}%</span>
+      <span style={pct}>{p.porcentaje}</span>
       <span style={etiqueta}>
         {p.href ? (
           <Link href={p.href} style={enlace}>
