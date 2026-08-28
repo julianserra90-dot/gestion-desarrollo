@@ -92,9 +92,21 @@ export default async function LotePage({
             <p style={ui.subtitle}>Todo en dólares.</p>
           </div>
 
-          <Link href={`/obras/${obra.slug}/lote/nuevo`} style={ui.button}>
-            Agregar pago
-          </Link>
+          <div style={accionesEncabezado}>
+            {/* Boleto de compraventa, escritura y demás papeles de la
+                operación: van como ámbito "Lote" en Documentos, así que el
+                botón entra ya filtrado a eso y no a la documentación de
+                construcción. */}
+            <Link
+              href={`/obras/${obra.slug}/documentos?ambito=Lote`}
+              style={ui.secondaryButton}
+            >
+              Documentación
+            </Link>
+            <Link href={`/obras/${obra.slug}/lote/nuevo`} style={ui.button}>
+              Agregar pago
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -300,6 +312,11 @@ const encabezado = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: "24px",
+};
+
+const accionesEncabezado = {
+  display: "flex",
+  gap: "12px",
 };
 
 // Misma tarjeta que ui.statCard, pero lleva al detalle de esos pagos.

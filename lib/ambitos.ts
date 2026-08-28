@@ -3,14 +3,15 @@
  * lo usan tanto el servidor como los formularios del cliente.
  *
  * El ámbito dice para qué sirve el papel; el rubro, de qué parte de la obra
- * habla. Lo administrativo no lleva rubro —un seguro no es de albañilería— y
- * en su lugar lleva un título libre.
+ * habla. Lo administrativo y lo del lote no llevan rubro —un seguro no es de
+ * albañilería, y el boleto de compraventa tampoco— y en su lugar llevan un
+ * título libre.
  */
 
-export const AMBITOS = ["Obra", "Proyecto", "Administrativa"] as const;
+export const AMBITOS = ["Obra", "Proyecto", "Administrativa", "Lote"] as const;
 export type Ambito = (typeof AMBITOS)[number];
 
-/** Los ámbitos que se archivan por rubro. Administrativa va por título. */
+/** Los ámbitos que se archivan por rubro. El resto va por título. */
 export const AMBITOS_CON_RUBRO: readonly Ambito[] = ["Obra", "Proyecto"];
 
 export function esAmbito(valor: string): valor is Ambito {
@@ -19,6 +20,11 @@ export function esAmbito(valor: string): valor is Ambito {
 
 export function usaRubro(ambito: Ambito): boolean {
   return AMBITOS_CON_RUBRO.includes(ambito);
+}
+
+/** Cómo se muestra cada ámbito en los filtros y el desplegable. */
+export function etiquetaAmbito(ambito: Ambito): string {
+  return usaRubro(ambito) ? `De ${ambito.toLowerCase()}` : ambito;
 }
 
 /**

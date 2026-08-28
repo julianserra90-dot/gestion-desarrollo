@@ -3,7 +3,7 @@ import AppShell from "@/components/AppShell";
 import BotonDescarga from "@/components/BotonDescarga";
 import ObraHeader from "@/components/ObraHeader";
 import * as ui from "@/components/ui";
-import { AMBITOS, esAmbito } from "@/lib/ambitos";
+import { AMBITOS, esAmbito, etiquetaAmbito } from "@/lib/ambitos";
 import {
   carpetaDelDocumento,
   getDocumentos,
@@ -110,7 +110,7 @@ export default async function DocumentosPage({
             href={linkAmbito(a)}
             style={ambitoActivo === a ? filtroActivo : filtro}
           >
-            {a === "Administrativa" ? "Administrativa" : `De ${a.toLowerCase()}`}{" "}
+            {etiquetaAmbito(a)}{" "}
             <span style={contador}>
               {
                 todos.filter(

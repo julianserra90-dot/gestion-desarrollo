@@ -884,10 +884,15 @@ acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance
 general pondera cada rubro por lo que cuesta (cotizaciones aprobadas).
 
 ### Documentos (hechos en la otra máquina)
-Se clasifican por dos ejes: **ámbito** (de obra / de proyecto / administrativa)
-y **rubro**. Los administrativos van por título en vez de rubro. Un documento
-puede tener varios archivos (PDF + DWG). Versiones: "Nueva versión" deja la
-anterior Obsoleta sola; el encadenado es explícito (`reemplaza_a`).
+Se clasifican por dos ejes: **ámbito** (de obra / de proyecto / administrativa
+/ lote) y **rubro**. Administrativa y Lote van por título en vez de rubro —el
+boleto de compraventa o la escritura no son de un rubro de construcción, igual
+que un seguro no es de albañilería—. Un documento puede tener varios archivos
+(PDF + DWG). Versiones: "Nueva versión" deja la anterior Obsoleta sola; el
+encadenado es explícito (`reemplaza_a`). `getTitulosUsados` da los títulos ya
+usados **agrupados por ámbito**, para no sugerir "Escritura" al cargar un aviso
+de obra. Desde la solapa Lote, el botón **Documentación** entra ya filtrado
+(`documentos?ambito=Lote`).
 
 ### Ficha de obra (hecha en la otra máquina + esta)
 `domicilio` (calle y altura, aparte de `ubicacion` = localidad),

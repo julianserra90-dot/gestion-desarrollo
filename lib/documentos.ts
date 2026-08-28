@@ -36,9 +36,9 @@ export type Documento = {
   obraId: string;
   nombre: string;
   ambito: Ambito;
-  /** El rubro, en Obra y Proyecto. En Administrativa es null. */
+  /** El rubro, en Obra y Proyecto. En Administrativa y Lote es null. */
   rubro: { id: string; nombre: string } | null;
-  /** La etiqueta libre, en Administrativa. En el resto es null. */
+  /** La etiqueta libre, en Administrativa y Lote. En el resto es null. */
   titulo: string | null;
   version: string | null;
   estado: string;
@@ -97,25 +97,39 @@ export async function getDocumentos(obraId: string): Promise<Documento[]> {
 }
 
 /**
- * Los títulos administrativos que ya se usaron en la obra, para ofrecerlos al
- * cargar uno nuevo. Se arman de lo cargado en vez de un catálogo aparte: la
- * lista se mantiene sola y nadie tiene que administrarla.
+ * Los títulos ya usados en los ámbitos sin rubro (Administrativa, Lote), para
+ * ofrecerlos al cargar uno nuevo. Se arman de lo cargado en vez de un catálogo
+ * aparte: la lista se mantiene sola y nadie tiene que administrarla.
+ *
+ * Vienen agrupados por ámbito porque cada uno tiene los suyos: "Escritura" no
+ * pinta como sugerencia al cargar un aviso de obra.
  */
-export async function getTitulosUsados(obraId: string): Promise<string[]> {
+export async function getTitulosUsados(
+  obraId: string
+): Promise<Record<string, string[]>> {
   const supabase = await createClient();
 
   const { data } = await supabase
     .from("documentos")
-    .select("titulo")
+    .select("ambito, titulo")
     .eq("obra_id", obraId)
-    .eq("ambito", "Administrativa")
     .not("titulo", "is", null);
 
-  const titulos = (data ?? [])
-    .map((d) => d.titulo)
-    .filter((t): t is string => Boolean(t));
+  const porAmbito = new Map<string, Set<string>>();
 
-  return Array.from(new Set(titulos)).sort((a, b) => a.localeCompare(b, "es"));
+  for (const d of data ?? []) {
+    if (!d.titulo) continue;
+    const set = porAmbito.get(d.ambito) ?? new Set<string>();
+    set.add(d.titulo);
+    porAmbito.set(d.ambito, set);
+  }
+
+  const resultado: Record<string, string[]> = {};
+  for (const [ambito, titulos] of porAmbito) {
+    resultado[ambito] = Array.from(titulos).sort((a, b) => a.localeCompare(b, "es"));
+  }
+
+  return resultado;
 }
 
 /** Lo mínimo de cada documento, para resolver versiones y ofrecer nombres. */

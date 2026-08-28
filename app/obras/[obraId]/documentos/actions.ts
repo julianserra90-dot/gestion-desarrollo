@@ -36,7 +36,7 @@ export async function subirDocumento(formData: FormData) {
   // mandarlo a Drive para después rebotar por un campo vacío.
 
   if (!esAmbito(ambito)) {
-    volver("Elegí si es documentación de obra, de proyecto o administrativa.");
+    volver("Elegí de qué ámbito es: obra, proyecto, administrativa o lote.");
     return;
   }
 
@@ -192,7 +192,7 @@ export async function actualizarDocumento(formData: FormData) {
     );
 
   if (!esAmbito(ambito)) {
-    volver("Elegí si es documentación de obra, de proyecto o administrativa.");
+    volver("Elegí de qué ámbito es: obra, proyecto, administrativa o lote.");
     return;
   }
 

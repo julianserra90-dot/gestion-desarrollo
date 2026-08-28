@@ -6,7 +6,9 @@ import * as ui from "@/components/ui";
 import {
   AMBITOS,
   type Ambito,
+  etiquetaAmbito,
   mismaLinea,
+  usaRubro,
   versionSiguiente,
 } from "@/lib/ambitos";
 
@@ -19,6 +21,19 @@ const AYUDA: Record<Ambito, string> = {
   Obra: "Lo que se usa para construir: planos de obra, detalles constructivos, planillas.",
   Proyecto: "Lo que define el proyecto: anteproyecto, plantas, cortes, vistas.",
   Administrativa: "Papeles que no son de un rubro: avisos de obra, planos municipales, seguros, contratos.",
+  Lote: "Papeles de la compra del terreno: boleto de compraventa, escritura, y lo demás de la operación.",
+};
+
+// Sólo para los ámbitos sin rubro: el campo Título cambia de ejemplo y ayuda
+// según cuál sea, para no sugerir "Aviso de obra" al cargar la escritura.
+const PLACEHOLDER_TITULO: Partial<Record<Ambito, string>> = {
+  Administrativa: "Ej: Aviso de obra",
+  Lote: "Ej: Escritura",
+};
+
+const AYUDA_TITULO: Partial<Record<Ambito, string>> = {
+  Administrativa: "Lo administrativo no va por rubro. Los títulos ya usados se ofrecen solos.",
+  Lote: "Los papeles del lote no van por rubro. Los títulos ya usados se ofrecen solos.",
 };
 
 export type RubroOpcionForm = { id: string; nombre: string };
@@ -65,7 +80,8 @@ export default function SubirDocumentoForm({
   obraId: string;
   slug: string;
   rubros: RubroOpcionForm[];
-  titulosUsados: string[];
+  /** Los títulos ya usados, agrupados por ámbito: cada uno ofrece los suyos. */
+  titulosUsados: Record<string, string[]>;
   documentos: DocumentoCargado[];
   error?: string;
   precarga?: Precarga;
@@ -83,7 +99,7 @@ export default function SubirDocumentoForm({
   const [nombre, setNombre] = useState(inicial?.nombre ?? "");
   const [estado, setEstado] = useState(documento?.estado ?? "Vigente");
 
-  const llevaRubro = ambito !== "Administrativa";
+  const llevaRubro = usaRubro(ambito);
 
   // La versión sale de lo que ya hay con ese nombre en ese lugar, igual que la
   // calcula el servidor al guardar. Acá sólo se muestra para que no sorprenda.
@@ -127,7 +143,7 @@ export default function SubirDocumentoForm({
             >
               {AMBITOS.map((a) => (
                 <option key={a} value={a}>
-                  {a === "Administrativa" ? "Administrativa" : `De ${a.toLowerCase()}`}
+                  {etiquetaAmbito(a)}
                 </option>
               ))}
             </select>
@@ -167,17 +183,17 @@ export default function SubirDocumentoForm({
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
                 required
-                placeholder="Ej: Aviso de obra"
+                placeholder={PLACEHOLDER_TITULO[ambito] ?? "Ej: Aviso de obra"}
                 style={ui.input}
               />
               <datalist id="titulos-doc">
-                {titulosUsados.map((t) => (
+                {(titulosUsados[ambito] ?? []).map((t) => (
                   <option key={t} value={t} />
                 ))}
               </datalist>
               <span style={ayuda}>
-                Lo administrativo no va por rubro. Los títulos ya usados se
-                ofrecen solos.
+                {AYUDA_TITULO[ambito] ??
+                  "Esto no va por rubro. Los títulos ya usados se ofrecen solos."}
               </span>
             </label>
           )}
