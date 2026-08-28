@@ -19,7 +19,7 @@ export async function buscarArchivoVisible(
 ): Promise<ArchivoVisible | null> {
   const supabase = await createClient();
 
-  const [foto, adjunto, gasto] = await Promise.all([
+  const [foto, adjunto, gasto, presupuesto, pagoLote] = await Promise.all([
     supabase
       .from("fotos")
       .select("nombre, mime_type")
@@ -32,6 +32,16 @@ export async function buscarArchivoVisible(
       .maybeSingle(),
     supabase
       .from("gastos")
+      .select("comprobante_nombre, comprobante_mime")
+      .eq("comprobante_drive_id", fileId)
+      .maybeSingle(),
+    supabase
+      .from("presupuestos")
+      .select("comprobante_nombre, comprobante_mime")
+      .eq("comprobante_drive_id", fileId)
+      .maybeSingle(),
+    supabase
+      .from("lote_pagos")
       .select("comprobante_nombre, comprobante_mime")
       .eq("comprobante_drive_id", fileId)
       .maybeSingle(),
@@ -57,6 +67,20 @@ export async function buscarArchivoVisible(
     return {
       nombre: gasto.data.comprobante_nombre ?? "comprobante",
       mimeType: gasto.data.comprobante_mime,
+    };
+  }
+
+  if (presupuesto.data) {
+    return {
+      nombre: presupuesto.data.comprobante_nombre ?? "cotización",
+      mimeType: presupuesto.data.comprobante_mime,
+    };
+  }
+
+  if (pagoLote.data) {
+    return {
+      nombre: pagoLote.data.comprobante_nombre ?? "comprobante",
+      mimeType: pagoLote.data.comprobante_mime,
     };
   }
 
