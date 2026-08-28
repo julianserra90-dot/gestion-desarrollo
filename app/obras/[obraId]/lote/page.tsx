@@ -84,7 +84,6 @@ export default async function LotePage({
           <div>
             <p style={ui.eyebrow}>Economía</p>
             <h2 style={ui.pageTitle}>Lote</h2>
-            <p style={ui.subtitle}>Todo en dólares.</p>
           </div>
 
           <div style={accionesEncabezado}>
