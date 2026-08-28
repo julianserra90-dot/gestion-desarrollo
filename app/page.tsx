@@ -307,8 +307,7 @@ const obraImagen = {
 };
 
 const obraContenido = {
-  padding: "28px",
-  minHeight: "260px",
+  padding: "16px 20px",
   display: "flex",
   flexDirection: "column" as const,
   justifyContent: "space-between",
@@ -317,11 +316,13 @@ const obraContenido = {
 
 // Tres escalones de jerarquía: el nombre manda, el domicilio identifica, la
 // localidad es el pie. Cada uno más chico y más claro que el anterior, para
-// que el ojo los lea en ese orden sin pensarlo.
+// que el ojo los lea en ese orden sin pensarlo. Con la imagen arriba, la
+// tarjeta entera ya ocupa bastante: el título achicado deja ver todo sin
+// scroll.
 const obraTitle = {
-  fontSize: "28px",
+  fontSize: "20px",
   fontWeight: 400,
-  margin: "14px 0 10px",
+  margin: "8px 0 4px",
   lineHeight: 1.15,
 };
 
@@ -338,7 +339,7 @@ const obraLocation = {
 };
 
 const progressBlock = {
-  marginTop: "36px",
+  marginTop: "14px",
 };
 
 const progressTop = {
@@ -360,15 +361,15 @@ const progressFill = {
 };
 
 const meta = {
-  marginTop: "32px",
+  marginTop: "14px",
 };
 
 const metaRow = {
   display: "flex",
   justifyContent: "space-between",
   borderTop: "1px solid #eeeeee",
-  paddingTop: "12px",
-  marginTop: "12px",
+  paddingTop: "6px",
+  marginTop: "6px",
   color: "#444444",
   fontSize: "14px",
 };
