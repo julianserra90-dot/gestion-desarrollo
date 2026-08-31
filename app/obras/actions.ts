@@ -91,7 +91,7 @@ export async function actualizarObra(formData: FormData) {
 }
 
 /**
- * Guarda la imagen de portada. Llega ya recortada a 4:3 desde el navegador
+ * Guarda la imagen de portada. Llega ya recortada, cuadrada, desde el navegador
  * —el recorte lo elige el usuario ahí, con el mouse—, así que acá no hay
  * coordenadas que calcular: es un archivo más para subir a Drive.
  *

@@ -135,9 +135,9 @@ export default async function Home({
 
           return (
             <Link key={obra.id} href={`/obras/${obra.slug}`} style={obraCard}>
-              {/* Siempre 4:3, tenga o no imagen cargada: así las tarjetas
-                  quedan de la misma altura entre sí y no saltan cuando se le
-                  agrega una imagen a una obra que no tenía. */}
+              {/* Siempre cuadrada, tenga o no imagen cargada: así las
+                  tarjetas quedan de la misma altura entre sí y no saltan
+                  cuando se le agrega una imagen a una obra que no tenía. */}
               {obra.imagen_drive_id ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -280,9 +280,14 @@ const secondaryLink = {
   display: "inline-block",
 };
 
+// Columnas que se acomodan solas según el ancho: con la imagen cuadrada
+// (más alta que la 4:3 de antes), forzar siempre 3 columnas angostaba poco la
+// tarjeta y la hacía demasiado alta. Achicando la columna mínima entran más
+// por fila, la imagen cuadrada da más chica, y la tarjeta entera se ve sin
+// scrollear.
 const obraGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
+  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
   gap: "24px",
 };
 
@@ -297,10 +302,11 @@ const obraCard = {
 };
 
 // object-fit: cover corta los bordes que sobran en vez de deformar la
-// imagen; con la proporción fija (4:3) da igual el tamaño con que se subió.
+// imagen; con la proporción fija (cuadrada) da igual el tamaño con que se
+// subió.
 const obraImagen = {
   width: "100%",
-  aspectRatio: "4 / 3",
+  aspectRatio: "1 / 1",
   objectFit: "cover" as const,
   display: "block",
   background: "#f2f2f2",
