@@ -9,7 +9,7 @@ import {
 import * as ui from "@/components/ui";
 
 /**
- * La imagen de portada de la obra, siempre 16:9.
+ * La imagen de portada de la obra, siempre 4:3.
  *
  * El recorte lo elige el usuario en el navegador —arrastra para mover,
  * desliza para acercar— y lo que se sube a Drive ya sale recortado al tamaño
@@ -22,10 +22,10 @@ import * as ui from "@/components/ui";
  */
 
 const MARCO_ANCHO = 400;
-const MARCO_ALTO = 225; // 16:9
+const MARCO_ALTO = 300; // 4:3, más cuadrada que el 16:9 original
 
 const SALIDA_ANCHO = 960;
-const SALIDA_ALTO = 540; // mismo 16:9, en el tamaño que se guarda
+const SALIDA_ALTO = 720; // mismo 4:3, en el tamaño que se guarda
 
 export type ImagenActual = {
   driveId: string;

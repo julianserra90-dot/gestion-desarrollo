@@ -135,7 +135,7 @@ export default async function Home({
 
           return (
             <Link key={obra.id} href={`/obras/${obra.slug}`} style={obraCard}>
-              {/* Siempre 16:9, tenga o no imagen cargada: así las tarjetas
+              {/* Siempre 4:3, tenga o no imagen cargada: así las tarjetas
                   quedan de la misma altura entre sí y no saltan cuando se le
                   agrega una imagen a una obra que no tenía. */}
               {obra.imagen_drive_id ? (
@@ -297,10 +297,10 @@ const obraCard = {
 };
 
 // object-fit: cover corta los bordes que sobran en vez de deformar la
-// imagen; con la proporción fija (16:9) da igual el tamaño con que se subió.
+// imagen; con la proporción fija (4:3) da igual el tamaño con que se subió.
 const obraImagen = {
   width: "100%",
-  aspectRatio: "16 / 9",
+  aspectRatio: "4 / 3",
   objectFit: "cover" as const,
   display: "block",
   background: "#f2f2f2",

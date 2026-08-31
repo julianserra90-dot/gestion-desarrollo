@@ -923,15 +923,17 @@ construcción: lo que se recupera es lo vendible, así que es contra eso que se
 mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 
 ### Imagen de portada
-El listado de obras (`/`) muestra una imagen por obra, siempre **16:9**, para
-que las tarjetas queden parejas entre sí tenga o no imagen cada una (sin
-imagen va un bloque gris del mismo tamaño, no se achica la tarjeta). Se carga
-desde Editar obra → Datos obra, con un recorte a mano en el navegador
-(`components/ImagenPortadaForm.tsx`): el usuario arrastra para mover y desliza
-para acercar, sobre un `<canvas>` que nunca deja ver un borde vacío —el zoom
-mínimo ya cubre el marco entero, como `object-fit: cover`—. Lo que se sube a
-Drive **ya sale recortado** a 960×540: no se guardan coordenadas de recorte,
-es una imagen más, lista para mostrar tal cual en cualquier lado.
+El listado de obras (`/`) muestra una imagen por obra, siempre **4:3** (era
+16:9 al principio; con fotos reales de obra se ve mejor más cuadrada, muestra
+más del edificio), para que las tarjetas queden parejas entre sí tenga o no
+imagen cada una (sin imagen va un bloque gris del mismo tamaño, no se achica
+la tarjeta). Se carga desde Editar obra → Datos obra, con un recorte a mano en
+el navegador (`components/ImagenPortadaForm.tsx`): el usuario arrastra para
+mover y desliza para acercar, sobre un `<canvas>` que nunca deja ver un borde
+vacío —el zoom mínimo ya cubre el marco entero, como `object-fit: cover`—. Lo
+que se sube a Drive **ya sale recortado** a 960×720: no se guardan
+coordenadas de recorte, es una imagen más, lista para mostrar tal cual en
+cualquier lado.
 
 Mismas cuatro columnas que gastos/presupuestos/lote_pagos para su comprobante
 (`imagen_drive_id`, `imagen_nombre`, `imagen_mime`, `imagen_tamano`), esta vez
