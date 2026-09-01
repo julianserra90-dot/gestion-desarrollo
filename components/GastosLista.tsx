@@ -267,6 +267,13 @@ export default function GastosLista({
     });
   };
 
+  // Vaciar y tildar a mano las dos o tres que interesan es más rápido que
+  // destildar todas las demás una por una, que era la única forma de acotar
+  // antes de esto.
+  const vaciar = (col: ColumnaFiltrable) => {
+    setFiltros((prev) => ({ ...prev, [col]: new Set<string>() }));
+  };
+
   const thFiltrable = (clave: ColumnaFiltrable) => {
     const col = COLUMNAS_FILTRABLES.find((c) => c.clave === clave)!;
     const activo = Boolean(filtros[clave]);
@@ -291,13 +298,23 @@ export default function GastosLista({
             <div style={fondoCerrar} onClick={() => setAbierto(null)} />
 
             <div style={popover}>
-              <button
-                type="button"
-                onClick={() => limpiar(clave)}
-                style={botonTodos}
-              >
-                Todos
-              </button>
+              <div style={accionesPopover}>
+                <button
+                  type="button"
+                  onClick={() => limpiar(clave)}
+                  style={enlacePopover}
+                >
+                  Todos
+                </button>
+                <span style={separadorPopover}>·</span>
+                <button
+                  type="button"
+                  onClick={() => vaciar(clave)}
+                  style={enlacePopover}
+                >
+                  Ninguno
+                </button>
+              </div>
 
               {opciones[clave].map((valor) => (
                 <label key={valor} style={opcionFiltro}>
@@ -626,15 +643,27 @@ const popover = {
   textAlign: "left" as const,
 };
 
-const botonTodos = {
+const accionesPopover = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  paddingBottom: "8px",
+  marginBottom: "4px",
+  borderBottom: "1px solid #eeeeee",
+};
+
+const separadorPopover = {
+  color: "#cccccc",
+};
+
+const enlacePopover = {
   background: "none",
   border: "none",
-  padding: "0 0 8px",
+  padding: 0,
   color: "#111111",
   textDecoration: "underline",
   fontSize: "13px",
   cursor: "pointer",
-  display: "block",
 };
 
 const opcionFiltro = {
