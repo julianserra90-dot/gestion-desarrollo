@@ -358,8 +358,6 @@ export default function GastosLista({
 
       {gastos.length === 0 ? (
         <p style={ui.vacio}>Todavía no hay gastos cargados en esta obra.</p>
-      ) : filtrados.length === 0 ? (
-        <p style={ui.vacio}>Ningún gasto coincide con la búsqueda o los filtros.</p>
       ) : (
         <>
           <p style={contador}>
@@ -432,6 +430,9 @@ export default function GastosLista({
             </div>
           )}
 
+          {/* La tabla —con los desplegables de filtro en el encabezado— se
+              queda siempre, aunque el filtro deje 0 resultados: si desaparece
+              con la tabla, "Ninguno" no deja forma de volver a tildar nada. */}
           <table style={ui.table}>
             <thead>
               {/* "Destino" y no "Proveedor / Contratista": es adónde fue la
@@ -451,6 +452,14 @@ export default function GastosLista({
               </tr>
             </thead>
             <tbody>
+              {filtrados.length === 0 && (
+                <tr>
+                  <td colSpan={9} style={celdaVacia}>
+                    Ningún gasto coincide con la búsqueda o los filtros.
+                  </td>
+                </tr>
+              )}
+
               {filtrados.map((gasto) => {
                 const anulado = gasto.estado === "Anulado";
                 const ajuste = gasto.tipoGasto === "Ajuste de saldo";
@@ -575,6 +584,13 @@ const contador = {
   fontSize: "13px",
   color: "#999999",
   margin: "0 0 12px",
+};
+
+const celdaVacia = {
+  ...ui.td,
+  textAlign: "center" as const,
+  color: "#999999",
+  padding: "24px 12px",
 };
 
 // El total va en negro al lado de la cuenta de gastos: es el dato, no el
