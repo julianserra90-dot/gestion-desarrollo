@@ -1,10 +1,16 @@
 import AppShell from "@/components/AppShell";
 import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
+import TablaGastosConvertidos, {
+  type FilaGastoConvertido,
+} from "@/components/TablaGastosConvertidos";
+import TablaIngresosConvertidos, {
+  type FilaIngresoConvertido,
+} from "@/components/TablaIngresosConvertidos";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getConvertidor } from "@/lib/dolar";
-import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { formatMoney, formatUSD } from "@/lib/format";
 import { getLote } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -454,92 +460,48 @@ export default async function DolaresPage({
         {convertidos.length === 0 ? (
           <p style={ui.vacio}>Todavía no hay gastos cargados en esta obra.</p>
         ) : (
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Rubro</th>
-                <th style={ui.th}>Detalle</th>
-                <th style={ui.th}>Pagó</th>
-                <th style={ui.thRight}>Monto</th>
-                <th style={ui.thRight}>Dólar del día</th>
-                <th style={ui.thRight}>En dólares</th>
-              </tr>
-            </thead>
-            <tbody>
-              {convertidos.map((gasto) => (
-                <tr key={gasto.id}>
-                  <td style={ui.td}>{formatDate(gasto.fecha)}</td>
-                  <td style={ui.td}>{gasto.rubros?.nombre ?? "—"}</td>
-                  <td style={ui.td}>{gasto.concepto}</td>
-                  <td style={ui.td}>
-                    {gasto.empresa}
-                    {(gasto.pagadora?.nombre || gasto.compartido) &&
-                      gasto.montoCaja > 0 && (
-                        <span style={tagMoneda}>
-                          + {formatUSD(gasto.usdDeCaja)} de la cuenta
-                        </span>
-                      )}
-                  </td>
-                  <td style={ui.tdRight}>
-                    {formatMoney(gasto.montoArs)}
-                    {gasto.cargadoEnDolares && (
-                      <span style={tagMoneda}>cargado en USD</span>
-                    )}
-                  </td>
-                  <td style={ui.tdRight}>
-                    {gasto.cotizacion ? formatMoney(gasto.cotizacion) : "—"}
-                  </td>
-                  <td style={ui.tdRight}>
-                    <strong>{formatUSD(gasto.usd)}</strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TablaGastosConvertidos
+            filas={convertidos.map(
+              (gasto): FilaGastoConvertido => ({
+                id: gasto.id,
+                fecha: gasto.fecha,
+                rubro: gasto.rubros?.nombre ?? "—",
+                detalle: gasto.concepto,
+                empresa: gasto.empresa,
+                usdDeCajaVisible:
+                  (gasto.pagadora?.nombre || gasto.compartido) &&
+                  gasto.montoCaja > 0
+                    ? gasto.usdDeCaja
+                    : null,
+                montoArs: gasto.montoArs,
+                cargadoEnDolares: gasto.cargadoEnDolares,
+                cotizacion: gasto.cotizacion,
+                usd: gasto.usd,
+              })
+            )}
+          />
         )}
-
       </section>
 
       {hayCaja && (
         <section style={ui.panelConMargen}>
           <h3 style={ui.sectionTitle}>Ingresos convertidos</h3>
 
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Origen</th>
-                <th style={ui.th}>Quién</th>
-                <th style={ui.th}>Detalle</th>
-                <th style={ui.thRight}>Monto</th>
-                <th style={ui.thRight}>Dólar del día</th>
-                <th style={ui.thRight}>En dólares</th>
-              </tr>
-            </thead>
-            <tbody>
-              {convertidasEntradas.map((ingreso) => (
-                <tr key={ingreso.id}>
-                  <td style={ui.td}>{formatDate(ingreso.fecha)}</td>
-                  <td style={ui.td}>{ingreso.origen}</td>
-                  <td style={ui.td}>{ingreso.quien}</td>
-                  <td style={ui.td}>{ingreso.concepto}</td>
-                  <td style={ui.tdRight}>
-                    {formatMoney(ingreso.montoArs)}
-                    {ingreso.cargadoEnDolares && (
-                      <span style={tagMoneda}>cargado en USD</span>
-                    )}
-                  </td>
-                  <td style={ui.tdRight}>
-                    {ingreso.cotizacion ? formatMoney(ingreso.cotizacion) : "—"}
-                  </td>
-                  <td style={ui.tdRight}>
-                    <strong>{formatUSD(ingreso.usd)}</strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TablaIngresosConvertidos
+            filas={convertidasEntradas.map(
+              (ingreso): FilaIngresoConvertido => ({
+                id: ingreso.id,
+                fecha: ingreso.fecha,
+                origen: ingreso.origen,
+                quien: ingreso.quien,
+                detalle: ingreso.concepto,
+                montoArs: ingreso.montoArs,
+                cargadoEnDolares: ingreso.cargadoEnDolares,
+                cotizacion: ingreso.cotizacion,
+                usd: ingreso.usd,
+              })
+            )}
+          />
         </section>
       )}
 
@@ -566,15 +528,6 @@ const filaDestacada = {
   borderTop: "2px solid #111111",
   paddingTop: "14px",
   marginTop: "14px",
-};
-
-const tagMoneda = {
-  display: "block",
-  fontSize: "11px",
-  color: "#999999",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-  marginTop: "2px",
 };
 
 const avisoBox = {

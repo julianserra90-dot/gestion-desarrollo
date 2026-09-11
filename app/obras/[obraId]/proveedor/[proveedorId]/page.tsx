@@ -1,9 +1,11 @@
 import AppShell from "@/components/AppShell";
-import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
+import TablaPagosProveedor, {
+  type FilaPagoProveedor,
+} from "@/components/TablaPagosProveedor";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -154,51 +156,24 @@ export default async function ProveedorDetalle({
         ) : (
           /* Las columnas van en el mismo orden que en Gastos; falta Destino,
              que acá sería la misma respuesta en todas las filas. */
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Rubro</th>
-                <th style={ui.th}>Tipo</th>
-                <th style={ui.th}>Detalle</th>
-                <th style={ui.th}>Comprobante</th>
-                <th style={ui.th}>Pagó</th>
-                <th style={ui.thRight}>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vigentes.map((gasto) => (
-                <tr key={gasto.id}>
-                  <td style={ui.td}>{formatDate(gasto.fecha)}</td>
-                  <td style={ui.td}>{gasto.rubros?.nombre ?? "—"}</td>
-                  <td style={ui.td}>{gasto.tipo_gasto}</td>
-                  <td style={ui.td}>{gasto.concepto}</td>
-                  <td style={ui.td}>
-                    <EtiquetaComprobante
-                      tipoFactura={gasto.tipo_factura}
-                      driveId={gasto.comprobante_drive_id}
-                      volver={`/obras/${obra.slug}/proveedor/${proveedorId}`}
-                    />
-                  </td>
-                  <td style={ui.td}>{quienPago(gasto)}</td>
-                  <td style={ui.tdRight}>
-                    <strong>{formatMoney(Number(gasto.monto))}</strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td style={tdTotal} colSpan={6}>
-                  Total pagado
-                </td>
-                <td style={tdTotalRight}>{formatMoney(pagado)}</td>
-              </tr>
-            </tfoot>
-          </table>
+          <TablaPagosProveedor
+            filas={vigentes.map(
+              (gasto): FilaPagoProveedor => ({
+                id: gasto.id,
+                fecha: gasto.fecha,
+                rubro: gasto.rubros?.nombre ?? "—",
+                tipo: gasto.tipo_gasto,
+                detalle: gasto.concepto,
+                tipoFactura: gasto.tipo_factura,
+                comprobanteDriveId: gasto.comprobante_drive_id,
+                pago: quienPago(gasto),
+                monto: Number(gasto.monto),
+              })
+            )}
+            volverHref={`/obras/${obra.slug}/proveedor/${proveedorId}`}
+          />
         )}
       </section>
-
     </AppShell>
   );
 }
@@ -206,15 +181,3 @@ export default async function ProveedorDetalle({
 // El mismo rojo pleno del "falta pagar" del detalle por rubro: es plata que
 // todavía hay que poner, y suave quedaba desdibujado.
 const estiloFalta = { color: "#b91c1c" };
-
-const tdTotal = {
-  padding: "14px 12px",
-  borderTop: "2px solid #111111",
-  color: "#111111",
-  fontWeight: 600,
-};
-
-const tdTotalRight = {
-  ...tdTotal,
-  textAlign: "right" as const,
-};

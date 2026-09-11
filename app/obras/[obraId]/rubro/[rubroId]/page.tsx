@@ -1,10 +1,10 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
+import TablaGastosRubro, { type FilaGastoRubro } from "@/components/TablaGastosRubro";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { getPresupuestosDeObra } from "@/lib/presupuestos";
 import { createClient } from "@/lib/supabase/server";
@@ -169,49 +169,24 @@ export default async function RubroDetalle({
                      tener que releer el encabezado al saltar de una pantalla a
                      la otra. Faltan Rubro y Tipo, que acá serían la misma
                      respuesta en todas las filas. */
-                  <table style={ui.table}>
-                    <thead>
-                      <tr>
-                        <th style={ui.th}>Fecha</th>
-                        <th style={ui.th}>Destino</th>
-                        <th style={ui.th}>Detalle</th>
-                        <th style={ui.th}>Comprobante</th>
-                        <th style={ui.th}>Pagó</th>
-                        <th style={ui.thRight}>Monto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bloque.items.map((gasto) => (
-                        <tr key={gasto.id}>
-                          <td style={ui.td}>{formatDate(gasto.fecha)}</td>
-                          <td style={ui.td}>
-                            {gasto.proveedor_id ? (
-                              <Link
-                                href={`/obras/${obra.slug}/proveedor/${gasto.proveedor_id}`}
-                                style={enlace}
-                              >
-                                {gasto.proveedores?.nombre ?? "—"}
-                              </Link>
-                            ) : (
-                              (gasto.proveedores?.nombre ?? "—")
-                            )}
-                          </td>
-                          <td style={ui.td}>{gasto.concepto}</td>
-                          <td style={ui.td}>
-                            <EtiquetaComprobante
-                              tipoFactura={gasto.tipo_factura}
-                              driveId={gasto.comprobante_drive_id}
-                              volver={`/obras/${obra.slug}/rubro/${rubroId}`}
-                            />
-                          </td>
-                          <td style={ui.td}>{quienPago(gasto)}</td>
-                          <td style={ui.tdRight}>
-                            <strong>{formatMoney(Number(gasto.monto))}</strong>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <TablaGastosRubro
+                    filas={bloque.items.map(
+                      (gasto): FilaGastoRubro => ({
+                        id: gasto.id,
+                        fecha: gasto.fecha,
+                        destino: gasto.proveedores?.nombre ?? "—",
+                        destinoHref: gasto.proveedor_id
+                          ? `/obras/${obra.slug}/proveedor/${gasto.proveedor_id}`
+                          : null,
+                        detalle: gasto.concepto,
+                        tipoFactura: gasto.tipo_factura,
+                        comprobanteDriveId: gasto.comprobante_drive_id,
+                        pago: quienPago(gasto),
+                        monto: Number(gasto.monto),
+                      })
+                    )}
+                    volverHref={`/obras/${obra.slug}/rubro/${rubroId}`}
+                  />
                 )}
               </div>
             </details>

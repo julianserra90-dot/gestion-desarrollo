@@ -1,10 +1,10 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
+import TablaMovimientos from "@/components/TablaMovimientos";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
-import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { formatMoney, formatUSD } from "@/lib/format";
 import { nombreCompleto } from "@/lib/inversores";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -194,131 +194,9 @@ export default async function IngresosPage({
             Todavía no entró ni salió plata de la cuenta de esta obra.
           </p>
         ) : (
-          <table style={ui.table}>
-            <thead>
-              <tr>
-                <th style={ui.th}>Fecha</th>
-                <th style={ui.th}>Movimiento</th>
-                <th style={ui.th}>Quién</th>
-                <th style={ui.th}>Detalle</th>
-                <th style={ui.th}>Comprobante</th>
-                <th style={ui.thRight}>Pesos</th>
-                <th style={ui.thRight}>Dólares</th>
-                <th style={ui.th}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {movimientos.map((mov) => (
-                <tr key={mov.id}>
-                  <td style={{ ...ui.td, ...compacta }}>
-                    {formatDate(mov.fecha)}
-                  </td>
-                  <td style={{ ...ui.td, ...compacta }}>
-                    <span style={mov.entrada ? tagEntrada : tagSalida}>
-                      {mov.etiqueta}
-                    </span>
-                  </td>
-                  <td style={ui.td}>
-                    {mov.quienHref ? (
-                      <Link href={mov.quienHref} style={quienLink}>
-                        {mov.quien}
-                      </Link>
-                    ) : (
-                      mov.quien
-                    )}
-                  </td>
-                  <td style={ui.td}>{mov.detalle}</td>
-                  <td style={{ ...ui.td, ...compacta }}>
-                    {mov.entrada ? (
-                      mov.comprobanteDriveId ? (
-                        <Link
-                          href={`/ver/${mov.comprobanteDriveId}?volver=${encodeURIComponent(volver)}`}
-                          style={comprobanteLink}
-                        >
-                          Comprobante
-                        </Link>
-                      ) : (
-                        <span style={{ color: "#bbbbbb" }}>—</span>
-                      )
-                    ) : (
-                      <EtiquetaComprobante
-                        tipoFactura={mov.tipoFactura}
-                        driveId={mov.comprobanteDriveId}
-                        volver={volver}
-                      />
-                    )}
-                  </td>
-                  <td style={ui.tdRight}>
-                    {mov.ars === 0 ? (
-                      <span style={{ color: "#bbbbbb" }}>—</span>
-                    ) : (
-                      `${mov.ars > 0 ? "+" : "−"} ${formatMoney(Math.abs(mov.ars))}`
-                    )}
-                  </td>
-                  <td style={ui.tdRight}>
-                    {mov.usd === 0 ? (
-                      <span style={{ color: "#bbbbbb" }}>—</span>
-                    ) : (
-                      `${mov.usd > 0 ? "+" : "−"} ${formatUSD(Math.abs(mov.usd))}`
-                    )}
-                  </td>
-                  {/* Editar en su propia columna, como en el listado de gastos.
-                      Antes el enlace era el texto del detalle: nada anunciaba
-                      que llevaba a un formulario, y se entraba a editar
-                      creyendo que se abría la ficha. Acá conviven ingresos y
-                      gastos, y cada uno va a su formulario. */}
-                  <td style={ui.td}>
-                    <Link href={mov.href} style={editarLink}>
-                      Editar
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TablaMovimientos filas={movimientos} volver={volver} />
         )}
       </section>
     </AppShell>
   );
 }
-
-// Mismo lenguaje que las etiquetas de comprobante: colores suaves, nada de
-// recuadros negros. La entrada dice su origen (socia, inversor, comprador) y
-// la salida es siempre un gasto; el signo de las columnas ya marca el sentido.
-const tagBase = {
-  display: "inline-block",
-  padding: "3px 8px",
-  fontSize: "12px",
-  whiteSpace: "nowrap" as const,
-};
-
-const tagEntrada = {
-  ...tagBase,
-  background: "#f2f2f2",
-  color: "#555555",
-};
-
-const tagSalida = {
-  ...tagBase,
-  border: "1px solid #e5e5e5",
-  color: "#777777",
-};
-
-const compacta = { whiteSpace: "nowrap" as const };
-
-const editarLink = {
-  color: "#111111",
-  fontSize: "14px",
-  textDecoration: "underline",
-};
-
-const quienLink = {
-  color: "#111111",
-  textDecoration: "underline",
-};
-
-const comprobanteLink = {
-  color: "#333333",
-  textDecoration: "underline",
-  fontSize: "13px",
-};
