@@ -252,18 +252,28 @@ const footerLink = {
   fontSize: "14px",
 };
 
-// Columnas que se acomodan solas según el ancho: con la imagen cuadrada
-// (más alta que la 4:3 de antes), forzar siempre 3 columnas angostaba poco la
-// tarjeta y la hacía demasiado alta. Achicando la columna mínima entran más
-// por fila, la imagen cuadrada da más chica, y la tarjeta entera se ve sin
-// scrollear.
+// Tarjetas de ancho fijo centradas en la pantalla, no una grilla que arranca
+// pegada a la izquierda: con tres obras, la grilla dejaba dos tercios de la
+// pantalla vacíos a la derecha. Con flex y ancho fijo cada fila se centra
+// sola, sea cual sea la cantidad de obras. El ancho máximo del contenedor es
+// el de seis tarjetas más sus separaciones: entran como mucho seis por fila y
+// en pantallas más anchas el bloque entero queda centrado.
+const ANCHO_TARJETA = 264;
+const SEPARACION = 24;
+const MAX_POR_FILA = 6;
+
 const obraGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-  gap: "24px",
+  display: "flex",
+  flexWrap: "wrap" as const,
+  justifyContent: "center",
+  gap: `${SEPARACION}px`,
+  maxWidth: `${ANCHO_TARJETA * MAX_POR_FILA + SEPARACION * (MAX_POR_FILA - 1)}px`,
+  margin: "0 auto",
 };
 
 const obraCard = {
+  width: `${ANCHO_TARJETA}px`,
+  flex: "0 0 auto",
   border: "1px solid rgba(17, 17, 17, 0.06)",
   borderRadius: "18px",
   textDecoration: "none",
