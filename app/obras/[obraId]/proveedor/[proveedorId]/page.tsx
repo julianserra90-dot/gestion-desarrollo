@@ -1,5 +1,6 @@
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import TablaPagosProveedor, {
   type FilaPagoProveedor,
 } from "@/components/TablaPagosProveedor";
@@ -98,8 +99,10 @@ export default async function ProveedorDetalle({
     .join(" · ");
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="gastos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="gastos" />}
+    >
+      <ObraHeader obra={obra} activeSection="gastos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <Volver href={`/obras/${obra.slug}/gastos`}>Gastos</Volver>

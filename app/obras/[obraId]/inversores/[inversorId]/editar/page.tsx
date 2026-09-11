@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import InversorForm from "@/components/InversorForm";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { getInversor } from "@/lib/inversores";
@@ -46,8 +47,10 @@ export default async function EditarInversorPage({
     .order("fecha", { ascending: false });
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="inversores" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="inversores" />}
+    >
+      <ObraHeader obra={obra} activeSection="inversores" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

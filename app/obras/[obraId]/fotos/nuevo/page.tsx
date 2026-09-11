@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import SubirFotosForm from "@/components/SubirFotosForm";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
@@ -25,8 +26,10 @@ export default async function NuevasFotosPage({
   const rubros = await getRubrosActivos(obra.id);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="fotos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="fotos" />}
+    >
+      <ObraHeader obra={obra} activeSection="fotos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

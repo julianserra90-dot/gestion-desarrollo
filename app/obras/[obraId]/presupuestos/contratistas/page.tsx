@@ -1,5 +1,6 @@
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
 import { getObraPorSlug } from "@/lib/obras";
@@ -96,8 +97,10 @@ export default async function ContratistasPage({
   const listaRubros = rubros ?? [];
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="presupuestos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="presupuestos" />}
+    >
+      <ObraHeader obra={obra} activeSection="presupuestos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <Volver href={`/obras/${obra.slug}/presupuestos`}>Presupuestos</Volver>

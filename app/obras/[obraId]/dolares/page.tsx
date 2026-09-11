@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import TablaGastosConvertidos, {
   type FilaGastoConvertido,
 } from "@/components/TablaGastosConvertidos";
@@ -257,8 +258,10 @@ export default async function DolaresPage({
   const hayAportesEnCuenta = aportes.some((a) => a.cuenta > 0);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="dolares" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="dolares" />}
+    >
+      <ObraHeader obra={obra} activeSection="dolares" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Situación económica</p>

@@ -1,5 +1,6 @@
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import RubrosSelector from "@/components/RubrosSelector";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
@@ -56,8 +57,10 @@ export default async function RubrosPage({
   const marcados = lista.filter((r) => r.activo).length;
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="rubros" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="rubros" />}
+    >
+      <ObraHeader obra={obra} activeSection="rubros" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Configuración de obra</p>

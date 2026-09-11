@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import IngresoForm from "@/components/IngresoForm";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getInversores } from "@/lib/inversores";
@@ -58,8 +59,10 @@ export default async function EditarIngresoPage({
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="ingresos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="ingresos" />}
+    >
+      <ObraHeader obra={obra} activeSection="ingresos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

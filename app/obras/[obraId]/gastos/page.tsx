@@ -5,6 +5,7 @@ import GastosLista, {
   type VistaGastos,
 } from "@/components/GastosLista";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
 import { formatMoney } from "@/lib/format";
@@ -105,8 +106,10 @@ export default async function GastosPage({
   }));
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="gastos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="gastos" />}
+    >
+      <ObraHeader obra={obra} activeSection="gastos" ocultarNav />
 
       {/* Gastos es una solapa, así que normalmente no lleva "volver": se sale
           por las mismas solapas. Pero entrando desde una tarjeta del Balance

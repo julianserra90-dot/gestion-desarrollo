@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import PresupuestoForm from "@/components/PresupuestoForm";
 import * as ui from "@/components/ui";
 import { getCotizacionActual } from "@/lib/dolar";
@@ -37,8 +38,10 @@ export default async function NuevoPresupuestoPage({
     ]);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="presupuestos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="presupuestos" />}
+    >
+      <ObraHeader obra={obra} activeSection="presupuestos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

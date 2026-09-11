@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import {
   avanceGeneral,
@@ -113,8 +114,10 @@ export default async function EstadoDeObraPage({
   const ponderado = rubros.some((r) => r.peso > 0);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="estado" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="estado" />}
+    >
+      <ObraHeader obra={obra} activeSection="estado" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Estado general</p>

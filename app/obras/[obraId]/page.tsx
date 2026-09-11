@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GraficoTorta from "@/components/GraficoTorta";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { repartirComprobantes } from "@/lib/comprobantes";
@@ -294,8 +295,10 @@ export default async function ObraDetalle({
   const puestoTerreno = lote.socios.reduce((acc, s) => acc + s.puestoUsd, 0);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="economia" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="economia" />}
+    >
+      <ObraHeader obra={obra} activeSection="economia" ocultarNav />
 
       <section style={encabezado}>
         <p style={eyebrowSeccion}>Situación económica</p>

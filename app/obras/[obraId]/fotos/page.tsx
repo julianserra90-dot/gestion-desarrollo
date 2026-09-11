@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GaleriaFotos from "@/components/GaleriaFotos";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -41,8 +42,10 @@ export default async function FotosPage({
   const filtrados = rubro ? lista.filter((r) => r.rubroNombre === rubro) : lista;
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="fotos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="fotos" />}
+    >
+      <ObraHeader obra={obra} activeSection="fotos" ocultarNav />
 
       <section style={cabeceraPagina}>
         <div>

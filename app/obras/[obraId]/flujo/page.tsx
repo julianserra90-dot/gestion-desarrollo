@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GraficoBarras from "@/components/GraficoBarras";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { formatMoney, formatMoneyEje } from "@/lib/format";
 import { etiquetaMes, mesesEntre } from "@/lib/meses";
@@ -118,8 +119,10 @@ export default async function FlujoPage({
   const semanaActual = semanaDeObra(hoyIso, obra.fecha_inicio);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="flujo" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="flujo" />}
+    >
+      <ObraHeader obra={obra} activeSection="flujo" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Situación económica</p>

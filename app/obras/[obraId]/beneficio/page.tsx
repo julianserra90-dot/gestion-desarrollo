@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { calcularBeneficio } from "@/lib/beneficio";
 import { formatUSD } from "@/lib/format";
@@ -57,8 +58,10 @@ export default async function BeneficioPage({
   });
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="beneficio" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="beneficio" />}
+    >
+      <ObraHeader obra={obra} activeSection="beneficio" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Situación económica</p>

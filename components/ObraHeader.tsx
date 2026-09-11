@@ -8,7 +8,7 @@ type Obra = {
   estado: string;
 };
 
-type Solapa = { key: string; label: string; path: string };
+export type Solapa = { key: string; label: string; path: string };
 
 /**
  * Las secciones de una obra, en dos niveles y dos grupos: la plata y la obra.
@@ -22,7 +22,7 @@ type Solapa = { key: string; label: string; path: string };
  * por el estado general —avance contra calendario—. Las dos portadas contestan
  * "¿cómo venimos?" antes de que haya que abrir nada.
  */
-const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
+export const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
   {
     key: "economia",
     label: "Economía",
@@ -63,9 +63,13 @@ const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
 export default function ObraHeader({
   obra,
   activeSection,
+  ocultarNav = false,
 }: {
   obra: Obra;
   activeSection: string;
+  /** Prototipo: en la pantalla que ya tiene la barra lateral, las dos filas
+   *  de pestañas de acá abajo quedarían dobladas con la navegación. */
+  ocultarNav?: boolean;
 }) {
   const href = (path: string) => `/obras/${obra.slug}${path}`;
 
@@ -94,30 +98,34 @@ export default function ObraHeader({
         </div>
       </header>
 
-      <nav style={tabsContainer}>
-        {SECCIONES.map((s) => (
-          <Link
-            key={s.key}
-            href={href(s.path)}
-            style={seccion?.key === s.key ? tabActive : tabItem}
-          >
-            {s.label}
-          </Link>
-        ))}
-      </nav>
+      {!ocultarNav && (
+        <>
+          <nav style={tabsContainer}>
+            {SECCIONES.map((s) => (
+              <Link
+                key={s.key}
+                href={href(s.path)}
+                style={seccion?.key === s.key ? tabActive : tabItem}
+              >
+                {s.label}
+              </Link>
+            ))}
+          </nav>
 
-      {seccion?.hijas && (
-        <nav style={subTabsContainer}>
-          {seccion.hijas.map((h) => (
-            <Link
-              key={h.key}
-              href={href(h.path)}
-              style={activeSection === h.key ? subTabActive : subTabItem}
-            >
-              {h.label}
-            </Link>
-          ))}
-        </nav>
+          {seccion?.hijas && (
+            <nav style={subTabsContainer}>
+              {seccion.hijas.map((h) => (
+                <Link
+                  key={h.key}
+                  href={href(h.path)}
+                  style={activeSection === h.key ? subTabActive : subTabItem}
+                >
+                  {h.label}
+                </Link>
+              ))}
+            </nav>
+          )}
+        </>
       )}
     </>
   );

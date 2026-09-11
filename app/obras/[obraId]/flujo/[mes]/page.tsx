@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import GraficoBarras from "@/components/GraficoBarras";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
 import { formatDate, formatMoney, formatMoneyEje } from "@/lib/format";
@@ -161,8 +162,10 @@ export default async function MesDeFlujo({
   const hayMovimientos = totalGastado > 0 || totalIngresado > 0;
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="flujo" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="flujo" />}
+    >
+      <ObraHeader obra={obra} activeSection="flujo" ocultarNav />
 
       <section style={ui.sectionHeader}>
         {/* Sin eyebrow: decía "Flujo" y el enlace de arriba ya lo dice. */}

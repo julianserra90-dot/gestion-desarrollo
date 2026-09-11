@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import TablaGastosRubro, { type FilaGastoRubro } from "@/components/TablaGastosRubro";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
@@ -84,8 +85,10 @@ export default async function RubroDetalle({
   };
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="economia" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="economia" />}
+    >
+      <ObraHeader obra={obra} activeSection="economia" ocultarNav />
 
       <section style={ui.sectionHeader}>
         {/* "Balance" y no "Economía": es el nombre de la solapa que queda

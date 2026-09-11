@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import CargarAvanceForm from "@/components/CargarAvanceForm";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
 import { getCargasDeRubro } from "@/lib/avances";
@@ -52,8 +53,10 @@ export default async function AvanceDeRubroPage({
   });
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="avances" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="avances" />}
+    >
+      <ObraHeader obra={obra} activeSection="avances" ocultarNav />
 
       <Volver href={`/obras/${obra.slug}/avances`}>Avances</Volver>
 

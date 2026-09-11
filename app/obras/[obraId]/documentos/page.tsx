@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import BotonDescarga from "@/components/BotonDescarga";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { AMBITOS, esAmbito, etiquetaAmbito } from "@/lib/ambitos";
 import {
@@ -61,8 +62,10 @@ export default async function DocumentosPage({
   };
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="documentos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="documentos" />}
+    >
+      <ObraHeader obra={obra} activeSection="documentos" ocultarNav />
 
       <section style={cabeceraPagina}>
         <div>

@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import InversorForm from "@/components/InversorForm";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { crearInversor } from "../actions";
@@ -21,8 +22,10 @@ export default async function NuevoInversorPage({
   }
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="inversores" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="inversores" />}
+    >
+      <ObraHeader obra={obra} activeSection="inversores" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import MaterialesNav from "@/components/MaterialesNav";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -100,8 +101,10 @@ export default async function CatalogoMaterialesPage({
   ].filter((g) => g.materiales.length > 0);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="materiales" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="materiales" />}
+    >
+      <ObraHeader obra={obra} activeSection="materiales" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Control de obra</p>

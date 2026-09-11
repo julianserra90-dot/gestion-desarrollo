@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import PagosLoteLista from "@/components/PagosLoteLista";
 import * as ui from "@/components/ui";
 import { formatUSD } from "@/lib/format";
@@ -74,8 +75,10 @@ export default async function LotePage({
   ].filter((dato) => dato.valor);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="lote" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="lote" />}
+    >
+      <ObraHeader obra={obra} activeSection="lote" ocultarNav />
 
       {/* La acción va arriba y no al pie: esta pantalla se abre para mirar cómo
           viene la compra, y cargar un pago no debería costar un scroll. */}

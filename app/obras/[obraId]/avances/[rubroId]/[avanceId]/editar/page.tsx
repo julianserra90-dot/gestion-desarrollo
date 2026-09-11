@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import CargarAvanceForm from "@/components/CargarAvanceForm";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCargasDeRubro } from "@/lib/avances";
 import { formatDate } from "@/lib/format";
@@ -53,8 +54,10 @@ export default async function EditarAvancePage({
   });
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="avances" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="avances" />}
+    >
+      <ObraHeader obra={obra} activeSection="avances" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{rubro.nombre}</p>

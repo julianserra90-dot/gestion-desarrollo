@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import TablaMovimientos from "@/components/TablaMovimientos";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
@@ -136,8 +137,10 @@ export default async function IngresosPage({
   );
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="ingresos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="ingresos" />}
+    >
+      <ObraHeader obra={obra} activeSection="ingresos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Control de obra</p>

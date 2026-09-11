@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GastoForm from "@/components/GastoForm";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getCotizacionActual } from "@/lib/dolar";
@@ -79,8 +80,10 @@ export default async function NuevoGastoPage({
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="gastos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="gastos" />}
+    >
+      <ObraHeader obra={obra} activeSection="gastos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

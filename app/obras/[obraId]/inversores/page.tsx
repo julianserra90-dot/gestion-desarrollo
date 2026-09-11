@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { formatMoney, formatUSD } from "@/lib/format";
 import { getInversores } from "@/lib/inversores";
@@ -42,8 +43,10 @@ export default async function InversoresPage({
   );
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="inversores" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="inversores" />}
+    >
+      <ObraHeader obra={obra} activeSection="inversores" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Control de obra</p>

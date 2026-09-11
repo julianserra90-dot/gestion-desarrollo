@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import BotonDescarga from "@/components/BotonDescarga";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import SubirDocumentoForm from "@/components/SubirDocumentoForm";
 import * as ui from "@/components/ui";
 import {
@@ -47,8 +48,10 @@ export default async function EditarDocumentoPage({
   ]);
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="documentos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="documentos" />}
+    >
+      <ObraHeader obra={obra} activeSection="documentos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>

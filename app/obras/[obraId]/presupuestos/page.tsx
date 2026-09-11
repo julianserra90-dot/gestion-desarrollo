@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import BotonDescarga from "@/components/BotonDescarga";
 import ObraHeader from "@/components/ObraHeader";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
@@ -144,8 +145,10 @@ export default async function PresupuestosPage({
   const sinCotizar = filas.filter((f) => Number(f.cotizado) === 0).length;
 
   return (
-    <AppShell>
-      <ObraHeader obra={obra} activeSection="presupuestos" />
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="presupuestos" />}
+    >
+      <ObraHeader obra={obra} activeSection="presupuestos" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Situación económica</p>
