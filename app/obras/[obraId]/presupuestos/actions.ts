@@ -358,34 +358,16 @@ export async function actualizarPresupuesto(formData: FormData) {
 }
 
 /**
- * Marca una cotización como la elegida.
+ * Marca una cotización como aprobada: entra a "lo cotizado" del rubro y tipo.
  *
- * De cada rubro y tipo hay una sola aprobada, así que la que estuviera antes
- * vuelve a quedar como pendiente. Se hace en dos pasos porque la base tiene un
- * índice único que impide que haya dos aprobadas a la vez.
+ * Pueden convivir varias aprobadas para el mismo rubro y tipo —un mismo
+ * contratista a veces cotiza en dos papeles, uno por cada parte del
+ * alcance—, y "lo cotizado" las suma todas. Queda a criterio de quien aprueba
+ * no aprobar dos cotizaciones que se pisan.
  */
 export async function aprobarPresupuesto(id: string, formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const supabase = await createClient();
-
-  const { data: elegida } = await supabase
-    .from("presupuestos")
-    .select("obra_id, rubro_id, tipo")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!elegida) {
-    volverAListado(slug, "No se encontró la cotización.");
-    return;
-  }
-
-  await supabase
-    .from("presupuestos")
-    .update({ estado: "Descartado" })
-    .eq("obra_id", elegida.obra_id)
-    .eq("rubro_id", elegida.rubro_id)
-    .eq("tipo", elegida.tipo)
-    .eq("estado", "Aprobado");
 
   const { error } = await supabase
     .from("presupuestos")

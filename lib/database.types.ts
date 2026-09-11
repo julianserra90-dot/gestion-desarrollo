@@ -609,13 +609,6 @@ export type Database = {
             foreignKeyName: "gastos_presupuesto_id_fkey"
             columns: ["presupuesto_id"]
             isOneToOne: false
-            referencedRelation: "obra_presupuesto"
-            referencedColumns: ["presupuesto_id"]
-          },
-          {
-            foreignKeyName: "gastos_presupuesto_id_fkey"
-            columns: ["presupuesto_id"]
-            isOneToOne: false
             referencedRelation: "presupuestos"
             referencedColumns: ["id"]
           },
@@ -1152,13 +1145,6 @@ export type Database = {
             foreignKeyName: "presupuesto_materiales_presupuesto_id_fkey"
             columns: ["presupuesto_id"]
             isOneToOne: false
-            referencedRelation: "obra_presupuesto"
-            referencedColumns: ["presupuesto_id"]
-          },
-          {
-            foreignKeyName: "presupuesto_materiales_presupuesto_id_fkey"
-            columns: ["presupuesto_id"]
-            isOneToOne: false
             referencedRelation: "presupuestos"
             referencedColumns: ["id"]
           },
@@ -1460,20 +1446,12 @@ export type Database = {
           gastado: number | null
           obra_id: string | null
           orden: number | null
-          presupuesto_id: string | null
           proveedor_id: string | null
           rubro: string | null
           rubro_id: string | null
           tipo: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "presupuestos_proveedor_id_fkey"
-            columns: ["proveedor_id"]
-            isOneToOne: false
-            referencedRelation: "proveedores"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "rubros_obra_id_fkey"
             columns: ["obra_id"]

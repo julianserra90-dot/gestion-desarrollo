@@ -243,7 +243,6 @@ export default async function PresupuestosPage({
                   const suyas = lista.filter(
                     (c) => c.rubro_id === rubro.id && c.tipo === tipo
                   );
-                  const aprobada = suyas.find((c) => c.estado === "Aprobado");
                   const ordenadas = [...suyas].sort(
                     (a, b) =>
                       (ORDEN_ESTADO[a.estado] ?? 1) - (ORDEN_ESTADO[b.estado] ?? 1) ||
@@ -272,9 +271,9 @@ export default async function PresupuestosPage({
 
                           <span style={dato}>
                             <span style={datoLabel}>Aprobada</span>
-                            {aprobada ? (
+                            {cotizado > 0 ? (
                               <strong style={aprobadaResumen}>
-                                {formatMoney(aprobada.monto)}
+                                {formatMoney(cotizado)}
                               </strong>
                             ) : (
                               <span style={sinDato}>—</span>
