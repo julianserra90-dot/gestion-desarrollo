@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import EditarNav from "@/components/EditarNav";
+import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { guardarDatosLote } from "../../lote/actions";
@@ -28,7 +29,7 @@ export default async function EditarDatosLotePage({
   }
 
   return (
-    <AppShell>
+    <AppShell sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="lote" />}>
       <header style={header}>
         <div>
           <p style={eyebrow}>{obra.nombre}</p>

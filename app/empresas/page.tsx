@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import AppSidebar from "@/components/AppSidebar";
 import * as ui from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { crearEmpresa, eliminarEmpresa, renombrarEmpresa } from "./actions";
@@ -47,7 +48,7 @@ export default async function EmpresasPage({
   }
 
   return (
-    <AppShell>
+    <AppShell sidebar={<AppSidebar activo="empresas" />}>
       <header style={header}>
         <div>
           <p style={ui.eyebrow}>Gestión de desarrollo</p>

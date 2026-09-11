@@ -1,7 +1,8 @@
 import Link from "next/link";
+import AppSidebar from "@/components/AppSidebar";
 import { formatDate } from "@/lib/format";
+import { ANCHO_SIDEBAR_CERRADO } from "@/lib/layout";
 import { createClient } from "@/lib/supabase/server";
-import { cerrarSesion } from "./login/actions";
 
 export default async function Home({
   searchParams,
@@ -48,6 +49,8 @@ export default async function Home({
 
   return (
     <main style={page}>
+      <AppSidebar activo="obras" />
+
       <header style={header}>
         <div>
           <p style={eyebrow}>Gestión de desarrollo</p>
@@ -60,24 +63,6 @@ export default async function Home({
         </div>
 
         <div style={headerActions}>
-          <Link href="/empresas" style={secondaryLink}>
-            Empresas
-          </Link>
-
-          <Link href="/usuarios" style={secondaryLink}>
-            Usuarios
-          </Link>
-
-          <Link href="/perfil" style={secondaryLink}>
-            Mi perfil
-          </Link>
-
-          <form action={cerrarSesion}>
-            <button type="submit" style={secondaryButton}>
-              Salir
-            </button>
-          </form>
-
           {viendoArchivadas ? (
             <Link href="/" style={buttonLink}>
               Ver obras activas
@@ -207,7 +192,7 @@ const page = {
   background: "#ffffff",
   color: "#111111",
   fontFamily: "Arial, Helvetica, sans-serif",
-  padding: "56px",
+  padding: `56px 56px 56px ${ANCHO_SIDEBAR_CERRADO + 56}px`,
 };
 
 const header = {
@@ -265,22 +250,6 @@ const footerNota = {
 const footerLink = {
   color: "#666666",
   fontSize: "14px",
-};
-
-const secondaryButton = {
-  background: "#ffffff",
-  color: "#111111",
-  border: "1px solid #dcdcdc",
-  borderRadius: "10px",
-  padding: "12px 20px",
-  fontSize: "14px",
-  cursor: "pointer",
-};
-
-const secondaryLink = {
-  ...secondaryButton,
-  textDecoration: "none",
-  display: "inline-block",
 };
 
 // Columnas que se acomodan solas según el ancho: con la imagen cuadrada

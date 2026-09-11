@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import AppSidebar from "@/components/AppSidebar";
 import * as ui from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarUsuario } from "./actions";
@@ -21,7 +22,7 @@ export default async function UsuariosPage({
   const pendientes = lista.filter((p) => p.rol === "empresa" && !p.empresa_id);
 
   return (
-    <AppShell>
+    <AppShell sidebar={<AppSidebar activo="usuarios" />}>
       <header style={header}>
         <div>
           <p style={ui.eyebrow}>Gestión de desarrollo</p>

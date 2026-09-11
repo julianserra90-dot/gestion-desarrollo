@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import AppSidebar from "@/components/AppSidebar";
 import ObraForm from "@/components/ObraForm";
 import { createClient } from "@/lib/supabase/server";
 import { crearEmpresa } from "@/app/empresas/actions";
@@ -19,7 +20,7 @@ export default async function NuevaObraPage({
     .order("nombre");
 
   return (
-    <AppShell>
+    <AppShell sidebar={<AppSidebar activo="obras" />}>
       <header style={header}>
         <div>
           <p style={eyebrow}>Gestión de desarrollo</p>

@@ -24,7 +24,10 @@ export type NombreIcono =
   | "fotos"
   | "documentos"
   | "rubros"
-  | "materiales";
+  | "materiales"
+  | "usuarios"
+  | "perfil"
+  | "salir";
 
 export default function IconoObra({
   nombre,
@@ -159,6 +162,28 @@ const TRAZOS: Record<NombreIcono, React.ReactNode> = {
     <>
       <path d="M12 3 20 7.5v9L12 21 4 16.5v-9L12 3Z" />
       <path d="M12 12v9M4 7.5l8 4.5 8-4.5" />
+    </>
+  ),
+  usuarios: (
+    <>
+      <circle cx="9" cy="8" r="2.6" />
+      <circle cx="16.2" cy="9.2" r="2.1" />
+      <path d="M3.3 19c0-3.2 2.5-5.2 5.7-5.2s5.7 2 5.7 5.2" />
+      <path d="M14.7 14.1c2.3.3 3.8 2 3.8 4.9" />
+    </>
+  ),
+  perfil: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="10.2" r="2.6" />
+      <path d="M6.3 18.3c1-2.5 3-3.9 5.7-3.9s4.7 1.4 5.7 3.9" />
+    </>
+  ),
+  salir: (
+    <>
+      <path d="M9.5 4H6.2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.3" />
+      <path d="M13 8l4 4-4 4" />
+      <path d="M17 12H8.5" />
     </>
   ),
 };

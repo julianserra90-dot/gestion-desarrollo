@@ -3,6 +3,7 @@ import AppShell from "@/components/AppShell";
 import EditarNav from "@/components/EditarNav";
 import ImagenPortadaForm from "@/components/ImagenPortadaForm";
 import ObraForm from "@/components/ObraForm";
+import ObraSidebar from "@/components/ObraSidebar";
 import { createClient } from "@/lib/supabase/server";
 import { crearEmpresa } from "@/app/empresas/actions";
 import {
@@ -68,7 +69,9 @@ export default async function EditarObraPage({
   const sePuedeBorrar = totalRegistros === 0;
 
   return (
-    <AppShell>
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="estado" />}
+    >
       <header style={header}>
         <div>
           <p style={eyebrow}>{obra.nombre}</p>
