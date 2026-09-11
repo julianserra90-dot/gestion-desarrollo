@@ -58,7 +58,10 @@ const page = {
 };
 
 const panel = {
-  border: "1px solid #e5e5e5",
+  border: "1px solid rgba(17, 17, 17, 0.06)",
+  borderRadius: "18px",
+  boxShadow:
+    "0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 28px -14px rgba(17, 17, 17, 0.16)",
   padding: "40px",
   width: "100%",
   maxWidth: "400px",
@@ -76,7 +79,8 @@ const eyebrow = {
 
 const title = {
   fontSize: "32px",
-  fontWeight: 400,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   margin: 0,
 };
 
@@ -88,6 +92,7 @@ const subtitle = {
 
 const errorBox = {
   border: "1px solid #111111",
+  borderRadius: "10px",
   padding: "12px",
   margin: 0,
   fontSize: "14px",
@@ -107,6 +112,7 @@ const input = {
   width: "100%",
   boxSizing: "border-box" as const,
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   background: "#ffffff",
   padding: "12px",
   fontSize: "14px",
@@ -118,6 +124,7 @@ const button = {
   background: "#111111",
   color: "#ffffff",
   border: "none",
+  borderRadius: "10px",
   padding: "14px 20px",
   fontSize: "14px",
   cursor: "pointer",

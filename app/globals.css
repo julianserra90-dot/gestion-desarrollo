@@ -1,26 +1,19 @@
 @import "tailwindcss";
 
+/*
+ * La app no tiene ningún componente pensado para modo oscuro: todos asumen
+ * fondo blanco y texto negro. El bloque de "@media (prefers-color-scheme:
+ * dark)" que traía por defecto create-next-app volvía el fondo casi negro
+ * en cualquier sistema con modo oscuro activado, así que se sacó. `color-scheme:
+ * light` además le avisa al navegador que no fuerce su propio modo oscuro
+ * automático sobre la página.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #ffffff;
+  color: #171717;
   font-family: Arial, Helvetica, sans-serif;
 }

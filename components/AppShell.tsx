@@ -16,7 +16,7 @@ export default function AppShell({
         style={{
           maxWidth: "1480px",
           margin: "0 auto",
-          padding: "40px",
+          padding: "40px 40px 80px",
         }}
       >
         {children}

@@ -175,6 +175,7 @@ export default function TablaMovimientos({
 
 const tagBase = {
   display: "inline-block",
+  borderRadius: "6px",
   padding: "3px 8px",
   fontSize: "12px",
   whiteSpace: "nowrap" as const,

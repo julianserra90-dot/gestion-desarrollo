@@ -277,7 +277,7 @@ export default async function DolaresPage({
         </p>
       )}
 
-      <section style={{ ...ui.statsGrid, gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <section style={ui.statsGrid}>
         <div style={ui.statCard}>
           <p style={ui.label}>Total de obra</p>
           <h3 style={ui.statNumber}>{formatUSD(totalUsd)}</h3>

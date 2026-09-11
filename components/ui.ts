@@ -3,7 +3,17 @@
  *
  * Antes cada página repetía estos mismos objetos al final del archivo, lo que
  * hacía que un cambio de diseño hubiera que aplicarlo en siete lugares.
+ *
+ * Esquinas redondeadas y sombra suave en vez del recuadro plano de antes: las
+ * tarjetas se leen como algo que flota sobre la página, no como una celda de
+ * planilla. `SOMBRA`/`BORDE`/`RADIO` son los mismos tres valores en todos los
+ * bloques, para que se sientan del mismo juego.
  */
+
+export const SOMBRA =
+  "0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 28px -14px rgba(17, 17, 17, 0.16)";
+export const BORDE = "1px solid rgba(17, 17, 17, 0.06)";
+export const RADIO = "18px";
 
 export const eyebrow = {
   fontSize: "12px",
@@ -15,7 +25,8 @@ export const eyebrow = {
 
 export const pageTitle = {
   fontSize: "36px",
-  fontWeight: 400,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   margin: "8px 0",
 };
 
@@ -28,33 +39,50 @@ export const sectionHeader = {
   marginBottom: "28px",
 };
 
+// Las tarjetas de arriba de cada pantalla; si la ventana no da, bajan de a
+// fila en vez de desbordar con scroll horizontal.
 export const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(4, 1fr)",
-  gap: "16px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "20px",
 };
 
 export const statCard = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
+  border: BORDE,
+  borderRadius: RADIO,
+  padding: "26px 28px",
   background: "#ffffff",
+  boxShadow: SOMBRA,
 };
 
 export const label = {
-  fontSize: "13px",
-  color: "#777777",
+  fontSize: "12px",
+  color: "#8a8a8a",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+  fontWeight: 600,
   margin: 0,
 };
 
+// Más pesado y con el interletrado ajustado, no más grande: con varias
+// tarjetas por fila un monto largo ("$ 54.111.427,50") ya va justo, y
+// agrandar el número lo hace saltar de línea o salirse de la tarjeta.
+// `overflowWrap` queda como red de seguridad para el monto más largo que
+// todavía no apareció.
 export const statNumber = {
-  fontSize: "22px",
-  fontWeight: 400,
+  fontSize: "20px",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
   margin: "12px 0 0",
+  overflowWrap: "break-word" as const,
 };
 
 export const panel = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
+  border: BORDE,
+  borderRadius: RADIO,
+  padding: "26px 28px",
+  background: "#ffffff",
+  boxShadow: SOMBRA,
 };
 
 export const panelConMargen = {
@@ -63,8 +91,9 @@ export const panelConMargen = {
 };
 
 export const sectionTitle = {
-  fontSize: "18px",
-  fontWeight: 400,
+  fontSize: "17px",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
   marginTop: 0,
 };
 
@@ -93,11 +122,12 @@ export const table = {
 
 export const th = {
   textAlign: "left" as const,
-  fontSize: "12px",
-  color: "#777777",
+  fontSize: "11px",
+  color: "#8a8a8a",
   textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
-  borderBottom: "1px solid #e5e5e5",
+  fontWeight: 600,
+  borderBottom: "1px solid #eeeeee",
   padding: "12px",
 };
 
@@ -107,9 +137,10 @@ export const thRight = {
 };
 
 export const td = {
-  borderBottom: "1px solid #eeeeee",
-  padding: "14px 12px",
+  borderBottom: "1px solid #f2f2f2",
+  padding: "16px 12px",
   color: "#333333",
+  fontSize: "14px",
 };
 
 export const tdRight = {
@@ -130,6 +161,7 @@ export const button = {
   background: "#111111",
   color: "#ffffff",
   border: "1px solid #111111",
+  borderRadius: "10px",
   padding: "12px 18px",
   fontSize: "14px",
   cursor: "pointer",
@@ -141,6 +173,7 @@ export const secondaryButton = {
   background: "#ffffff",
   color: "#111111",
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   padding: "12px 18px",
   fontSize: "14px",
   cursor: "pointer",
@@ -152,6 +185,7 @@ export const input = {
   width: "100%",
   boxSizing: "border-box" as const,
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   background: "#ffffff",
   padding: "12px",
   fontSize: "14px",
@@ -177,18 +211,21 @@ export const tagPrevio = {
   display: "inline-block",
   background: "#fdf0dd",
   color: "#8a5a12",
-  padding: "2px 6px",
+  borderRadius: "999px",
+  padding: "2px 8px",
   fontSize: "11px",
   whiteSpace: "nowrap" as const,
 };
 
 export const progressBackground = {
   height: "8px",
+  borderRadius: "999px",
   background: "#eeeeee",
 };
 
 export const progressFill = {
   height: "8px",
+  borderRadius: "999px",
   background: "#111111",
 };
 

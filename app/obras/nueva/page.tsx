@@ -72,7 +72,7 @@ const header = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  borderBottom: "1px solid #e5e5e5",
+  borderBottom: "1px solid #eeeeee",
   paddingBottom: "24px",
   marginBottom: "32px",
 };
@@ -87,7 +87,8 @@ const eyebrow = {
 
 const title = {
   fontSize: "36px",
-  fontWeight: 400,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   margin: "8px 0",
 };
 
@@ -104,14 +105,18 @@ const backLink = {
 };
 
 const panel = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
+  border: "1px solid rgba(17, 17, 17, 0.06)",
+  borderRadius: "18px",
+  boxShadow:
+    "0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 28px -14px rgba(17, 17, 17, 0.16)",
+  padding: "26px 28px",
   marginTop: "32px",
 };
 
 const sectionTitle = {
-  fontSize: "18px",
-  fontWeight: 400,
+  fontSize: "17px",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
   margin: "0 0 8px",
 };
 
@@ -131,6 +136,7 @@ const input = {
   flex: 1,
   boxSizing: "border-box" as const,
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   background: "#ffffff",
   padding: "12px",
   fontSize: "14px",
@@ -142,6 +148,7 @@ const secondaryButton = {
   background: "#ffffff",
   color: "#111111",
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   padding: "12px 18px",
   fontSize: "14px",
   cursor: "pointer",

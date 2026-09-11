@@ -214,7 +214,7 @@ const header = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  borderBottom: "1px solid #e5e5e5",
+  borderBottom: "1px solid #eeeeee",
   paddingBottom: "32px",
   marginBottom: "40px",
 };
@@ -235,7 +235,8 @@ const eyebrow = {
 
 const title = {
   fontSize: "42px",
-  fontWeight: 400,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   margin: "10px 0",
 };
 
@@ -249,6 +250,7 @@ const buttonLink = {
   background: "#111111",
   color: "#ffffff",
   border: "1px solid #111111",
+  borderRadius: "10px",
   padding: "12px 20px",
   fontSize: "14px",
   textDecoration: "none",
@@ -269,6 +271,7 @@ const secondaryButton = {
   background: "#ffffff",
   color: "#111111",
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   padding: "12px 20px",
   fontSize: "14px",
   cursor: "pointer",
@@ -292,12 +295,15 @@ const obraGrid = {
 };
 
 const obraCard = {
-  border: "1px solid #e5e5e5",
+  border: "1px solid rgba(17, 17, 17, 0.06)",
+  borderRadius: "18px",
   textDecoration: "none",
   color: "#111111",
   display: "flex",
   flexDirection: "column" as const,
   background: "#ffffff",
+  boxShadow:
+    "0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 28px -14px rgba(17, 17, 17, 0.16)",
   overflow: "hidden" as const,
 };
 
@@ -358,11 +364,13 @@ const progressTop = {
 
 const progressBackground = {
   height: "8px",
+  borderRadius: "999px",
   background: "#eeeeee",
 };
 
 const progressFill = {
   height: "8px",
+  borderRadius: "999px",
   background: "#111111",
 };
 

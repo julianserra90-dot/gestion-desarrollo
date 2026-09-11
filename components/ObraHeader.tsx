@@ -127,7 +127,7 @@ const header = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  borderBottom: "1px solid #e5e5e5",
+  borderBottom: "1px solid #eeeeee",
   paddingBottom: "24px",
   marginBottom: "24px",
 };
@@ -142,7 +142,8 @@ const eyebrow = {
 
 const title = {
   fontSize: "36px",
-  fontWeight: 400,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   margin: "8px 0",
 };
 
@@ -161,6 +162,7 @@ const editLink = {
   color: "#111111",
   textDecoration: "none",
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   padding: "10px 14px",
   fontSize: "14px",
 };
@@ -179,11 +181,14 @@ const tabsContainer = {
   marginBottom: "32px",
 };
 
+// Pastilla en vez de recuadro: la que está activa se nota como un botón
+// tocable, no como una celda seleccionada.
 const tabItem = {
   color: "#111111",
   textDecoration: "none",
-  border: "1px solid #e5e5e5",
-  padding: "10px 14px",
+  border: "1px solid #eeeeee",
+  borderRadius: "999px",
+  padding: "10px 16px",
   fontSize: "14px",
   background: "#ffffff",
 };

@@ -678,22 +678,34 @@ const eyebrowSeccion = {
 
 const tituloSeccion = {
   fontSize: "36px",
-  fontWeight: 400,
+  fontWeight: 500,
+  letterSpacing: "-0.01em",
   margin: "8px 0",
 };
+
+// Sombra suave y esquinas redondeadas en vez del recuadro plano de antes: las
+// tarjetas se leen como algo que flota sobre la página, no como una celda de
+// planilla. La misma sombra se repite en todos los bloques de abajo para que
+// se sientan del mismo juego.
+const SOMBRA =
+  "0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 28px -14px rgba(17, 17, 17, 0.16)";
+const BORDE = "1px solid rgba(17, 17, 17, 0.06)";
+const RADIO = "18px";
 
 // Las cinco tarjetas en una misma línea; si la ventana no da, bajan de a fila
 // en vez de desbordar con scroll horizontal.
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "16px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: "20px",
 };
 
 const card = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
+  border: BORDE,
+  borderRadius: RADIO,
+  padding: "26px 28px",
   background: "#ffffff",
+  boxShadow: SOMBRA,
 };
 
 // Misma tarjeta, pero lleva a la solapa donde está el detalle de la cuenta.
@@ -705,33 +717,48 @@ const cardEnlace = {
 };
 
 const label = {
-  fontSize: "13px",
-  color: "#777777",
+  fontSize: "12px",
+  color: "#8a8a8a",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+  fontWeight: 600,
   margin: 0,
 };
 
+// Más pesado y con el interletrado ajustado, en vez de más grande: con seis
+// tarjetas por fila un monto de 15 caracteres ("$ 54.111.427,50") ya iba
+// justo en 22px normal, y agrandarlo lo hacía saltar de línea. El peso y el
+// interletrado dan la sensación de "número importante" sin ese riesgo.
+// `overflowWrap` queda como red de seguridad para el monto más largo que
+// todavía no apareció.
 const number = {
-  fontSize: "22px",
-  fontWeight: 400,
-  margin: "12px 0 0",
+  fontSize: "20px",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
+  margin: "14px 0 0",
+  overflowWrap: "break-word" as const,
 };
 
 const panelWithMargin = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
+  border: BORDE,
+  borderRadius: RADIO,
+  padding: "28px",
   marginTop: "32px",
+  background: "#ffffff",
+  boxShadow: SOMBRA,
 };
 
 const sectionTitle = {
-  fontSize: "18px",
-  fontWeight: 400,
+  fontSize: "17px",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
   marginTop: 0,
 };
 
 const ejecucionGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "16px",
+  gap: "20px",
 };
 
 const notaTorta = {
@@ -764,11 +791,12 @@ const table = {
 
 const th = {
   textAlign: "left" as const,
-  fontSize: "12px",
-  color: "#777777",
+  fontSize: "11px",
+  color: "#8a8a8a",
   textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
-  borderBottom: "1px solid #e5e5e5",
+  fontWeight: 600,
+  borderBottom: "1px solid #eeeeee",
   padding: "12px",
 };
 
@@ -779,7 +807,7 @@ const thRight = {
 
 // La línea vertical separa los bloques de columnas. Va en la primera columna de
 // cada bloque, y es lo que avisa que de un lado al otro los números no suman.
-const corte = { borderLeft: "1px solid #e5e5e5" };
+const corte = { borderLeft: "1px solid #eeeeee" };
 
 const thRightCorte = { ...thRight, ...corte };
 
@@ -788,17 +816,18 @@ const thRightCorte = { ...thRight, ...corte };
 const thGrupo = {
   ...th,
   textAlign: "center" as const,
-  color: "#aaaaaa",
+  color: "#b5b5b5",
   borderBottom: "none",
-  padding: "0 12px 4px",
+  padding: "0 12px 6px",
 };
 
 const thGrupoCorte = { ...thGrupo, ...corte };
 
 const td = {
-  borderBottom: "1px solid #eeeeee",
-  padding: "14px 12px",
+  borderBottom: "1px solid #f2f2f2",
+  padding: "16px 12px",
   color: "#333333",
+  fontSize: "14px",
 };
 
 const tdRight = {
@@ -818,7 +847,7 @@ function estiloSaldo(saldo: number) {
 }
 
 const tdTotal = {
-  padding: "14px 12px",
+  padding: "16px 12px",
   borderTop: "2px solid #111111",
   color: "#111111",
   fontWeight: 600,
@@ -831,18 +860,23 @@ const tdTotalRight = {
 
 const tdTotalRightCorte = { ...tdTotalRight, ...corte };
 
+// Antes era un recuadro con borde negro grueso; ahora es una tarjeta clara
+// dentro de la tarjeta, para que la conclusión —quién le transfiere a quién—
+// se note sin gritar tanto como antes.
 const resultBox = {
-  border: "1px solid #111111",
-  padding: "16px",
+  background: "#f7f7f8",
+  borderRadius: "14px",
+  padding: "20px 22px",
   marginTop: "24px",
 };
 
 const resultTitle = {
-  fontSize: "13px",
+  fontSize: "12px",
   textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
-  color: "#555555",
-  margin: "0 0 10px",
+  fontWeight: 600,
+  color: "#8a8a8a",
+  margin: "0 0 12px",
 };
 
 const resultText = {

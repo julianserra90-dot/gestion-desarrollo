@@ -243,13 +243,17 @@ export default function ObraForm({
 }
 
 const panel = {
-  border: "1px solid #e5e5e5",
-  padding: "24px",
+  border: "1px solid rgba(17, 17, 17, 0.06)",
+  borderRadius: "18px",
+  boxShadow:
+    "0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 28px -14px rgba(17, 17, 17, 0.16)",
+  padding: "26px 28px",
 };
 
 const sectionTitle = {
-  fontSize: "18px",
-  fontWeight: 400,
+  fontSize: "17px",
+  fontWeight: 600,
+  letterSpacing: "-0.01em",
   margin: "0 0 20px",
 };
 
@@ -288,6 +292,7 @@ const input = {
   width: "100%",
   boxSizing: "border-box" as const,
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   background: "#ffffff",
   padding: "12px",
   fontSize: "14px",
@@ -297,6 +302,7 @@ const input = {
 
 const errorBox = {
   border: "1px solid #111111",
+  borderRadius: "10px",
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",
@@ -313,6 +319,7 @@ const button = {
   background: "#111111",
   color: "#ffffff",
   border: "none",
+  borderRadius: "10px",
   padding: "14px 22px",
   fontSize: "14px",
   cursor: "pointer",
@@ -322,6 +329,7 @@ const secondaryButton = {
   color: "#111111",
   textDecoration: "none",
   border: "1px solid #dcdcdc",
+  borderRadius: "10px",
   padding: "14px 22px",
   fontSize: "14px",
 };

@@ -346,17 +346,19 @@ function estiloSaldo(saldo: number) {
 }
 
 const liquidacionBox = {
-  border: "1px solid #111111",
-  padding: "16px",
+  background: "#f7f7f8",
+  borderRadius: "14px",
+  padding: "20px 22px",
   marginTop: "24px",
 };
 
 const liquidacionTitulo = {
-  fontSize: "13px",
+  fontSize: "12px",
   textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
-  color: "#555555",
-  margin: "0 0 10px",
+  fontWeight: 600,
+  color: "#8a8a8a",
+  margin: "0 0 12px",
 };
 
 const enlaceEditar = {
@@ -367,6 +369,7 @@ const enlaceEditar = {
 
 const errorBox = {
   border: "1px solid #111111",
+  borderRadius: "10px",
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",
