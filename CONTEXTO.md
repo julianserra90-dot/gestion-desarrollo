@@ -57,8 +57,9 @@ Convenciones de código:
   US$ 836,88, y mostrar US$ 837 inventa doce centavos. La conversión se guarda al
   centavo desde siempre —`convertirMonto`—; lo que redondeaba era el formato.
 - **Todo campo de plata es `InputMonto`**, no un `<input type="number">`: se
-  escribe con coma decimal y los puntos de miles aparecen solos (1.235.879,35),
-  porque en un monto grande sin puntos no se sabe si son cientos de miles o
+  escribe con coma decimal —y **la tecla punto también es la coma**, porque es
+  la que tiene el teclado numérico— y los puntos de miles aparecen solos
+  (1.235.879,35), porque en un monto grande sin puntos no se sabe si son cientos de miles o
   millones hasta contar dígitos, y así se cargan ceros de más. Lo que viaja al
   servidor es el número limpio ("1235879.35") por un input oculto con el `name`
   del campo: los server actions siguen haciendo `Number(formData.get(...))`.

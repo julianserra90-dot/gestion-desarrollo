@@ -112,9 +112,8 @@ export default function InputMonto({
     caretPendiente.current = null;
   });
 
-  const alEscribir = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const tipeado = e.target.value;
-    const caret = e.target.selectionStart ?? tipeado.length;
+  /** Toma lo tipeado tal cual, lo limpia, lo formatea y deja el cursor donde iba. */
+  const procesar = (tipeado: string, caret: number) => {
     const numerosAntes = cuentaHasta(tipeado, caret);
 
     const limpio = limpiarMonto(tipeado);
@@ -126,6 +125,25 @@ export default function InputMonto({
     onChange?.(limpio);
   };
 
+  const alEscribir = (e: React.ChangeEvent<HTMLInputElement>) => {
+    procesar(e.target.value, e.target.selectionStart ?? e.target.value.length);
+  };
+
+  // El punto del teclado numérico es la coma decimal: es la tecla que tiene
+  // el teclado, y los puntos de miles los pone el campo solo. Se inserta la
+  // coma a mano donde está el cursor, en vez de dejar entrar el punto y que
+  // la limpieza lo tome por un separador de miles.
+  const alTeclear = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "." && e.key !== "Decimal") return;
+    e.preventDefault();
+    const campoActual = e.currentTarget;
+    const desde = campoActual.selectionStart ?? campoActual.value.length;
+    const hasta = campoActual.selectionEnd ?? desde;
+    const conComa =
+      campoActual.value.slice(0, desde) + "," + campoActual.value.slice(hasta);
+    procesar(conComa, desde + 1);
+  };
+
   return (
     <>
       {name && <input type="hidden" name={name} value={limpiarMonto(texto)} />}
@@ -135,6 +153,7 @@ export default function InputMonto({
         inputMode="decimal"
         value={texto}
         onChange={alEscribir}
+        onKeyDown={alTeclear}
         required={required}
         placeholder={placeholder}
         style={style}
