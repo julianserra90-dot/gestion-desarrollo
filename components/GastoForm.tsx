@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import DetallePredefinido from "@/components/DetallePredefinido";
+import InputMonto, { formatearMonto } from "@/components/InputMonto";
 import ItemsDeMaterial, {
   type ItemCargado,
   type MaterialOpcion,
@@ -581,14 +582,10 @@ export default function GastoForm({
                   <div style={grid}>
                     <label style={field}>
                       <span style={labelCampo}>Pesos de la cuenta</span>
-                      <input
-                        type="number"
+                      <InputMonto
                         name="caja_ars"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
                         value={cajaArs}
-                        onChange={(e) => setCajaArs(e.target.value)}
+                        onChange={setCajaArs}
                         style={ui.input}
                       />
                       <span style={ayudaCampo}>
@@ -598,14 +595,10 @@ export default function GastoForm({
 
                     <label style={field}>
                       <span style={labelCampo}>Dólares de la cuenta</span>
-                      <input
-                        type="number"
+                      <InputMonto
                         name="caja_usd"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
                         value={cajaUsd}
-                        onChange={(e) => setCajaUsd(e.target.value)}
+                        onChange={setCajaUsd}
                         style={ui.input}
                       />
                       <span style={ayudaCampo}>
@@ -633,16 +626,13 @@ export default function GastoForm({
 
                       {cotizManual ? (
                         <>
-                          <input
-                            type="number"
+                          <InputMonto
                             name="cotizacion_valor"
-                            min="0"
-                            step="0.01"
                             placeholder={
-                              cotizacion ? String(Math.round(cotizacion)) : "0"
+                              cotizacion ? formatearMonto(Math.round(cotizacion)) : "0"
                             }
                             value={cotizValor}
-                            onChange={(e) => setCotizValor(e.target.value)}
+                            onChange={setCotizValor}
                             required
                             style={ui.input}
                           />
@@ -998,14 +988,10 @@ export default function GastoForm({
               <>
                 <label style={field}>
                   <span style={labelCampo}>Monto</span>
-                  <input
-                    type="number"
+                  <InputMonto
                     name="monto"
-                    min="0"
-                    step="0.01"
-                    placeholder="0"
                     value={monto}
-                    onChange={(e) => setMonto(e.target.value)}
+                    onChange={setMonto}
                     required
                     style={ui.input}
                   />
@@ -1049,14 +1035,11 @@ export default function GastoForm({
 
                 {cotizManual ? (
                   <>
-                    <input
-                      type="number"
+                    <InputMonto
                       name="cotizacion_valor"
-                      min="0"
-                      step="0.01"
-                      placeholder={cotizacion ? String(Math.round(cotizacion)) : "0"}
+                      placeholder={cotizacion ? formatearMonto(Math.round(cotizacion)) : "0"}
                       value={cotizValor}
-                      onChange={(e) => setCotizValor(e.target.value)}
+                      onChange={setCotizValor}
                       required
                       style={ui.input}
                     />

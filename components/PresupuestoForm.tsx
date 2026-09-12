@@ -6,6 +6,7 @@ import ItemsDeMaterial, {
   type ItemCargado,
   type MaterialOpcion,
 } from "@/components/ItemsDeMaterial";
+import InputMonto from "@/components/InputMonto";
 import * as ui from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 
@@ -304,14 +305,10 @@ export default function PresupuestoForm({
                 es su propio label, y anidarlos rompe a dónde va el clic. */}
             <div style={field}>
               <span style={labelCampo}>Monto cotizado</span>
-              <input
-                type="number"
+              <InputMonto
                 name="monto"
-                min="0"
-                step="0.01"
-                placeholder="0"
-                value={sumando ? (sumaItems || "") : monto}
-                onChange={(e) => setMonto(e.target.value)}
+                value={sumando ? String(sumaItems || "") : monto}
+                onChange={setMonto}
                 readOnly={sumando}
                 required
                 style={sumando ? montoCalculado : ui.input}

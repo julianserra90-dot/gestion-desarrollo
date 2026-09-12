@@ -1,4 +1,5 @@
 import Link from "next/link";
+import InputMonto from "@/components/InputMonto";
 import AppShell from "@/components/AppShell";
 import EditarNav from "@/components/EditarNav";
 import ObraSidebar from "@/components/ObraSidebar";
@@ -58,13 +59,10 @@ export default async function EditarDatosLotePage({
           <div style={grid}>
             <label style={field}>
               <span style={labelCampo}>Valor del lote (USD)</span>
-              <input
-                type="number"
+              <InputMonto
                 name="lote_valor_usd"
-                min="0"
-                step="0.01"
                 defaultValue={obra.lote_valor_usd ?? ""}
-                placeholder="Ej: 200000"
+                placeholder="Ej: 200.000"
                 style={ui.input}
               />
               <span style={ayuda}>

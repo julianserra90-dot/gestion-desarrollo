@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import InputMonto from "@/components/InputMonto";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 
@@ -191,13 +192,9 @@ export default function CuotasPrevistasForm({
 
             <label style={field}>
               <span style={labelCampo}>Monto de cada cuota</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0"
+              <InputMonto
                 value={montoBase}
-                onChange={(e) => cambiarMontoBase(e.target.value)}
+                onChange={cambiarMontoBase}
                 style={ui.input}
               />
               <span style={ayudaCampo}>
@@ -249,14 +246,10 @@ export default function CuotasPrevistasForm({
                       />
                     </td>
                     <td style={ui.td}>
-                      <input
-                        type="number"
+                      <InputMonto
                         name={`cuota_monto_${i + 1}`}
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
                         value={c.monto}
-                        onChange={(e) => cambiarCuota(i, { monto: e.target.value })}
+                        onChange={(limpio) => cambiarCuota(i, { monto: limpio })}
                         required
                         style={inputChico}
                       />

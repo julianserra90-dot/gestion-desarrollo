@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import InputMonto from "@/components/InputMonto";
 import * as ui from "@/components/ui";
 import { CATEGORIAS_LOTE, PAGO_COMPARTIDO } from "@/lib/lote-tipos";
 
@@ -119,13 +120,9 @@ export default function PagoLoteForm({
 
         <label style={field}>
           <span style={labelCampo}>Monto</span>
-          <input
-            type="number"
+          <InputMonto
             name="monto"
-            min="0"
-            step="0.01"
             defaultValue={pago?.monto ?? ""}
-            placeholder="0"
             required
             style={ui.input}
           />

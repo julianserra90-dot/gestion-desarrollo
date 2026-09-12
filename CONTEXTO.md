@@ -56,6 +56,15 @@ Convenciones de código:
   centavo). En dólares importa igual o más: $ 1.200.000 al cambio de 1.433,90 son
   US$ 836,88, y mostrar US$ 837 inventa doce centavos. La conversión se guarda al
   centavo desde siempre —`convertirMonto`—; lo que redondeaba era el formato.
+- **Todo campo de plata es `InputMonto`**, no un `<input type="number">`: se
+  escribe con coma decimal y los puntos de miles aparecen solos (1.235.879,35),
+  porque en un monto grande sin puntos no se sabe si son cientos de miles o
+  millones hasta contar dígitos, y así se cargan ceros de más. Lo que viaja al
+  servidor es el número limpio ("1235879.35") por un input oculto con el `name`
+  del campo: los server actions siguen haciendo `Number(formData.get(...))`.
+  Sirve controlado (`value` limpio + `onChange` limpio) o con `defaultValue`.
+  Las cantidades que no son plata (m², unidades, pisos, cantidad de un item,
+  porcentajes) siguen siendo `type="number"`.
 
 ## Modelo de dominio y decisiones (lo que no es obvio del código)
 

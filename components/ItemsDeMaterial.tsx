@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import InputMonto from "@/components/InputMonto";
 import { crearMaterialDesdeGasto } from "@/app/obras/[obraId]/materiales/actions";
 import SelectorMaterial, { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
@@ -296,14 +297,10 @@ export default function ItemsDeMaterial({
                 <span style={unidad}>{unidadDe(fila.materialId) || "—"}</span>
               </span>
 
-              <input
-                type="number"
+              <InputMonto
                 name="item_precio"
-                min="0"
-                step="0.01"
-                placeholder="0"
                 value={fila.precio}
-                onChange={(e) => cambiar(fila.clave, "precio", e.target.value)}
+                onChange={(limpio) => cambiar(fila.clave, "precio", limpio)}
                 style={{ ...ui.input, textAlign: "right" }}
               />
 

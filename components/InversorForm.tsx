@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import InputMonto from "@/components/InputMonto";
 import { useState } from "react";
 import * as ui from "@/components/ui";
 import { formatMoney, formatUSD } from "@/lib/format";
@@ -115,14 +116,10 @@ export default function InversorForm({
               <span style={labelCampo}>
                 Comprometido en pesos <span style={opcional}>opcional</span>
               </span>
-              <input
-                type="number"
+              <InputMonto
                 name="comprometido_ars"
-                min="0"
-                step="0.01"
-                placeholder="0"
                 value={ars}
-                onChange={(e) => setArs(e.target.value)}
+                onChange={setArs}
                 style={ui.input}
               />
             </label>
@@ -131,14 +128,10 @@ export default function InversorForm({
               <span style={labelCampo}>
                 Comprometido en dólares <span style={opcional}>opcional</span>
               </span>
-              <input
-                type="number"
+              <InputMonto
                 name="comprometido_usd"
-                min="0"
-                step="0.01"
-                placeholder="0"
                 value={usd}
-                onChange={(e) => setUsd(e.target.value)}
+                onChange={setUsd}
                 style={ui.input}
               />
               <span style={ayudaCampo}>

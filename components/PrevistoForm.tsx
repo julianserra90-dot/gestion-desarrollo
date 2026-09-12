@@ -1,4 +1,5 @@
 import Link from "next/link";
+import InputMonto from "@/components/InputMonto";
 import * as ui from "@/components/ui";
 
 type Socio = { empresa_id: string; nombre: string };
@@ -80,11 +81,8 @@ export default function PrevistoForm({
 
           <label style={field}>
             <span style={labelCampo}>Monto</span>
-            <input
-              type="number"
+            <InputMonto
               name="monto"
-              min="0"
-              step="0.01"
               defaultValue={previsto.monto}
               required
               style={ui.input}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import InputMonto from "@/components/InputMonto";
 import SociosEditor, {
   type Empresa,
   type SocioInicial,
@@ -127,13 +128,9 @@ export default function ObraForm({
 
           <label style={field}>
             <span style={label}>Presupuesto</span>
-            <input
-              type="number"
+            <InputMonto
               name="presupuesto"
-              min="0"
-              step="1"
               defaultValue={obra?.presupuesto ?? ""}
-              placeholder="0"
               style={input}
             />
           </label>
@@ -195,11 +192,8 @@ export default function ObraForm({
 
           <label style={field}>
             <span style={label}>Objetivo por m² (USD)</span>
-            <input
-              type="number"
+            <InputMonto
               name="valor_m2_usd"
-              min="0"
-              step="1"
               defaultValue={obra?.valor_m2_usd ?? ""}
               placeholder="Ej: 800"
               style={input}
@@ -211,13 +205,10 @@ export default function ObraForm({
 
           <label style={field}>
             <span style={label}>Valor de venta por m² (USD)</span>
-            <input
-              type="number"
+            <InputMonto
               name="valor_venta_m2_usd"
-              min="0"
-              step="1"
               defaultValue={obra?.valor_venta_m2_usd ?? ""}
-              placeholder="Ej: 1800"
+              placeholder="Ej: 1.800"
               style={input}
             />
             <span style={ayudaCampo}>

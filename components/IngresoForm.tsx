@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import DetallePredefinido from "@/components/DetallePredefinido";
+import InputMonto from "@/components/InputMonto";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 
@@ -310,17 +311,13 @@ export default function IngresoForm({
                   {socios.map((socio) => (
                     <label key={socio.empresa_id} style={field}>
                       <span style={ayudaCampo}>{socio.nombre}</span>
-                      <input
-                        type="number"
+                      <InputMonto
                         name={`monto_socia_${socio.empresa_id}`}
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
                         value={montoPorSocia[socio.empresa_id] ?? ""}
-                        onChange={(e) =>
+                        onChange={(limpio) =>
                           setMontoPorSocia((prev) => ({
                             ...prev,
-                            [socio.empresa_id]: e.target.value,
+                            [socio.empresa_id]: limpio,
                           }))
                         }
                         required
@@ -335,14 +332,10 @@ export default function IngresoForm({
                 <span style={labelCampo}>
                   {sonTodas ? "Monto total" : "Monto"}
                 </span>
-                <input
-                  type="number"
+                <InputMonto
                   name="monto"
-                  min="0"
-                  step="0.01"
-                  placeholder="0"
                   value={monto}
-                  onChange={(e) => setMonto(e.target.value)}
+                  onChange={setMonto}
                   required
                   style={ui.input}
                 />
