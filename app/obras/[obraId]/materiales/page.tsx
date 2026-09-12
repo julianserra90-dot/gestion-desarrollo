@@ -49,7 +49,7 @@ export default async function MaterialesPage({
   const { data: items } = await supabase
     .from("gasto_materiales")
     .select(
-      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(obra_id, estado, rubros(nombre))"
+      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(obra_id, estado, precios_con_iva, alicuota_iva, rubros(nombre))"
     )
     .eq("gastos.obra_id", obra.id)
     .neq("gastos.estado", "Anulado");
@@ -64,7 +64,14 @@ export default async function MaterialesPage({
     const material = item.materiales?.nombre ?? "—";
     const unidad = item.materiales?.unidad ?? "";
     const cantidad = Number(item.cantidad);
-    const precio = item.precio_unitario === null ? null : Number(item.precio_unitario);
+    // El costo va siempre con el IVA adentro, como el monto del gasto: si el
+    // precio se cargó neto (factura A), se le suma la alícuota. Si no, netos y
+    // finales se sumarían como si fueran lo mismo.
+    const factor = item.gastos?.precios_con_iva === false
+      ? 1 + Number(item.gastos?.alicuota_iva ?? 21) / 100
+      : 1;
+    const precio =
+      item.precio_unitario === null ? null : Number(item.precio_unitario) * factor;
 
     const delRubro = porRubro.get(rubro) ?? new Map<string, Consumo>();
     const actual = delRubro.get(material) ?? {

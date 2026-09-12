@@ -87,6 +87,7 @@ export type GastoExistente = {
   tipo_pago: string;
   tipo_factura: string | null;
   alicuota_iva: number | null;
+  precios_con_iva: boolean;
   empresa_factura_id: string | null;
   monto: number;
   caja_ars: number;
@@ -225,6 +226,14 @@ export default function GastoForm({
   const [alicuota, setAlicuota] = useState(
     gasto?.alicuota_iva ? String(gasto.alicuota_iva) : "21"
   );
+  // Cómo vienen los precios del detalle de materiales. En una factura A lo
+  // normal es que vengan netos, así que arranca destildado; guardado, se
+  // respeta lo que se marcó.
+  const [preciosConIva, setPreciosConIva] = useState(
+    gasto ? gasto.precios_con_iva : false
+  );
+  // Lo que suma el detalle, para compararlo con la factura.
+  const [sumaItems, setSumaItems] = useState(0);
   // El titular de la factura arranca vacío y sigue a la pagadora hasta que se
   // elija uno a mano. Así "arranca en la que pagó" sin quedar pegado si después
   // cambia quién pagó.
@@ -339,6 +348,17 @@ export default function GastoForm({
   const alic = Number(alicuota) || 21;
   const iva = esFacturaA ? Math.round((total - total / (1 + alic / 100)) * 100) / 100 : 0;
   const neto = total - iva;
+
+  // El detalle de materiales contra la factura, en la moneda en que se cargó
+  // la factura (los precios de los items se escriben en esa misma moneda).
+  // Con precios netos en una A, al detalle hay que sumarle el IVA para
+  // compararlo con el monto, que siempre lleva el IVA adentro.
+  const detalleConIva =
+    esFacturaA && !preciosConIva ? sumaItems * (1 + alic / 100) : sumaItems;
+  const montoFactura = pagaCaja ? total : ingresado;
+  const diferenciaDetalle = montoFactura - detalleConIva;
+  const cierra = Math.abs(diferenciaDetalle) < 0.01;
+  const formatoFactura = !pagaCaja && moneda === "USD" ? formatUSD : formatMoney;
 
   // El crédito fiscal es de la empresa de la factura. Mientras no se elija una,
   // sigue a la que pagó (o a la del usuario si tiene empresa fija). Un gasto
@@ -1141,12 +1161,82 @@ export default function GastoForm({
                 {/* El `key` fuerza el remonte al traer otro presupuesto: las
                     filas son estado del componente y `iniciales` sola no las
                     movería. */}
+                {/* Sólo la factura A discrimina IVA, así que sólo ahí los
+                    precios pueden venir netos. En el resto el precio es el
+                    final y no hay nada que preguntar. */}
+                {esFacturaA && (
+                  <label style={casillaIva}>
+                    <input
+                      type="checkbox"
+                      name="precios_con_iva"
+                      checked={preciosConIva}
+                      onChange={(e) => setPreciosConIva(e.target.checked)}
+                    />
+                    Los precios incluyen IVA
+                  </label>
+                )}
+
                 <ItemsDeMaterial
                   key={vuelta}
                   materiales={materiales}
                   rubroNombre={rubros.find((r) => r.id === rubroId)?.nombre ?? ""}
                   iniciales={itemsTraidos ?? itemsIniciales}
+                  onTotal={setSumaItems}
                 />
+
+                {/* El detalle contra la factura. Si no cierra se avisa pero se
+                    deja guardar: puede haber un descuento o un flete que no
+                    son items, y justamente para verificar eso está la
+                    diferencia a la vista. */}
+                {sumaItems > 0 && (
+                  <div style={cierreDetalle}>
+                    <div style={filaCierre}>
+                      <span>Suma del detalle</span>
+                      <span>{formatoFactura(sumaItems)}</span>
+                    </div>
+                    {esFacturaA && !preciosConIva && (
+                      <div style={filaCierre}>
+                        <span>IVA {alicuota.replace(".", ",")}%</span>
+                        <span>{formatoFactura(detalleConIva - sumaItems)}</span>
+                      </div>
+                    )}
+                    <div style={filaCierre}>
+                      <span>Total del detalle</span>
+                      <strong>{formatoFactura(detalleConIva)}</strong>
+                    </div>
+                    <div style={filaCierre}>
+                      <span>Monto de la factura</span>
+                      <span>{formatoFactura(montoFactura)}</span>
+                    </div>
+                    <div style={filaCierre}>
+                      <span>Diferencia</span>
+                      <strong style={{ color: cierra ? ui.VERDE : ui.ROJO }}>
+                        {cierra ? "Cierra" : formatoFactura(diferenciaDetalle)}
+                      </strong>
+                    </div>
+                    {!cierra && (
+                      <span style={avisoDetalle}>
+                        El detalle no cierra con la factura. Revisá el precio de
+                        cada material, o si la factura tiene un descuento o un
+                        flete que no está en el detalle.
+                        {!pagaCaja && (
+                          <>
+                            {" "}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMonto(String(Math.round(detalleConIva * 100) / 100))
+                              }
+                              style={botonEnlace}
+                            >
+                              Usar el total del detalle como monto
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1501,6 +1591,32 @@ const avisoDetalle = {
   fontSize: "13px",
   color: "#92400e",
   lineHeight: 1.5,
+};
+
+const casillaIva = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "13px",
+  color: "#555555",
+  cursor: "pointer",
+};
+
+// El cierre del detalle contra la factura: un bloque chico de filas, como el
+// resumen de la derecha, para que se lea como cuenta y no como aviso.
+const cierreDetalle = {
+  display: "grid",
+  gap: "6px",
+  borderTop: "1px solid #eeeeee",
+  paddingTop: "12px",
+  fontSize: "13px",
+  color: "#555555",
+};
+
+const filaCierre = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
 };
 
 const botonEnlace = {

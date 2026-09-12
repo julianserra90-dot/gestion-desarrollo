@@ -15,9 +15,10 @@ import { UNIDADES } from "@/lib/unidades";
  * el precio unitario se cargan a mano.
  *
  * **El total del gasto no sale de acá.** El monto es el de la factura, que
- * puede traer el IVA adentro, un flete o un descuento que no son items. Por eso
- * la suma del detalle se muestra al lado, como referencia, y no se exige que
- * coincida ni se avisa nada: sería un aviso permanente en toda factura A.
+ * puede traer un flete o un descuento que no son items. La suma del detalle se
+ * muestra al pie como referencia; la comparación con la factura —con el IVA
+ * sumado si los precios son netos— la hace el formulario del gasto, que sabe
+ * qué comprobante es, y avisa sin frenar cuando no cierra.
  *
  * Los campos se llaman `item_material`, `item_cantidad` y `item_precio` y van
  * repetidos: el server action los lee con `getAll` y los cruza por posición.

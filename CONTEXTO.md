@@ -782,11 +782,26 @@ significa nada—, pero el material usado no se puede borrar del catálogo
 (`restrict`).
 
 **El monto del gasto no sale del detalle.** Sigue siendo el de la factura, que
-puede traer el IVA adentro, un flete o un descuento que no son items. La suma se
-muestra al lado como referencia y **no se avisa si no coincide**: en toda
-factura A sería un aviso permanente. Por eso el precio unitario es opcional (la
-cantidad no) y una fila a medio llenar no se guarda, en vez de rechazar el gasto
-entero.
+puede traer un flete o un descuento que no son items. Por eso el precio
+unitario es opcional (la cantidad no) y una fila a medio llenar no se guarda,
+en vez de rechazar el gasto entero.
+
+**Precios con o sin IVA, y el cierre contra la factura.** El monto lleva el IVA
+adentro, pero una factura A lista los precios netos y una compra sin factura
+sólo tiene el precio final. La marca `gastos.precios_con_iva` (una por gasto,
+no por renglón: una factura lista todos sus precios igual) dice cómo leer el
+precio unitario: `true` = final; `false` = neto, sólo posible en factura A. En
+el formulario la casilla *Los precios incluyen IVA* aparece sólo con factura A
+y arranca destildada; para B, C o sin factura no se pregunta y se guarda
+`true`. Debajo del detalle va la cuenta: suma del detalle, el IVA de la
+alícuota si son netos, total, monto de la factura y **diferencia**, en verde
+"Cierra" o en rojo el número. **No frena el guardado**: la diferencia puede ser
+un descuento o un flete, y justamente está a la vista para verificar el precio
+de cada material. Un botón copia el total del detalle al monto (no cuando se
+paga con la cuenta, donde el monto sale de lo que se saca de cada lado). El
+resumen de Materiales le suma la alícuota a los precios netos para que el costo
+no mezcle netos con finales. Los gastos anteriores quedaron como finales, que es
+lo que se venía escribiendo.
 
 En el formulario el bloque se llama **"Detallar materiales de compra"** y no
 "Detalle": el campo de arriba ya se llama Detalle —el texto libre del gasto— y

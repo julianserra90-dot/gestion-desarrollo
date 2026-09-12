@@ -473,6 +473,7 @@ export type Database = {
       gastos: {
         Row: {
           alicuota_iva: number | null
+          precios_con_iva: boolean
           caja_ars: number
           caja_usd: number
           cargado_por: string | null
@@ -508,6 +509,7 @@ export type Database = {
         }
         Insert: {
           alicuota_iva?: number | null
+          precios_con_iva?: boolean
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
@@ -543,6 +545,7 @@ export type Database = {
         }
         Update: {
           alicuota_iva?: number | null
+          precios_con_iva?: boolean
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null

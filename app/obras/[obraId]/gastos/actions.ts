@@ -196,6 +196,9 @@ function leerComprobante(formData: FormData, esAjuste: boolean) {
       esA && Number.isFinite(alicuota) && alicuota > 0 ? alicuota : null,
     // El titular sólo tiene sentido en la factura A: es quien computa el IVA.
     empresa_factura_id: esA && titular ? titular : null,
+    // Cómo se leen los precios del detalle. Sólo la A discrimina IVA, así que
+    // sólo ahí pueden ser netos; en el resto el precio es el final.
+    precios_con_iva: esA ? formData.get("precios_con_iva") === "on" : true,
   };
 }
 
@@ -395,6 +398,7 @@ export async function crearGasto(formData: FormData) {
       tipo_factura: factura.tipo_factura,
       alicuota_iva: factura.alicuota_iva,
       empresa_factura_id: factura.empresa_factura_id,
+      precios_con_iva: factura.precios_con_iva,
       moneda,
       // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
       estado: "Pagado",
@@ -544,6 +548,7 @@ export async function actualizarGasto(formData: FormData) {
     tipo_factura: factura.tipo_factura,
     alicuota_iva: factura.alicuota_iva,
     empresa_factura_id: factura.empresa_factura_id,
+    precios_con_iva: factura.precios_con_iva,
     moneda,
     observaciones: observaciones === "" ? null : observaciones,
   };
