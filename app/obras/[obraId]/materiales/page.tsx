@@ -5,6 +5,7 @@ import MaterialesNav from "@/components/MaterialesNav";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
+import { getAcopiosDeObra } from "@/lib/acopios";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -61,7 +62,7 @@ export default async function MaterialesPage({
   const { data: items } = await supabase
     .from("gasto_materiales")
     .select(
-      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, rubros(nombre), gasto_facturas(numero))"
+      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, es_acopio, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, rubros(nombre), gasto_facturas(numero))"
     )
     .eq("gastos.obra_id", obra.id)
     .neq("gastos.estado", "Anulado")
@@ -74,6 +75,9 @@ export default async function MaterialesPage({
 
   for (const item of items ?? []) {
     const gasto = item.gastos;
+    // Los items de un acopio son lo que quedó en el corralón, no lo que entró
+    // a la obra: lo que entró son sus retiros, que se suman más abajo.
+    if (gasto?.es_acopio) continue;
     const rubro = gasto?.rubros?.nombre ?? "Sin rubro";
     const material = item.materiales?.nombre ?? "—";
     const unidad = item.materiales?.unidad ?? "";
@@ -125,6 +129,46 @@ export default async function MaterialesPage({
     });
 
     porRubro.set(rubro, delRubro);
+  }
+
+  // Los acopios: lo que entró a la obra son sus retiros, cada uno con fecha,
+  // y se suman al consumo del rubro del acopio como una compra más.
+  const acopios = await getAcopiosDeObra(obra.id);
+  for (const a of acopios) {
+    const delRubro = porRubro.get(a.rubro) ?? new Map<string, Consumo>();
+    for (const r of a.retiros) {
+      for (const i of r.items) {
+        const actual = delRubro.get(i.material) ?? {
+          material: i.material,
+          unidad: i.unidad,
+          cantidad: 0,
+          costo: 0,
+          compras: [],
+        };
+        delRubro.set(i.material, {
+          ...actual,
+          cantidad: actual.cantidad + i.cantidad,
+          costo: actual.costo + (i.precio === null ? 0 : i.cantidad * i.precio),
+          compras: [
+            ...actual.compras,
+            {
+              gastoId: a.gastoId,
+              fecha: r.fecha,
+              comprobante: `Retiro del acopio${a.proveedor ? ` · ${a.proveedor}` : ""}`,
+              cantidad: i.cantidad,
+              precio: i.precio,
+            },
+          ],
+        });
+      }
+    }
+    // Aunque no haya retiros todavía: el rubro tiene que aparecer para mostrar
+    // el acopio pagado y que nada entró.
+    porRubro.set(a.rubro, delRubro);
+  }
+  const acopiosPorRubro = new Map<string, typeof acopios>();
+  for (const a of acopios) {
+    acopiosPorRubro.set(a.rubro, [...(acopiosPorRubro.get(a.rubro) ?? []), a]);
   }
 
   // Todo alfabético, rubros y materiales: a esta pantalla se viene a buscar
@@ -187,10 +231,13 @@ export default async function MaterialesPage({
                     {grupo.filas.length}{" "}
                     {grupo.filas.length === 1 ? "material" : "materiales"}
                     {grupo.costo > 0 && ` · ${formatMoney(grupo.costo)}`}
+                    {(acopiosPorRubro.get(grupo.rubro)?.length ?? 0) > 0 &&
+                      ` · ${acopiosPorRubro.get(grupo.rubro)!.length} ${acopiosPorRubro.get(grupo.rubro)!.length === 1 ? "acopio" : "acopios"}`}
                   </span>
                 </span>
               </summary>
 
+              {grupo.filas.length > 0 && (
               <table style={{ ...ui.table, marginTop: "16px" }}>
                 <thead>
                   <tr>
@@ -253,6 +300,32 @@ export default async function MaterialesPage({
                   ))}
                 </tbody>
               </table>
+              )}
+
+              {/* Los acopios del rubro: cuánto se pagó, cuánto ya entró a la
+                  obra en retiros y cuánto queda por retirar. La pregunta que
+                  se hace meses después de haber pagado. */}
+              {(acopiosPorRubro.get(grupo.rubro) ?? []).map((a) => (
+                <div key={a.gastoId} style={acopioFila}>
+                  <div>
+                    <span style={tagAcopio}>Acopio</span>{" "}
+                    <Link href={`/obras/${obra.slug}/gastos/${a.gastoId}`} style={enlace}>
+                      {a.concepto ?? a.proveedor ?? "Acopio"}
+                    </Link>
+                    <span style={ui.note}> · {formatDate(a.fecha)}</span>
+                  </div>
+                  <div style={acopioNumeros}>
+                    Pagado {formatMoney(a.monto)}
+                    {" · "}
+                    {a.retiros.length === 0
+                      ? "nada entró a la obra todavía"
+                      : `entró ${formatMoney(a.retirado)} en ${a.retiros.length} ${a.retiros.length === 1 ? "retiro" : "retiros"}`}
+                    {a.retirado > 0 &&
+                      a.monto - a.retirado > 0.005 &&
+                      ` · quedan ${formatMoney(a.monto - a.retirado)}`}
+                  </div>
+                </div>
+              ))}
             </details>
           ))}
         </div>
@@ -298,6 +371,33 @@ const tituloRubro = {
 const enlace = {
   color: "#111111",
   textDecoration: "underline",
+};
+
+// Una línea por acopio, debajo de la tabla del rubro.
+const acopioFila = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "16px",
+  flexWrap: "wrap" as const,
+  marginTop: "12px",
+  padding: "10px 14px",
+  border: "1px solid #eeeeee",
+  borderRadius: "10px",
+  fontSize: "14px",
+};
+
+const acopioNumeros = {
+  fontSize: "13px",
+  color: "#555555",
+};
+
+const tagAcopio = {
+  display: "inline-block",
+  borderRadius: "6px",
+  padding: "2px 7px",
+  fontSize: "11px",
+  background: "#fdf3e3",
+  color: "#92400e",
 };
 
 // Las compras van más chicas y en gris, debajo de su material: son el

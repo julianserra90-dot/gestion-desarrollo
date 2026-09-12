@@ -847,6 +847,24 @@ las facturas y sus archivos. La ficha lista las facturas con su parte del IVA y
 un "Ver factura de X" por archivo; el listado y Materiales muestran los
 números unidos con "+".
 
+**Acopios** (`gastos.es_acopio`, `acopio_retiros`, `acopio_retiro_items`). Se
+paga y se factura hoy, pero el material entra a la obra después y al pagar no
+se sabe del todo qué va a ir. La casilla *Es un acopio* en el gasto de
+materiales lo marca: es un gasto como cualquiera para el balance, el crédito
+fiscal y lo gastado del rubro, pero **su detalle no tiene que cerrar con la
+factura** (el aviso del cierre se reemplaza por una nota) y sus items, si se
+cargan, son *lo que quedó acopiado* en el corralón, **no consumo**. Lo que
+entra a la obra se registra desde la ficha del acopio, **retiro por retiro
+con fecha** (`/gastos/<id>/retiros/nuevo`, `RetiroForm` con el mismo
+`ItemsDeMaterial`); el precio del item es opcional y, si falta, se toma del
+item del acopio para ese material (con el IVA sumado si el acopio se cargó
+neto). En **Materiales**, el consumo del rubro suma los retiros y no los items
+del acopio, cada retiro aparece como compra "Retiro del acopio · proveedor"
+con la fecha del retiro, y debajo de la tabla del rubro va una línea por
+acopio: pagado, cuánto entró en cuántos retiros y cuánto queda. El listado de
+gastos lleva la etiqueta ámbar "Acopio". Se eligió retiros con fecha y no
+"editar el acopio agregando items" para saber cuándo entró cada cosa.
+
 **Precios con o sin IVA, y el cierre contra la factura.** El monto lleva el IVA
 adentro, pero una factura A lista los precios netos y una compra sin factura
 sólo tiene el precio final. La marca `gastos.precios_con_iva` (una por gasto,

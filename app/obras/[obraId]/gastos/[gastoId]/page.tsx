@@ -4,6 +4,7 @@ import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
+import { getRetirosDeAcopio } from "@/lib/acopios";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -34,7 +35,7 @@ export default async function FichaGastoPage({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, tipo_gasto, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, numero, comprobante_drive_id, orden, empresas(nombre))"
+        "id, fecha, concepto, tipo_gasto, es_acopio, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, numero, comprobante_drive_id, orden, empresas(nombre))"
       )
       .eq("id", gastoId)
       .eq("obra_id", obra.id)
@@ -49,6 +50,10 @@ export default async function FichaGastoPage({
   if (!gasto) {
     return <AppShell>Gasto no encontrado</AppShell>;
   }
+
+  // Un acopio: lo que entró a la obra son sus retiros, con fecha.
+  const retiros = gasto.es_acopio ? await getRetirosDeAcopio(gasto.id) : [];
+  const retirado = retiros.reduce((acc, r) => acc + r.valor, 0);
 
   const base = `/obras/${obra.slug}/gastos`;
   const esAjuste = gasto.tipo_gasto === "Ajuste de saldo";
@@ -236,10 +241,74 @@ export default async function FichaGastoPage({
         </section>
       )}
 
+      {/* El acopio: se pagó de una vez y el material entra a la obra en
+          retiros con fecha. Acá se ve cuánto ya entró y se carga el próximo. */}
+      {gasto.es_acopio && (
+        <section style={{ ...ui.panel, marginTop: "20px" }}>
+          <div style={cabeceraAcopio}>
+            <div>
+              <h3 style={{ ...ui.sectionTitle, marginBottom: "4px" }}>Acopio</h3>
+              <p style={{ ...ui.note, margin: 0 }}>
+                Pagado {formatMoney(Number(gasto.monto))}
+                {retirado > 0 && ` · ya entró a la obra ${formatMoney(retirado)}`}
+                {retirado > 0 &&
+                  Number(gasto.monto) - retirado > 0.005 &&
+                  ` · quedan ${formatMoney(Number(gasto.monto) - retirado)}`}
+              </p>
+            </div>
+            <Link href={`${base}/${gasto.id}/retiros/nuevo`} style={ui.button}>
+              Nuevo retiro
+            </Link>
+          </div>
+
+          {retiros.length === 0 ? (
+            <p style={{ ...ui.vacio, marginTop: "12px" }}>
+              Todavía no se registró ningún retiro: nada de este acopio entró a
+              la obra por ahora.
+            </p>
+          ) : (
+            <table style={{ ...ui.table, marginTop: "12px" }}>
+              <thead>
+                <tr>
+                  <th style={ui.th}>Fecha</th>
+                  <th style={ui.th}>Materiales</th>
+                  <th style={ui.thRight}>Valor</th>
+                  <th style={ui.th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {retiros.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ ...ui.td, whiteSpace: "nowrap" }}>{formatDate(r.fecha)}</td>
+                    <td style={ui.td}>
+                      {r.items
+                        .map((i) => `${formatCantidad(i.cantidad)} ${i.unidad} ${i.material}`)
+                        .join(" · ")}
+                      {r.observaciones && (
+                        <div style={{ ...ui.note, marginTop: "4px" }}>{r.observaciones}</div>
+                      )}
+                    </td>
+                    <td style={ui.tdRight}>{r.valor > 0 ? formatMoney(r.valor) : "—"}</td>
+                    <td style={{ ...ui.td, whiteSpace: "nowrap" }}>
+                      <Link
+                        href={`${base}/${gasto.id}/retiros/${r.id}/editar`}
+                        style={enlaceFactura}
+                      >
+                        Editar
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
+
       {detalle.length > 0 && (
         <section style={{ ...ui.panel, marginTop: "20px" }}>
           <h3 style={{ ...ui.sectionTitle, marginBottom: "12px" }}>
-            Materiales de la compra
+            {gasto.es_acopio ? "Materiales acopiados" : "Materiales de la compra"}
           </h3>
           <table style={ui.table}>
             <thead>
@@ -335,6 +404,18 @@ const valor = {
   fontSize: "15px",
   color: "#111111",
   lineHeight: 1.5,
+};
+
+const cabeceraAcopio = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "16px",
+};
+
+const enlaceFactura = {
+  color: "#111111",
+  textDecoration: "underline",
 };
 
 const tdTotal = {

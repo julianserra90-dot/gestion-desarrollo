@@ -39,6 +39,80 @@ export type Database = {
   }
   public: {
     Tables: {
+      acopio_retiro_items: {
+        Row: {
+          cantidad: number
+          id: string
+          material_id: string
+          orden: number
+          precio_unitario: number | null
+          retiro_id: string
+        }
+        Insert: {
+          cantidad: number
+          id?: string
+          material_id: string
+          orden?: number
+          precio_unitario?: number | null
+          retiro_id: string
+        }
+        Update: {
+          cantidad?: number
+          id?: string
+          material_id?: string
+          orden?: number
+          precio_unitario?: number | null
+          retiro_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "acopio_retiro_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "acopio_retiro_items_retiro_id_fkey"
+            columns: ["retiro_id"]
+            isOneToOne: false
+            referencedRelation: "acopio_retiros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      acopio_retiros: {
+        Row: {
+          creado_en: string
+          fecha: string
+          gasto_id: string
+          id: string
+          observaciones: string | null
+        }
+        Insert: {
+          creado_en?: string
+          fecha: string
+          gasto_id: string
+          id?: string
+          observaciones?: string | null
+        }
+        Update: {
+          creado_en?: string
+          fecha?: string
+          gasto_id?: string
+          id?: string
+          observaciones?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "acopio_retiros_gasto_id_fkey"
+            columns: ["gasto_id"]
+            isOneToOne: false
+            referencedRelation: "gastos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       avances: {
         Row: {
           actualizado_en: string
@@ -547,6 +621,7 @@ export type Database = {
           empresa_factura_id: string | null
           empresa_pagadora_id: string | null
           empresa_receptora_id: string | null
+          es_acopio: boolean
           estado: string
           fecha: string
           id: string
@@ -584,6 +659,7 @@ export type Database = {
           empresa_factura_id?: string | null
           empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
+          es_acopio?: boolean
           estado?: string
           fecha: string
           id?: string
@@ -621,6 +697,7 @@ export type Database = {
           empresa_factura_id?: string | null
           empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
+          es_acopio?: boolean
           estado?: string
           fecha?: string
           id?: string

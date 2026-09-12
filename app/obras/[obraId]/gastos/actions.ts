@@ -597,6 +597,8 @@ export async function crearGasto(formData: FormData) {
       empresa_factura_id: factura.empresa_factura_id,
       precios_con_iva: factura.precios_con_iva,
       numero_factura: factura.numero_factura,
+      // Sólo una compra de materiales puede ser un acopio.
+      es_acopio: tipoGasto === "Materiales" && formData.get("es_acopio") === "on",
       moneda,
       // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
       estado: "Pagado",
@@ -785,6 +787,7 @@ export async function actualizarGasto(formData: FormData) {
     empresa_factura_id: factura.empresa_factura_id,
     precios_con_iva: factura.precios_con_iva,
     numero_factura: factura.numero_factura,
+    es_acopio: tipoGasto === "Materiales" && formData.get("es_acopio") === "on",
     moneda,
     observaciones: observaciones === "" ? null : observaciones,
   };

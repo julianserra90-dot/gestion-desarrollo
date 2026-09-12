@@ -84,6 +84,8 @@ export type GastoExistente = {
   presupuesto_id: string | null;
   empresa_receptora_id: string | null;
   tipo_gasto: string;
+  /** Se pagó hoy y el material entra a la obra después, en retiros. */
+  es_acopio: boolean;
   concepto: string | null;
   tipo_pago: string;
   tipo_factura: string | null;
@@ -263,6 +265,10 @@ export default function GastoForm({
   );
   const [reemplazar, setReemplazar] = useState(false);
   const [tipoGasto, setTipoGasto] = useState(gasto?.tipo_gasto ?? "Materiales");
+  // Un acopio se paga hoy y el material entra a la obra después, en retiros
+  // con fecha: el detalle de acá es lo que quedó acopiado, no tiene que cerrar
+  // con la factura.
+  const [esAcopio, setEsAcopio] = useState(gasto?.es_acopio ?? false);
 
   // Facturado en más de una factura: una a nombre de cada socia, por el monto
   // que diga cada papel. El gasto sigue siendo uno; se parte el comprobante.
@@ -1301,6 +1307,26 @@ export default function GastoForm({
               <div style={fieldAncho}>
                 <span style={labelCampo}>Detallar materiales de compra</span>
 
+                {/* Se paga hoy y el material entra a la obra después. El
+                    detalle de acá es lo que quedó acopiado, si se sabe; lo
+                    que entra se registra retiro por retiro desde la ficha. */}
+                <label style={casillaIva}>
+                  <input
+                    type="checkbox"
+                    name="es_acopio"
+                    checked={esAcopio}
+                    onChange={(e) => setEsAcopio(e.target.checked)}
+                  />
+                  Es un acopio: el material entra a la obra después
+                </label>
+                {esAcopio && (
+                  <span style={ayudaCampo}>
+                    Cargá abajo lo que se sabe que quedó acopiado, o nada. Lo
+                    que va entrando se registra con fecha desde la ficha del
+                    gasto, y eso es lo que suma en Materiales.
+                  </span>
+                )}
+
                 {/* Si el proveedor ya cotizó con los items cargados, la compra
                     los trae hechos: es el mismo papel en dos momentos y
                     recargarlo a mano era el trabajo que sobraba. */}
@@ -1427,7 +1453,15 @@ export default function GastoForm({
                         {cierra ? "Cierra" : formatoFactura(diferenciaDetalle)}
                       </strong>
                     </div>
-                    {!cierra && (
+                    {/* En un acopio no tiene por qué cerrar: lo detallado es lo
+                        que se sabe que quedó acopiado, no toda la factura. */}
+                    {!cierra && esAcopio && (
+                      <span style={ayudaCampo}>
+                        Es un acopio: lo detallado no tiene que cerrar con la
+                        factura.
+                      </span>
+                    )}
+                    {!cierra && !esAcopio && (
                       <span style={avisoDetalle}>
                         El detalle no cierra con la factura. Revisá el precio de
                         cada material, o si la factura tiene un descuento o un

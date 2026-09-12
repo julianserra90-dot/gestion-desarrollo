@@ -27,6 +27,8 @@ export type GastoFila = {
   numeroFactura: string | null;
   /** Si se facturó en varias: a nombre de quién y por cuánto cada una. */
   facturas: { empresaId: string; monto: number; numero: string | null }[];
+  /** Se pagó hoy y el material entra a la obra después, en retiros. */
+  esAcopio: boolean;
   tipoGasto: string;
   tipoPago: string | null;
   estado: string;
@@ -515,6 +517,7 @@ export default function GastosLista({
                         lugar acá. El buscador sí la encuentra ("semana 11"). */}
                     <td style={celda}>
                       {gasto.concepto}
+                      {gasto.esAcopio && <span style={tagAcopio}>Acopio</span>}
                       {anulado && <span style={tagAnulado}>Anulado</span>}
                     </td>
                     <td style={{ ...celda, ...compacta }}>
@@ -743,6 +746,19 @@ const tdAnulado = {
 };
 
 const tdAnuladoRight = { ...tdAnulado, textAlign: "right" as const };
+
+// Ámbar y no celeste: no es un comprobante, es un estado de la compra —se pagó
+// y el material todavía no entró—.
+const tagAcopio = {
+  display: "inline-block",
+  marginLeft: "8px",
+  borderRadius: "6px",
+  padding: "2px 7px",
+  fontSize: "11px",
+  background: "#fdf3e3",
+  color: "#92400e",
+  whiteSpace: "nowrap" as const,
+};
 
 const tagAnulado = {
   marginLeft: "8px",
