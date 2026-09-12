@@ -478,6 +478,7 @@ export type Database = {
           caja_usd: number
           cargado_por: string | null
           compartido: boolean
+          compra_de_gasto_id: string | null
           comprobante_drive_id: string | null
           comprobante_mime: string | null
           comprobante_nombre: string | null
@@ -515,6 +516,7 @@ export type Database = {
           caja_usd?: number
           cargado_por?: string | null
           compartido?: boolean
+          compra_de_gasto_id?: string | null
           comprobante_drive_id?: string | null
           comprobante_mime?: string | null
           comprobante_nombre?: string | null
@@ -552,6 +554,7 @@ export type Database = {
           caja_usd?: number
           cargado_por?: string | null
           compartido?: boolean
+          compra_de_gasto_id?: string | null
           comprobante_drive_id?: string | null
           comprobante_mime?: string | null
           comprobante_nombre?: string | null
@@ -583,6 +586,13 @@ export type Database = {
           tipo_pago?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "gastos_compra_de_gasto_id_fkey"
+            columns: ["compra_de_gasto_id"]
+            isOneToOne: false
+            referencedRelation: "gastos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "gastos_cargado_por_fkey"
             columns: ["cargado_por"]

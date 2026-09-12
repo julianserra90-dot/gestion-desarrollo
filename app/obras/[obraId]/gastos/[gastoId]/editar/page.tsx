@@ -4,6 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getFacturasDeCompra, getFacturasVinculadas } from "@/lib/compras";
 import { getDetalles } from "@/lib/detalles";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getMaterialesCatalogo } from "@/lib/materiales";
@@ -41,7 +42,7 @@ export default async function EditarGastoPage({
   const { data: gasto } = await supabase
     .from("gastos")
     .select(
-      "id, fecha, rubro_id, proveedor_id, presupuesto_id, empresa_receptora_id, tipo_gasto, concepto, tipo_pago, tipo_factura, numero_factura, alicuota_iva, precios_con_iva, empresa_factura_id, monto, caja_ars, caja_usd, cotizacion, cotizacion_manual, monto_usd, moneda, observaciones, empresa_pagadora_id, compartido, comprobante_drive_id, comprobante_nombre, estado"
+      "id, fecha, rubro_id, proveedor_id, presupuesto_id, empresa_receptora_id, tipo_gasto, concepto, tipo_pago, tipo_factura, numero_factura, compra_de_gasto_id, alicuota_iva, precios_con_iva, empresa_factura_id, monto, caja_ars, caja_usd, cotizacion, cotizacion_manual, monto_usd, moneda, observaciones, empresa_pagadora_id, compartido, comprobante_drive_id, comprobante_nombre, estado"
     )
     .eq("id", gastoId)
     .eq("obra_id", obra.id)
@@ -58,6 +59,8 @@ export default async function EditarGastoPage({
     presupuestos,
     presupuestosConItems,
     detallesPredefinidos,
+    facturasDeCompra,
+    facturasVinculadas,
   ] = await Promise.all([
     // El rubro del gasto viaja aunque esté desmarcado: si no, desaparecería
     // del desplegable y se perdería al guardar.
@@ -70,6 +73,10 @@ export default async function EditarGastoPage({
     getPresupuestosDeObra(obra.id),
     getPresupuestosConItems(obra.id),
     getDetalles("Gasto"),
+    // Las facturas a las que ésta puede engancharse (menos ella misma), y las
+    // que ya están enganchadas a ella si es la principal.
+    getFacturasDeCompra(obra.id, gasto.id),
+    getFacturasVinculadas(gasto.id),
   ]);
 
   // El catálogo de materiales y el detalle ya cargado de este gasto.
@@ -138,6 +145,8 @@ export default async function EditarGastoPage({
         cotizacion={cotizacion?.promedio ?? null}
         inicioObra={obra.fecha_inicio}
         detallesPredefinidos={detallesPredefinidos}
+        facturasDeCompra={facturasDeCompra}
+        facturasVinculadas={facturasVinculadas}
         materiales={materiales}
         itemsIniciales={(items ?? []).map((i) => ({
           materialId: i.material_id,

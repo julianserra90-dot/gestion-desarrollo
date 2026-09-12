@@ -816,6 +816,26 @@ Arriba, dos acciones y nada más: **Ver factura** (sólo si hay archivo, abre el
 visor y vuelve a la ficha) y **Editar gasto**. El listado de Gastos sigue
 yendo a la edición desde su columna Editar: ahí se entra a corregir.
 
+**Una compra partida en dos facturas** (`gastos.compra_de_gasto_id`). El
+corralón parte una compra grande en dos facturas, una por socia, para
+repartir el crédito fiscal. Se descartó "un gasto con dos facturas adentro":
+cada factura tiene su monto, su pagadora, su titular y su archivo, y meter dos
+en un gasto obligaba a rehacer balance y crédito fiscal. Quedó **un gasto por
+factura**, y la segunda se engancha a la primera: en "Detallar materiales de
+compra", el desplegable *Los materiales de esta factura* ofrece "Se cargan
+acá" o "Están en la Factura X del dd/mm" (las facturas de materiales de la obra
+con items y no enganchadas ellas mismas; primero las del proveedor elegido).
+Enganchada, no carga items —el server action los descarta aunque vengan— ni
+presupuesto, y muestra los de la principal en gris. El material entró una
+sola vez y se cuenta una sola vez. Una cadena (enganchar a una enganchada) se
+resuelve al principal en el server action. En la principal, el cierre del
+detalle compara contra la **suma de todas las facturas**. La ficha de
+cualquiera de los dos gastos lista las facturas de la compra, y el resumen de
+Materiales muestra "Factura A · 0001 + Factura A · 0002" en la compra. Borrar
+la principal deja a la otra suelta (`set null`), sin materiales. Reemplaza al
+truco anterior de partir por presupuesto, que sigue funcionando pero exigía
+que hubiera un presupuesto de por medio.
+
 **Precios con o sin IVA, y el cierre contra la factura.** El monto lleva el IVA
 adentro, pero una factura A lista los precios netos y una compra sin factura
 sólo tiene el precio final. La marca `gastos.precios_con_iva` (una por gasto,

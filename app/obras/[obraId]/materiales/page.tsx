@@ -5,6 +5,7 @@ import MaterialesNav from "@/components/MaterialesNav";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
+import { getVinculadasPorPrincipal } from "@/lib/compras";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -67,6 +68,11 @@ export default async function MaterialesPage({
     .neq("gastos.estado", "Anulado")
     .order("fecha", { referencedTable: "gastos", ascending: false });
 
+  // Una compra partida en dos facturas tiene los materiales en una sola (la
+  // principal); acá se suman las otras al nombre del comprobante, para que se
+  // vea que vino en dos papeles.
+  const vinculadasPorPrincipal = await getVinculadasPorPrincipal(obra.id);
+
   // El consumo, agrupado por rubro y dentro de cada uno por material. Las
   // cantidades se suman entre compras: tres compras de ladrillo son un solo
   // renglón con el total, y debajo cada compra con su factura.
@@ -87,9 +93,11 @@ export default async function MaterialesPage({
     const precio =
       item.precio_unitario === null ? null : Number(item.precio_unitario) * factor;
 
-    const comprobante = gasto?.tipo_factura
+    const propio = gasto?.tipo_factura
       ? `Factura ${gasto.tipo_factura}${gasto.numero_factura ? ` · ${gasto.numero_factura}` : ""}`
       : "Efectivo";
+    const otras = gasto?.id ? (vinculadasPorPrincipal.get(gasto.id) ?? []) : [];
+    const comprobante = [propio, ...otras.map((o) => o.comprobante)].join(" + ");
 
     const delRubro = porRubro.get(rubro) ?? new Map<string, Consumo>();
     const actual = delRubro.get(material) ?? {

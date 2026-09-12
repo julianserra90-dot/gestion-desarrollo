@@ -5,6 +5,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getFacturasDeCompra } from "@/lib/compras";
 import { getDetalles } from "@/lib/detalles";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getMaterialesCatalogo } from "@/lib/materiales";
@@ -53,6 +54,7 @@ export default async function NuevoGastoPage({
     presupuestos,
     presupuestosConItems,
     detallesPredefinidos,
+    facturasDeCompra,
   ] = await Promise.all([
     getRubrosActivos(obra.id),
     supabase
@@ -63,6 +65,9 @@ export default async function NuevoGastoPage({
     getPresupuestosDeObra(obra.id),
     getPresupuestosConItems(obra.id),
     getDetalles("Gasto"),
+    // Las facturas con materiales a las que ésta puede engancharse como
+    // "misma compra".
+    getFacturasDeCompra(obra.id),
   ]);
 
   // El catálogo de materiales, para el detalle de la factura. Es común a todas
@@ -125,6 +130,7 @@ export default async function NuevoGastoPage({
           cotizacion={cotizacion?.promedio ?? null}
           inicioObra={obra.fecha_inicio}
           detallesPredefinidos={detallesPredefinidos}
+          facturasDeCompra={facturasDeCompra}
           materiales={materiales}
         />
       )}

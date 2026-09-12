@@ -229,8 +229,56 @@ function leerQuienPago(formData: FormData, esAjuste: boolean) {
  */
 function itemsDelGasto(formData: FormData, tipoGasto: string): ItemMaterial[] {
   // La mano de obra no se desglosa en items y un ajuste de saldo no compra
-  // nada: en esos casos no hay detalle que leer.
+  // nada: en esos casos no hay detalle que leer. Y otra factura de la misma
+  // compra tampoco: los materiales están en la principal, cargarlos acá los
+  // contaría dos veces.
+  if (formData.get("compra_de_gasto_id")) return [];
   return tipoGasto === "Materiales" ? leerItems(formData) : [];
+}
+
+/**
+ * A qué gasto se engancha esta factura como "misma compra", si a alguno.
+ *
+ * Se verifica que el apuntado exista en la obra y no sea el propio gasto; si
+ * el apuntado está a su vez enganchado a otro, se usa aquél: los materiales
+ * viven en el principal y una cadena no se entiende. Sólo materiales
+ * facturados: es el único caso en que una compra se parte en dos papeles.
+ */
+async function resolverCompraDe(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  formData: FormData,
+  tipoGasto: string,
+  facturado: boolean,
+  quien: { obraId: string } | { propioId: string }
+): Promise<string | null> {
+  const pedido = String(formData.get("compra_de_gasto_id") ?? "").trim();
+  if (!pedido || tipoGasto !== "Materiales" || !facturado) return null;
+
+  const propioId = "propioId" in quien ? quien.propioId : null;
+  if (propioId && pedido === propioId) return null;
+
+  // Al editar, la obra es la del propio gasto.
+  let obraId = "obraId" in quien ? quien.obraId : null;
+  if (!obraId && propioId) {
+    const { data: propio } = await supabase
+      .from("gastos")
+      .select("obra_id")
+      .eq("id", propioId)
+      .maybeSingle();
+    obraId = propio?.obra_id ?? null;
+  }
+  if (!obraId) return null;
+
+  const { data } = await supabase
+    .from("gastos")
+    .select("id, compra_de_gasto_id")
+    .eq("id", pedido)
+    .eq("obra_id", obraId)
+    .maybeSingle();
+
+  if (!data) return null;
+  const principal = data.compra_de_gasto_id ?? data.id;
+  return principal === propioId ? null : principal;
 }
 
 /**
@@ -404,6 +452,13 @@ export async function crearGasto(formData: FormData) {
       empresa_factura_id: factura.empresa_factura_id,
       precios_con_iva: factura.precios_con_iva,
       numero_factura: factura.numero_factura,
+      compra_de_gasto_id: await resolverCompraDe(
+        supabase,
+        formData,
+        tipoGasto,
+        factura.tipo_factura !== null,
+        { obraId }
+      ),
       moneda,
       // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
       estado: "Pagado",
@@ -555,6 +610,13 @@ export async function actualizarGasto(formData: FormData) {
     empresa_factura_id: factura.empresa_factura_id,
     precios_con_iva: factura.precios_con_iva,
     numero_factura: factura.numero_factura,
+    compra_de_gasto_id: await resolverCompraDe(
+      supabase,
+      formData,
+      tipoGasto,
+      factura.tipo_factura !== null,
+      { propioId: gastoId }
+    ),
     moneda,
     observaciones: observaciones === "" ? null : observaciones,
   };

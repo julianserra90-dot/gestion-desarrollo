@@ -9,6 +9,7 @@ import ItemsDeMaterial, {
   type MaterialOpcion,
 } from "@/components/ItemsDeMaterial";
 import * as ui from "@/components/ui";
+import type { FacturaDeCompra, FacturaVinculada } from "@/lib/compras";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
 import { semanaDeObra } from "@/lib/semanas";
@@ -88,6 +89,8 @@ export type GastoExistente = {
   tipo_pago: string;
   tipo_factura: string | null;
   numero_factura: string | null;
+  /** Si es otra factura de una compra cuyos materiales están en aquel gasto. */
+  compra_de_gasto_id: string | null;
   alicuota_iva: number | null;
   precios_con_iva: boolean;
   empresa_factura_id: string | null;
@@ -178,6 +181,8 @@ export default function GastoForm({
   materiales = [],
   itemsIniciales = [],
   detallesPredefinidos = [],
+  facturasDeCompra = [],
+  facturasVinculadas = [],
   textoBoton = "Guardar gasto",
 }: {
   action: (formData: FormData) => void;
@@ -207,8 +212,15 @@ export default function GastoForm({
   itemsIniciales?: ItemCargado[];
   /** El catálogo de detalles, para elegir uno en vez de escribirlo. */
   detallesPredefinidos?: string[];
+  /** Facturas con materiales a las que ésta se puede enganchar como misma compra. */
+  facturasDeCompra?: FacturaDeCompra[];
+  /** Al editar una principal: las otras facturas ya enganchadas a ella. */
+  facturasVinculadas?: FacturaVinculada[];
   textoBoton?: string;
 }) {
+  // Otra factura de la misma compra: los materiales están en aquel gasto y
+  // acá no se cargan. Sólo tiene sentido en materiales facturados.
+  const [compraDe, setCompraDe] = useState(gasto?.compra_de_gasto_id ?? "");
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
   // dólares, se ve en dólares, no su equivalente en pesos.
   const [monto, setMonto] = useState(
@@ -357,7 +369,20 @@ export default function GastoForm({
   // compararlo con el monto, que siempre lleva el IVA adentro.
   const detalleConIva =
     esFacturaA && !preciosConIva ? sumaItems * (1 + alic / 100) : sumaItems;
-  const montoFactura = pagaCaja ? total : ingresado;
+  // Si esta factura es la principal de una compra en varios papeles, el
+  // detalle cierra contra la suma de todas, no contra ésta sola.
+  const montoOtrasFacturas = facturasVinculadas.reduce((acc, f) => acc + f.monto, 0);
+  const montoFactura = (pagaCaja ? total : ingresado) + montoOtrasFacturas;
+
+  // Enganche a otra factura: sólo materiales facturados, y sólo si hay a qué.
+  // Se ofrecen primero las del mismo proveedor; sin proveedor elegido, todas.
+  const puedeEngancharse =
+    tipoGasto === "Materiales" && comprobante !== "sin" && facturasDeCompra.length > 0;
+  const candidatas = facturasDeCompra.filter(
+    (f) => !proveedorId || proveedorId === NUEVO || f.proveedorId === proveedorId
+  );
+  const principal = facturasDeCompra.find((f) => f.id === compraDe) ?? null;
+  const vinculada = compraDe !== "" && puedeEngancharse;
   const diferenciaDetalle = montoFactura - detalleConIva;
   const cierra = Math.abs(diferenciaDetalle) < 0.01;
   const formatoFactura = !pagaCaja && moneda === "USD" ? formatUSD : formatMoney;
@@ -1090,10 +1115,66 @@ export default function GastoForm({
               <div style={fieldAncho}>
                 <span style={labelCampo}>Detallar materiales de compra</span>
 
+                {/* Una compra grande partida en dos facturas, una por socia:
+                    cada factura es un gasto, pero los materiales se cargan
+                    una sola vez. Acá se dice que ésta es otra factura de una
+                    compra ya cargada, y los materiales se muestran de allá. */}
+                {puedeEngancharse && (
+                  <label style={traerDe}>
+                    <span style={labelCampo}>Los materiales de esta factura</span>
+                    <select
+                      name="compra_de_gasto_id"
+                      value={compraDe}
+                      onChange={(e) => setCompraDe(e.target.value)}
+                      style={ui.input}
+                    >
+                      <option value="">Se cargan acá</option>
+                      {candidatas.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          Están en la {f.comprobante} del {formatDate(f.fecha)}
+                          {f.proveedorNombre ? ` · ${f.proveedorNombre}` : ""} ·{" "}
+                          {formatMoney(f.monto)}
+                        </option>
+                      ))}
+                      {/* Al editar, la principal puede haber quedado fuera de
+                          las candidatas (otro proveedor): igual se muestra. */}
+                      {compraDe &&
+                        principal &&
+                        !candidatas.some((f) => f.id === compraDe) && (
+                          <option value={compraDe}>
+                            Están en la {principal.comprobante} del{" "}
+                            {formatDate(principal.fecha)}
+                          </option>
+                        )}
+                    </select>
+                    <span style={ayudaCampo}>
+                      Para una compra partida en dos facturas: el material
+                      entró una sola vez y se cuenta una sola vez.
+                    </span>
+                  </label>
+                )}
+
+                {vinculada && principal && (
+                  <div style={materialesDeOtra}>
+                    <span style={ayudaCampo}>
+                      Materiales de la compra, cargados en la{" "}
+                      {principal.comprobante} del {formatDate(principal.fecha)}:
+                    </span>
+                    <ul style={listaDeOtra}>
+                      {principal.items.map((i, n) => (
+                        <li key={n}>
+                          {i.nombre} · {i.cantidad} {i.unidad}
+                          {i.precio !== null && ` · ${formatMoney(i.precio)} c/u`}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {/* Si el proveedor ya cotizó con los items cargados, la compra
                     los trae hechos: es el mismo papel en dos momentos y
                     recargarlo a mano era el trabajo que sobraba. */}
-                {conItems.length > 0 && (
+                {!vinculada && conItems.length > 0 && (
                   <label style={traerDe}>
                     <span style={labelCampo}>Presupuesto del proveedor</span>
                     <select
@@ -1152,7 +1233,7 @@ export default function GastoForm({
 
                 {/* De qué papel salió la compra. Es sólo la procedencia: los
                     items van igual como copia propia del gasto. */}
-                {presupuestoElegido !== "" && (
+                {!vinculada && presupuestoElegido !== "" && (
                   <input
                     type="hidden"
                     name="presupuesto_id"
@@ -1166,7 +1247,7 @@ export default function GastoForm({
                 {/* Sólo la factura A discrimina IVA, así que sólo ahí los
                     precios pueden venir netos. En el resto el precio es el
                     final y no hay nada que preguntar. */}
-                {esFacturaA && (
+                {!vinculada && esFacturaA && (
                   <label style={casillaIva}>
                     <input
                       type="checkbox"
@@ -1178,19 +1259,22 @@ export default function GastoForm({
                   </label>
                 )}
 
-                <ItemsDeMaterial
-                  key={vuelta}
-                  materiales={materiales}
-                  rubroNombre={rubros.find((r) => r.id === rubroId)?.nombre ?? ""}
-                  iniciales={itemsTraidos ?? itemsIniciales}
-                  onTotal={setSumaItems}
-                />
+                {!vinculada && (
+                  <ItemsDeMaterial
+                    key={vuelta}
+                    materiales={materiales}
+                    rubroNombre={rubros.find((r) => r.id === rubroId)?.nombre ?? ""}
+                    iniciales={itemsTraidos ?? itemsIniciales}
+                    onTotal={setSumaItems}
+                  />
+                )}
 
                 {/* El detalle contra la factura. Si no cierra se avisa pero se
                     deja guardar: puede haber un descuento o un flete que no
                     son items, y justamente para verificar eso está la
-                    diferencia a la vista. */}
-                {sumaItems > 0 && (
+                    diferencia a la vista. Con otras facturas enganchadas, la
+                    cuenta es contra la suma de todas. */}
+                {!vinculada && sumaItems > 0 && (
                   <div style={cierreDetalle}>
                     <div style={filaCierre}>
                       <span>Suma del detalle</span>
@@ -1207,7 +1291,11 @@ export default function GastoForm({
                       <strong>{formatoFactura(detalleConIva)}</strong>
                     </div>
                     <div style={filaCierre}>
-                      <span>Monto de la factura</span>
+                      <span>
+                        {montoOtrasFacturas > 0
+                          ? `Monto de las ${facturasVinculadas.length + 1} facturas`
+                          : "Monto de la factura"}
+                      </span>
                       <span>{formatoFactura(montoFactura)}</span>
                     </div>
                     <div style={filaCierre}>
@@ -1598,6 +1686,24 @@ const avisoDetalle = {
 const opcional = {
   color: "#999999",
   marginLeft: "6px",
+};
+
+// Los materiales que viven en la otra factura: en gris y como lista, no como
+// tabla editable, para que se lea que acá no se tocan.
+const materialesDeOtra = {
+  display: "grid",
+  gap: "6px",
+  border: "1px solid #eeeeee",
+  borderRadius: "10px",
+  padding: "12px 14px",
+};
+
+const listaDeOtra = {
+  margin: 0,
+  paddingLeft: "18px",
+  fontSize: "13px",
+  color: "#555555",
+  lineHeight: 1.7,
 };
 
 const casillaIva = {
