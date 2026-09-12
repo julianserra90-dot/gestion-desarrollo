@@ -199,6 +199,10 @@ function leerComprobante(formData: FormData, esAjuste: boolean) {
     // Cómo se leen los precios del detalle. Sólo la A discrimina IVA, así que
     // sólo ahí pueden ser netos; en el resto el precio es el final.
     precios_con_iva: esA ? formData.get("precios_con_iva") === "on" : true,
+    // El número impreso en la factura. Sin factura no hay número.
+    numero_factura: tipoFactura
+      ? String(formData.get("numero_factura") ?? "").trim() || null
+      : null,
   };
 }
 
@@ -399,6 +403,7 @@ export async function crearGasto(formData: FormData) {
       alicuota_iva: factura.alicuota_iva,
       empresa_factura_id: factura.empresa_factura_id,
       precios_con_iva: factura.precios_con_iva,
+      numero_factura: factura.numero_factura,
       moneda,
       // Un gasto se carga cuando ya se pagó, así que no se pregunta el estado.
       estado: "Pagado",
@@ -549,6 +554,7 @@ export async function actualizarGasto(formData: FormData) {
     alicuota_iva: factura.alicuota_iva,
     empresa_factura_id: factura.empresa_factura_id,
     precios_con_iva: factura.precios_con_iva,
+    numero_factura: factura.numero_factura,
     moneda,
     observaciones: observaciones === "" ? null : observaciones,
   };

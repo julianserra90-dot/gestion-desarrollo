@@ -51,7 +51,7 @@ export default async function GastosPage({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, monto, monto_caja, caja_ars, caja_usd, iva, tipo_factura, tipo_gasto, tipo_pago, estado, compartido, empresa_factura_id, empresa_pagadora_id, comprobante_drive_id, proveedor_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
+        "id, fecha, concepto, monto, monto_caja, caja_ars, caja_usd, iva, tipo_factura, numero_factura, tipo_gasto, tipo_pago, estado, compartido, empresa_factura_id, empresa_pagadora_id, comprobante_drive_id, proveedor_id, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre)"
       )
       .eq("obra_id", obra.id)
       .order("fecha", { ascending: false }),
@@ -93,6 +93,7 @@ export default async function GastosPage({
     empresaFacturaId: g.empresa_factura_id,
     empresaPagadoraId: g.empresa_pagadora_id,
     tipoFactura: g.tipo_factura,
+    numeroFactura: g.numero_factura,
     tipoGasto: g.tipo_gasto,
     tipoPago: g.tipo_pago,
     estado: g.estado,

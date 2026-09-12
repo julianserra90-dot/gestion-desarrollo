@@ -24,6 +24,7 @@ export type GastoFila = {
   empresaFacturaId: string | null;
   empresaPagadoraId: string | null;
   tipoFactura: string | null;
+  numeroFactura: string | null;
   tipoGasto: string;
   tipoPago: string | null;
   estado: string;
@@ -169,6 +170,7 @@ export default function GastosLista({
         g.receptora,
         g.tipoGasto,
         g.tipoFactura ? `factura ${g.tipoFactura}` : g.tipoPago,
+        g.numeroFactura ?? "",
         formatDate(g.fecha),
         semana !== null ? `semana ${semana}` : null,
         String(g.monto),
@@ -518,6 +520,7 @@ export default function GastosLista({
                       ) : (
                         <EtiquetaComprobante
                           tipoFactura={gasto.tipoFactura}
+                          numero={gasto.numeroFactura}
                           driveId={gasto.comprobanteDriveId}
                           volver={`/obras/${slug}/gastos`}
                         />

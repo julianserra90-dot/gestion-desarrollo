@@ -796,6 +796,15 @@ puede traer un flete o un descuento que no son items. Por eso el precio
 unitario es opcional (la cantidad no) y una fila a medio llenar no se guarda,
 en vez de rechazar el gasto entero.
 
+**Número de factura** (`gastos.numero_factura`, texto y opcional): el campo
+aparece en el formulario con cualquier comprobante que no sea "sin factura" y
+se guarda `null` en efectivo. Es texto porque el formato lleva punto de venta
+y guion (0001-00001234). Se ve en la etiqueta del comprobante del listado de
+gastos ("Factura A · 0001-00001234") y entra en la búsqueda. Y en el resumen
+de **Materiales** cada material lista debajo sus compras —fecha, comprobante
+con número, cantidad y costo— con enlace al gasto: es lo que vincula el
+material con la factura de la que salió.
+
 **Precios con o sin IVA, y el cierre contra la factura.** El monto lleva el IVA
 adentro, pero una factura A lista los precios netos y una compra sin factura
 sólo tiene el precio final. La marca `gastos.precios_con_iva` (una por gasto,

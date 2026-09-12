@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import AppShell from "@/components/AppShell";
 import MaterialesNav from "@/components/MaterialesNav";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import { formatMoney } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,13 +22,24 @@ import { createClient } from "@/lib/supabase/server";
  * otra solapa.
  */
 
+/** Una compra del material: de qué gasto y de qué factura salió. */
+type Compra = {
+  gastoId: string;
+  fecha: string;
+  /** "Factura A · 0001-00001234", "Factura B" o "Efectivo". */
+  comprobante: string;
+  cantidad: number;
+  /** Con el IVA adentro, o null si no se cargó precio. */
+  precio: number | null;
+};
+
 type Consumo = {
   material: string;
   unidad: string;
   cantidad: number;
   costo: number;
-  /** Cuántos items lo cargaron: dos compras del mismo ladrillo son dos. */
-  compras: number;
+  /** Cada item que lo cargó: dos compras del mismo ladrillo son dos filas. */
+  compras: Compra[];
 };
 
 export default async function MaterialesPage({
@@ -49,29 +61,35 @@ export default async function MaterialesPage({
   const { data: items } = await supabase
     .from("gasto_materiales")
     .select(
-      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(obra_id, estado, precios_con_iva, alicuota_iva, rubros(nombre))"
+      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, rubros(nombre))"
     )
     .eq("gastos.obra_id", obra.id)
-    .neq("gastos.estado", "Anulado");
+    .neq("gastos.estado", "Anulado")
+    .order("fecha", { referencedTable: "gastos", ascending: false });
 
   // El consumo, agrupado por rubro y dentro de cada uno por material. Las
   // cantidades se suman entre compras: tres compras de ladrillo son un solo
-  // renglón con el total.
+  // renglón con el total, y debajo cada compra con su factura.
   const porRubro = new Map<string, Map<string, Consumo>>();
 
   for (const item of items ?? []) {
-    const rubro = item.gastos?.rubros?.nombre ?? "Sin rubro";
+    const gasto = item.gastos;
+    const rubro = gasto?.rubros?.nombre ?? "Sin rubro";
     const material = item.materiales?.nombre ?? "—";
     const unidad = item.materiales?.unidad ?? "";
     const cantidad = Number(item.cantidad);
     // El costo va siempre con el IVA adentro, como el monto del gasto: si el
     // precio se cargó neto (factura A), se le suma la alícuota. Si no, netos y
     // finales se sumarían como si fueran lo mismo.
-    const factor = item.gastos?.precios_con_iva === false
-      ? 1 + Number(item.gastos?.alicuota_iva ?? 21) / 100
+    const factor = gasto?.precios_con_iva === false
+      ? 1 + Number(gasto?.alicuota_iva ?? 21) / 100
       : 1;
     const precio =
       item.precio_unitario === null ? null : Number(item.precio_unitario) * factor;
+
+    const comprobante = gasto?.tipo_factura
+      ? `Factura ${gasto.tipo_factura}${gasto.numero_factura ? ` · ${gasto.numero_factura}` : ""}`
+      : "Efectivo";
 
     const delRubro = porRubro.get(rubro) ?? new Map<string, Consumo>();
     const actual = delRubro.get(material) ?? {
@@ -79,14 +97,23 @@ export default async function MaterialesPage({
       unidad,
       cantidad: 0,
       costo: 0,
-      compras: 0,
+      compras: [],
     };
 
     delRubro.set(material, {
       ...actual,
       cantidad: actual.cantidad + cantidad,
       costo: actual.costo + (precio === null ? 0 : cantidad * precio),
-      compras: actual.compras + 1,
+      compras: [
+        ...actual.compras,
+        {
+          gastoId: gasto?.id ?? "",
+          fecha: gasto?.fecha ?? "",
+          comprobante,
+          cantidad,
+          precio,
+        },
+      ],
     });
 
     porRubro.set(rubro, delRubro);
@@ -168,23 +195,52 @@ export default async function MaterialesPage({
                 </thead>
                 <tbody>
                   {grupo.filas.map((fila) => (
-                    <tr key={fila.material}>
-                      <td style={ui.td}>{fila.material}</td>
-                      <td style={ui.tdRight}>
-                        <strong>{formatCantidad(fila.cantidad)}</strong>
-                      </td>
-                      <td style={ui.td}>{fila.unidad}</td>
-                      <td style={ui.tdRight}>{fila.compras}</td>
-                      {/* Sin precio cargado no hay costo, y un cero se leería
-                          como "salió gratis". */}
-                      <td style={ui.tdRight}>
-                        {fila.costo > 0 ? (
-                          formatMoney(fila.costo)
-                        ) : (
-                          <span style={{ color: "#bbbbbb" }}>—</span>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={fila.material}>
+                      <tr>
+                        <td style={ui.td}>{fila.material}</td>
+                        <td style={ui.tdRight}>
+                          <strong>{formatCantidad(fila.cantidad)}</strong>
+                        </td>
+                        <td style={ui.td}>{fila.unidad}</td>
+                        <td style={ui.tdRight}>{fila.compras.length}</td>
+                        {/* Sin precio cargado no hay costo, y un cero se leería
+                            como "salió gratis". */}
+                        <td style={ui.tdRight}>
+                          {fila.costo > 0 ? (
+                            formatMoney(fila.costo)
+                          ) : (
+                            <span style={{ color: "#bbbbbb" }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Cada compra debajo de su material, con la factura de
+                          la que salió: es lo que permite decir "estos
+                          ladrillos vinieron en la 0001-00001234". El enlace
+                          abre el gasto. */}
+                      {fila.compras.map((compra, i) => (
+                        <tr key={`${fila.material}-${i}`} style={filaCompra}>
+                          <td style={celdaCompra}>
+                            <Link
+                              href={`/obras/${obra.slug}/gastos/${compra.gastoId}/editar`}
+                              style={enlaceCompra}
+                            >
+                              {formatDate(compra.fecha)} · {compra.comprobante}
+                            </Link>
+                          </td>
+                          <td style={{ ...celdaCompra, textAlign: "right" }}>
+                            {formatCantidad(compra.cantidad)}
+                          </td>
+                          <td style={celdaCompra}>{fila.unidad}</td>
+                          <td style={celdaCompra} />
+                          <td style={{ ...celdaCompra, textAlign: "right" }}>
+                            {compra.precio === null
+                              ? "—"
+                              : formatMoney(compra.cantidad * compra.precio)}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -232,5 +288,23 @@ const tituloRubro = {
 
 const enlace = {
   color: "#111111",
+  textDecoration: "underline",
+};
+
+// Las compras van más chicas y en gris, debajo de su material: son el
+// desglose del renglón de arriba, no renglones de la misma jerarquía.
+const filaCompra = {
+  background: "#fafafa",
+};
+
+const celdaCompra = {
+  padding: "6px 14px 6px 28px",
+  fontSize: "13px",
+  color: "#777777",
+  borderBottom: "1px solid #f0f0f0",
+};
+
+const enlaceCompra = {
+  color: "#777777",
   textDecoration: "underline",
 };

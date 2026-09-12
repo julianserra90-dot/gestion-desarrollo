@@ -12,15 +12,20 @@ import Link from "next/link";
  */
 export default function EtiquetaComprobante({
   tipoFactura,
+  numero,
   driveId,
   volver,
 }: {
   tipoFactura: string | null;
+  /** El número impreso en la factura, si se cargó: va después del tipo. */
+  numero?: string | null;
   driveId: string | null;
   /** Adónde vuelve el visor al cerrar: la pantalla desde la que se abrió. */
   volver: string;
 }) {
-  const texto = tipoFactura ? `Factura ${tipoFactura}` : "Efectivo";
+  const texto = tipoFactura
+    ? `Factura ${tipoFactura}${numero ? ` · ${numero}` : ""}`
+    : "Efectivo";
   const estilo = tipoFactura ? tagFactura : tagEfectivo;
 
   if (!driveId) {

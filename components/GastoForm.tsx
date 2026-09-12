@@ -87,6 +87,7 @@ export type GastoExistente = {
   concepto: string | null;
   tipo_pago: string;
   tipo_factura: string | null;
+  numero_factura: string | null;
   alicuota_iva: number | null;
   precios_con_iva: boolean;
   empresa_factura_id: string | null;
@@ -919,6 +920,24 @@ export default function GastoForm({
               </span>
             </label>
 
+            {/* El número impreso en el papel: para buscarla después y para
+                saber de qué factura salió cada material. Texto, no número: el
+                formato lleva punto de venta y guion. */}
+            {comprobante !== "sin" && !esAjuste && (
+              <label style={field}>
+                <span style={labelCampo}>
+                  Nº de factura <span style={opcional}>opcional</span>
+                </span>
+                <input
+                  type="text"
+                  name="numero_factura"
+                  defaultValue={gasto?.numero_factura ?? ""}
+                  placeholder="Ej: 0001-00001234"
+                  style={ui.input}
+                />
+              </label>
+            )}
+
             {esFacturaA && (
               <label style={field}>
                 <span style={labelCampo}>Alícuota de IVA</span>
@@ -1574,6 +1593,11 @@ const avisoDetalle = {
   fontSize: "13px",
   color: "#92400e",
   lineHeight: 1.5,
+};
+
+const opcional = {
+  color: "#999999",
+  marginLeft: "6px",
 };
 
 const casillaIva = {

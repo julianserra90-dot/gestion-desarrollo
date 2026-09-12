@@ -495,6 +495,7 @@ export type Database = {
           id: string
           iva: number | null
           moneda: string
+          numero_factura: string | null
           monto: number
           monto_caja: number | null
           monto_usd: number | null
@@ -531,6 +532,7 @@ export type Database = {
           id?: string
           iva?: number | null
           moneda?: string
+          numero_factura?: string | null
           monto: number
           monto_caja?: number | null
           monto_usd?: number | null
@@ -567,6 +569,7 @@ export type Database = {
           id?: string
           iva?: number | null
           moneda?: string
+          numero_factura?: string | null
           monto?: number
           monto_caja?: number | null
           monto_usd?: number | null
