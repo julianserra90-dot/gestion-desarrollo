@@ -28,6 +28,12 @@ export type GastoComprobante = {
   empresaPagadoraId: string | null;
   /** Lo pusieron todas las socias en partes iguales. */
   compartido: boolean;
+  /**
+   * Si el gasto se facturó en más de una factura: a nombre de quién y por
+   * cuánto cada una. Con esto, lo facturado y el crédito fiscal van a cada
+   * titular por su parte, y `empresaFacturaId` no se mira.
+   */
+  facturas?: { empresaId: string; monto: number }[];
 };
 
 export type ComprobantesEmpresa = {
@@ -77,6 +83,20 @@ export function repartirComprobantes(
 
   for (const g of gastos) {
     const esFacturado = g.tipoPago === "Facturado";
+
+    // Facturado en varias facturas: cada titular tiene la suya, por su monto,
+    // y el IVA del gasto se reparte en la misma proporción.
+    if (esFacturado && g.facturas && g.facturas.length > 0) {
+      for (const f of g.facturas) {
+        const cuenta = de(f.empresaId);
+        cuenta.facturado += f.monto;
+        if (g.iva > 0 && g.monto > 0) {
+          cuenta.creditoFiscal += (g.iva * f.monto) / g.monto;
+        }
+      }
+      continue;
+    }
+
     const empresa = g.empresaFacturaId ?? g.empresaPagadoraId;
 
     if (empresa) {

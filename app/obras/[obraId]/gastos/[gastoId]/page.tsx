@@ -34,7 +34,7 @@ export default async function FichaGastoPage({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, tipo_gasto, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre)"
+        "id, fecha, concepto, tipo_gasto, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, numero, comprobante_drive_id, orden, empresas(nombre))"
       )
       .eq("id", gastoId)
       .eq("obra_id", obra.id)
@@ -69,6 +69,11 @@ export default async function FichaGastoPage({
           : (gasto.pagadora?.nombre ?? "—");
 
   const detalle = items ?? [];
+  // Facturado en varias facturas: cada una con su titular y su parte del IVA,
+  // proporcional a su monto.
+  const facturas = [...(gasto.gasto_facturas ?? [])].sort((a, b) => a.orden - b.orden);
+  const ivaDe = (montoFactura: number) =>
+    Number(gasto.monto) > 0 ? (Number(gasto.iva ?? 0) * montoFactura) / Number(gasto.monto) : 0;
   // Los precios del detalle se muestran como se cargaron; si son netos se
   // dice, para que no se comparen a ojo con el monto, que lleva el IVA.
   const preciosNetos = gasto.tipo_factura === "A" && gasto.precios_con_iva === false;
@@ -108,6 +113,19 @@ export default async function FichaGastoPage({
             Ver factura
           </Link>
         )}
+        {/* Facturado en varias: un botón por factura, con el titular. */}
+        {facturas.map(
+          (f) =>
+            f.comprobante_drive_id && (
+              <Link
+                key={f.empresa_id}
+                href={`/ver/${f.comprobante_drive_id}?volver=${encodeURIComponent(`${base}/${gasto.id}`)}`}
+                style={ui.secondaryButton}
+              >
+                Ver factura de {f.empresas?.nombre ?? "—"}
+              </Link>
+            )
+        )}
         <Link href={`${base}/${gasto.id}/editar`} style={ui.button}>
           Editar gasto
         </Link>
@@ -131,7 +149,12 @@ export default async function FichaGastoPage({
               <Dato etiqueta="Comprobante">
                 <EtiquetaComprobante
                   tipoFactura={gasto.tipo_factura}
-                  numero={gasto.numero_factura}
+                  numero={
+                    facturas.length > 0
+                      ? facturas.map((f) => f.numero).filter(Boolean).join(" + ") ||
+                        `${facturas.length} facturas`
+                      : gasto.numero_factura
+                  }
                   driveId={gasto.comprobante_drive_id}
                   volver={`${base}/${gasto.id}`}
                 />
@@ -179,6 +202,39 @@ export default async function FichaGastoPage({
           )}
         </div>
       </section>
+
+      {/* Facturado en varias: el gasto es uno, el comprobante está partido.
+          Cada factura con su titular, su monto, su número y su parte del IVA,
+          que es el crédito fiscal de esa socia. */}
+      {facturas.length > 0 && (
+        <section style={{ ...ui.panel, marginTop: "20px" }}>
+          <h3 style={{ ...ui.sectionTitle, marginBottom: "12px" }}>
+            Facturado en {facturas.length} facturas
+          </h3>
+          <table style={ui.table}>
+            <thead>
+              <tr>
+                <th style={ui.th}>A nombre de</th>
+                <th style={ui.th}>Nº</th>
+                <th style={ui.thRight}>Monto</th>
+                {gasto.tipo_factura === "A" && <th style={ui.thRight}>Crédito fiscal</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {facturas.map((f) => (
+                <tr key={f.empresa_id}>
+                  <td style={ui.td}>{f.empresas?.nombre ?? "—"}</td>
+                  <td style={ui.td}>{f.numero ?? "—"}</td>
+                  <td style={ui.tdRight}>{formatMoney(Number(f.monto))}</td>
+                  {gasto.tipo_factura === "A" && (
+                    <td style={ui.tdRight}>{formatMoney(ivaDe(Number(f.monto)))}</td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {detalle.length > 0 && (
         <section style={{ ...ui.panel, marginTop: "20px" }}>

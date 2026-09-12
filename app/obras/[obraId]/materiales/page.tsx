@@ -61,7 +61,7 @@ export default async function MaterialesPage({
   const { data: items } = await supabase
     .from("gasto_materiales")
     .select(
-      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, rubros(nombre))"
+      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, rubros(nombre), gasto_facturas(numero))"
     )
     .eq("gastos.obra_id", obra.id)
     .neq("gastos.estado", "Anulado")
@@ -87,8 +87,16 @@ export default async function MaterialesPage({
     const precio =
       item.precio_unitario === null ? null : Number(item.precio_unitario) * factor;
 
+    // Facturado en varias: los números de todas, uno tras otro.
+    const numeros = (gasto?.gasto_facturas ?? []).map((f) => f.numero).filter(Boolean);
+    const numero =
+      numeros.length > 0
+        ? numeros.join(" + ")
+        : (gasto?.gasto_facturas?.length ?? 0) > 1
+          ? `${gasto?.gasto_facturas?.length} facturas`
+          : gasto?.numero_factura;
     const comprobante = gasto?.tipo_factura
-      ? `Factura ${gasto.tipo_factura}${gasto.numero_factura ? ` · ${gasto.numero_factura}` : ""}`
+      ? `Factura ${gasto.tipo_factura}${numero ? ` · ${numero}` : ""}`
       : "Efectivo";
 
     const delRubro = porRubro.get(rubro) ?? new Map<string, Consumo>();

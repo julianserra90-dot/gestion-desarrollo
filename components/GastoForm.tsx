@@ -106,6 +106,15 @@ export type GastoExistente = {
   comprobante_nombre: string | null;
 };
 
+/** Una de las facturas de un gasto facturado en varias, al editar. */
+export type FacturaCargada = {
+  empresaId: string;
+  monto: number;
+  numero: string | null;
+  comprobanteDriveId: string | null;
+  comprobanteNombre: string | null;
+};
+
 /** Los dos lados de la cuenta de la obra. */
 export type SaldosCaja = { ars: number; usd: number };
 
@@ -178,6 +187,7 @@ export default function GastoForm({
   materiales = [],
   itemsIniciales = [],
   detallesPredefinidos = [],
+  facturasIniciales = [],
   textoBoton = "Guardar gasto",
 }: {
   action: (formData: FormData) => void;
@@ -207,6 +217,8 @@ export default function GastoForm({
   itemsIniciales?: ItemCargado[];
   /** El catálogo de detalles, para elegir uno en vez de escribirlo. */
   detallesPredefinidos?: string[];
+  /** Al editar: las facturas del gasto, si se facturó en más de una. */
+  facturasIniciales?: FacturaCargada[];
   textoBoton?: string;
 }) {
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
@@ -251,6 +263,18 @@ export default function GastoForm({
   );
   const [reemplazar, setReemplazar] = useState(false);
   const [tipoGasto, setTipoGasto] = useState(gasto?.tipo_gasto ?? "Materiales");
+
+  // Facturado en más de una factura: una a nombre de cada socia, por el monto
+  // que diga cada papel. El gasto sigue siendo uno; se parte el comprobante.
+  const [facturasMultiples, setFacturasMultiples] = useState(
+    facturasIniciales.length > 0
+  );
+  const [montoPorFactura, setMontoPorFactura] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        facturasIniciales.map((f) => [f.empresaId, String(f.monto)])
+      )
+  );
   const [proveedorId, setProveedorId] = useState(gasto?.proveedor_id ?? "");
 
   // De qué presupuesto se trajeron los items. Al editar arranca en el que
@@ -361,6 +385,19 @@ export default function GastoForm({
   const diferenciaDetalle = montoFactura - detalleConIva;
   const cierra = Math.abs(diferenciaDetalle) < 0.01;
   const formatoFactura = !pagaCaja && moneda === "USD" ? formatUSD : formatMoney;
+
+  // Varias facturas: sólo entre las socias y con factura. La casilla puede
+  // quedar marcada de antes; lo que manda es si aplica ahora.
+  const facturasActivas =
+    facturasMultiples && esCompartido && comprobante !== "sin" && !esAjuste;
+  const sumaFacturas = socios.reduce(
+    (acc, s) => acc + (Number(montoPorFactura[s.empresa_id]) || 0),
+    0
+  );
+  // Contra el monto del gasto en la moneda en que se cargó: las facturas se
+  // escriben en esa misma moneda.
+  const montoFacturaGasto = pagaCaja ? total : ingresado;
+  const cierranFacturas = Math.abs(sumaFacturas - montoFacturaGasto) < 0.01;
 
   // El crédito fiscal es de la empresa de la factura. Mientras no se elija una,
   // sigue a la que pagó (o a la del usuario si tiene empresa fija). Un gasto
@@ -920,10 +957,126 @@ export default function GastoForm({
               </span>
             </label>
 
+            {/* Una compra entre las socias que el proveedor facturó partida:
+                una factura a nombre de cada una, por lo que diga cada papel,
+                para que cada una compute su crédito fiscal. El gasto sigue
+                siendo uno solo —un monto, un reparto, un detalle de materiales
+                que cierra contra el total—; lo que se parte es el comprobante. */}
+            {esCompartido && comprobante !== "sin" && !esAjuste && (
+              <div style={fieldAncho}>
+                <label style={casillaIva}>
+                  <input
+                    type="checkbox"
+                    name="facturas_multiples"
+                    checked={facturasMultiples}
+                    onChange={(e) => setFacturasMultiples(e.target.checked)}
+                  />
+                  Se facturó en más de una factura, una por socia
+                </label>
+
+                {facturasMultiples && (
+                  <div style={bloqueFacturas}>
+                    <input type="hidden" name="facturas_cantidad" value={socios.length} />
+                    {socios.map((socio, i) => {
+                      const inicial = facturasIniciales.find(
+                        (f) => f.empresaId === socio.empresa_id
+                      );
+                      return (
+                        <div key={socio.empresa_id} style={filaFactura}>
+                          <input
+                            type="hidden"
+                            name={`factura_empresa_${i + 1}`}
+                            value={socio.empresa_id}
+                          />
+                          <div style={tituloFactura}>
+                            Factura a nombre de <strong>{socio.nombre}</strong>
+                          </div>
+                          <div style={camposFactura}>
+                            <label style={field}>
+                              <span style={labelCampo}>Monto</span>
+                              <InputMonto
+                                name={`factura_monto_${i + 1}`}
+                                value={montoPorFactura[socio.empresa_id] ?? ""}
+                                onChange={(limpio) =>
+                                  setMontoPorFactura((prev) => ({
+                                    ...prev,
+                                    [socio.empresa_id]: limpio,
+                                  }))
+                                }
+                                style={ui.input}
+                              />
+                            </label>
+                            <label style={field}>
+                              <span style={labelCampo}>
+                                Nº de factura <span style={opcional}>opcional</span>
+                              </span>
+                              <input
+                                type="text"
+                                name={`factura_numero_${i + 1}`}
+                                defaultValue={inicial?.numero ?? ""}
+                                placeholder="Ej: 0001-00001234"
+                                style={ui.input}
+                              />
+                            </label>
+                            <div style={field}>
+                              <span style={labelCampo}>Archivo</span>
+                              {inicial?.comprobanteDriveId ? (
+                                <div style={comprobanteActual}>
+                                  <span style={{ flex: 1 }}>
+                                    {inicial.comprobanteNombre ?? "Cargado"}
+                                  </span>
+                                  <a
+                                    href={`/ver/${inicial.comprobanteDriveId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={enlaceChico}
+                                  >
+                                    Ver
+                                  </a>
+                                  <label style={quitarLabel}>
+                                    <input
+                                      type="checkbox"
+                                      name={`factura_quitar_${i + 1}`}
+                                    />
+                                    Quitar
+                                  </label>
+                                </div>
+                              ) : null}
+                              <input
+                                type="file"
+                                name={`factura_archivo_${i + 1}`}
+                                style={ui.input}
+                              />
+                              {inicial?.comprobanteDriveId && (
+                                <span style={ayudaCampo}>
+                                  Subir otro reemplaza al cargado.
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Las facturas tienen que sumar el gasto: es un solo
+                        comprobante partido, no dos compras. */}
+                    <div style={filaCierre}>
+                      <span>Suman las facturas</span>
+                      <strong style={{ color: cierranFacturas ? ui.VERDE : ui.ROJO }}>
+                        {formatoFactura(sumaFacturas)}
+                        {!cierranFacturas &&
+                          ` · faltan ${formatoFactura(Math.abs(montoFacturaGasto - sumaFacturas))} para ${formatoFactura(montoFacturaGasto)}`}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* El número impreso en el papel: para buscarla después y para
                 saber de qué factura salió cada material. Texto, no número: el
                 formato lleva punto de venta y guion. */}
-            {comprobante !== "sin" && !esAjuste && (
+            {!facturasActivas && comprobante !== "sin" && !esAjuste && (
               <label style={field}>
                 <span style={labelCampo}>
                   Nº de factura <span style={opcional}>opcional</span>
@@ -961,7 +1114,7 @@ export default function GastoForm({
               </label>
             )}
 
-            {esFacturaA && (
+            {!facturasActivas && esFacturaA && (
               <label style={field}>
                 <span style={labelCampo}>Empresa de la factura</span>
 
@@ -1242,6 +1395,8 @@ export default function GastoForm({
               </div>
             )}
 
+            {/* Con varias facturas, cada una lleva su archivo arriba. */}
+            {!facturasActivas && (
             <div style={fieldAncho}>
               <span style={labelCampo}>Comprobante / factura</span>
 
@@ -1286,6 +1441,7 @@ export default function GastoForm({
                 </>
               )}
             </div>
+            )}
 
             <label style={fieldAncho}>
               <span style={labelCampo}>Observaciones</span>
@@ -1598,6 +1754,32 @@ const avisoDetalle = {
 const opcional = {
   color: "#999999",
   marginLeft: "6px",
+};
+
+// Una tarjeta por factura, con sus tres campos en fila.
+const bloqueFacturas = {
+  display: "grid",
+  gap: "14px",
+  marginTop: "12px",
+};
+
+const filaFactura = {
+  border: "1px solid #eeeeee",
+  borderRadius: "10px",
+  padding: "14px",
+  display: "grid",
+  gap: "10px",
+};
+
+const tituloFactura = {
+  fontSize: "13px",
+  color: "#555555",
+};
+
+const camposFactura = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: "14px",
 };
 
 const casillaIva = {

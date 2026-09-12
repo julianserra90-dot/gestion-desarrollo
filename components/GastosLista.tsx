@@ -25,6 +25,8 @@ export type GastoFila = {
   empresaPagadoraId: string | null;
   tipoFactura: string | null;
   numeroFactura: string | null;
+  /** Si se facturó en varias: a nombre de quién y por cuánto cada una. */
+  facturas: { empresaId: string; monto: number; numero: string | null }[];
   tipoGasto: string;
   tipoPago: string | null;
   estado: string;
@@ -207,6 +209,7 @@ export default function GastosLista({
             empresaFacturaId: g.empresaFacturaId,
             empresaPagadoraId: g.empresaPagadoraId,
             compartido: g.compartido,
+            facturas: g.facturas,
           })),
         socias.map((s) => s.id)
       ),
@@ -520,7 +523,14 @@ export default function GastosLista({
                       ) : (
                         <EtiquetaComprobante
                           tipoFactura={gasto.tipoFactura}
-                          numero={gasto.numeroFactura}
+                          numero={
+                            gasto.facturas.length > 0
+                              ? gasto.facturas
+                                  .map((f) => f.numero)
+                                  .filter(Boolean)
+                                  .join(" + ") || `${gasto.facturas.length} facturas`
+                              : gasto.numeroFactura
+                          }
                           driveId={gasto.comprobanteDriveId}
                           volver={`/obras/${slug}/gastos`}
                         />

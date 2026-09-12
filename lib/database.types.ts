@@ -425,6 +425,63 @@ export type Database = {
           },
         ]
       }
+      gasto_facturas: {
+        Row: {
+          comprobante_drive_id: string | null
+          comprobante_mime: string | null
+          comprobante_nombre: string | null
+          comprobante_tamano: number | null
+          creado_en: string
+          empresa_id: string
+          gasto_id: string
+          id: string
+          monto: number
+          numero: string | null
+          orden: number
+        }
+        Insert: {
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          creado_en?: string
+          empresa_id: string
+          gasto_id: string
+          id?: string
+          monto: number
+          numero?: string | null
+          orden?: number
+        }
+        Update: {
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          creado_en?: string
+          empresa_id?: string
+          gasto_id?: string
+          id?: string
+          monto?: number
+          numero?: string | null
+          orden?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gasto_facturas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gasto_facturas_gasto_id_fkey"
+            columns: ["gasto_id"]
+            isOneToOne: false
+            referencedRelation: "gastos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gasto_materiales: {
         Row: {
           cantidad: number

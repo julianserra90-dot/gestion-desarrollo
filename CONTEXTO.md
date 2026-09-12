@@ -816,6 +816,27 @@ Arriba, dos acciones y nada más: **Ver factura** (sólo si hay archivo, abre el
 visor y vuelve a la ficha) y **Editar gasto**. El listado de Gastos sigue
 yendo a la edición desde su columna Editar: ahí se entra a corregir.
 
+**Un gasto entre las socias facturado en varias facturas** (`gasto_facturas`).
+El corralón parte una compra grande en dos facturas, una a nombre de cada
+socia, con montos iguales o los que diga cada papel, para que cada una
+compute su crédito fiscal. Se probó y se descartó "dos gastos enganchados":
+el gasto es **uno** —un monto, un reparto entre las socias, un detalle de
+materiales que cierra contra el total—; lo que se parte es el comprobante.
+En el formulario, con "Entre las socias" y factura, la casilla *Se facturó en
+más de una factura, una por socia* despliega una tarjeta por socia: monto
+(`InputMonto`), número y archivo. Tienen que **sumar el gasto** (se muestra
+la suma y lo que falta; el server action rechaza si no coincide al centavo).
+Con eso el gasto queda sin titular, número ni archivo propios (`null`): cada
+dato vive en su factura; tipo y alícuota siguen en el gasto. El **crédito
+fiscal** se reparte proporcional al monto de cada factura
+(`repartirComprobantes` lee `facturas` y saltea la cadena titular/pagadora),
+y lo facturado también. Una factura por socia (`unique (gasto_id,
+empresa_id)`); las de monto cero se descartan. Al editar, cada archivo se
+conserva salvo que se suba otro o se marque Quitar; desmarcar la casilla borra
+las facturas y sus archivos. La ficha lista las facturas con su parte del IVA y
+un "Ver factura de X" por archivo; el listado y Materiales muestran los
+números unidos con "+".
+
 **Precios con o sin IVA, y el cierre contra la factura.** El monto lleva el IVA
 adentro, pero una factura A lista los precios netos y una compra sin factura
 sólo tiene el precio final. La marca `gastos.precios_con_iva` (una por gasto,

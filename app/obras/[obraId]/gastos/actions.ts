@@ -188,6 +188,9 @@ function leerComprobante(formData: FormData, esAjuste: boolean) {
   const alicuota = Number(formData.get("alicuota_iva") ?? 0);
   const esA = tipoFactura === "A";
   const titular = String(formData.get("empresa_factura_id") ?? "").trim();
+  // Facturado en varias facturas: el titular, el número y el archivo viven en
+  // cada factura (`gasto_facturas`), no en el gasto.
+  const varias = Boolean(tipoFactura) && formData.get("facturas_multiples") === "on";
 
   return {
     tipo_pago: tipoFactura ? "Facturado" : "Efectivo",
@@ -195,15 +198,160 @@ function leerComprobante(formData: FormData, esAjuste: boolean) {
     alicuota_iva:
       esA && Number.isFinite(alicuota) && alicuota > 0 ? alicuota : null,
     // El titular sólo tiene sentido en la factura A: es quien computa el IVA.
-    empresa_factura_id: esA && titular ? titular : null,
+    empresa_factura_id: esA && titular && !varias ? titular : null,
     // Cómo se leen los precios del detalle. Sólo la A discrimina IVA, así que
     // sólo ahí pueden ser netos; en el resto el precio es el final.
     precios_con_iva: esA ? formData.get("precios_con_iva") === "on" : true,
     // El número impreso en la factura. Sin factura no hay número.
-    numero_factura: tipoFactura
-      ? String(formData.get("numero_factura") ?? "").trim() || null
-      : null,
+    numero_factura:
+      tipoFactura && !varias
+        ? String(formData.get("numero_factura") ?? "").trim() || null
+        : null,
+    varias,
   };
+}
+
+/** Una de las facturas cuando el gasto se facturó en varias, leída del form. */
+type FacturaLeida = {
+  empresaId: string;
+  monto: number;
+  numero: string | null;
+  archivo: File | null;
+  quitar: boolean;
+};
+
+/**
+ * Las facturas del gasto, cuando se facturó en varias: una por socia, por lo
+ * que diga cada papel. Sólo si el gasto es entre las socias y facturado; las
+ * de monto cero se descartan (esa socia no recibió factura). Tienen que sumar
+ * el monto del gasto: es un comprobante partido, no dos compras.
+ */
+function leerFacturas(
+  formData: FormData,
+  compartido: boolean,
+  facturado: boolean
+): { facturas: FacturaLeida[]; error?: string } {
+  if (!compartido || !facturado || formData.get("facturas_multiples") !== "on") {
+    return { facturas: [] };
+  }
+
+  const cantidad = Number(formData.get("facturas_cantidad") ?? 0);
+  const facturas: FacturaLeida[] = [];
+  for (let i = 1; i <= cantidad; i++) {
+    const empresaId = String(formData.get(`factura_empresa_${i}`) ?? "").trim();
+    const monto = Number(formData.get(`factura_monto_${i}`) ?? 0);
+    if (!empresaId || !Number.isFinite(monto) || monto <= 0) continue;
+    const archivo = formData.get(`factura_archivo_${i}`);
+    facturas.push({
+      empresaId,
+      monto,
+      numero: String(formData.get(`factura_numero_${i}`) ?? "").trim() || null,
+      archivo: archivo instanceof File && archivo.size > 0 ? archivo : null,
+      quitar: formData.get(`factura_quitar_${i}`) === "on",
+    });
+  }
+
+  if (facturas.length < 2) {
+    return {
+      facturas,
+      error: "Con más de una factura, cargá el monto de al menos dos.",
+    };
+  }
+  return { facturas };
+}
+
+/**
+ * Guarda las facturas del gasto reemplazando las anteriores. Los archivos se
+ * suben antes y se conservan los que ya estaban si no vino uno nuevo ni se
+ * pidió quitarlo; los que se reemplazan o se quitan se borran de Drive recién
+ * después de que la base confirmó.
+ */
+async function guardarFacturas(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  gastoId: string,
+  slug: string,
+  facturas: FacturaLeida[]
+): Promise<string | null> {
+  const { data: previas } = await supabase
+    .from("gasto_facturas")
+    .select("empresa_id, comprobante_drive_id, comprobante_nombre, comprobante_mime, comprobante_tamano")
+    .eq("gasto_id", gastoId);
+  const previaDe = new Map((previas ?? []).map((p) => [p.empresa_id, p]));
+
+  const subidos: string[] = [];
+  const aBorrar: string[] = [];
+  const filas = [];
+
+  for (const [i, f] of facturas.entries()) {
+    const previa = previaDe.get(f.empresaId);
+    let archivo = previa
+      ? {
+          id: previa.comprobante_drive_id,
+          nombre: previa.comprobante_nombre,
+          mime: previa.comprobante_mime,
+          tamano: previa.comprobante_tamano,
+        }
+      : { id: null, nombre: null, mime: null, tamano: null };
+
+    if (f.archivo) {
+      const nuevo = await subirArchivo({
+        archivo: f.archivo,
+        nombre: f.archivo.name,
+        obraSlug: slug,
+        tipo: "comprobantes",
+      }).catch(() => null);
+      if (!nuevo) {
+        await Promise.all(subidos.map((id) => eliminarArchivo(id).catch(() => {})));
+        return "No se pudo subir el archivo de una de las facturas.";
+      }
+      subidos.push(nuevo.id);
+      if (archivo.id) aBorrar.push(archivo.id);
+      archivo = { id: nuevo.id, nombre: nuevo.nombre, mime: nuevo.mimeType, tamano: nuevo.tamano };
+    } else if (f.quitar && archivo.id) {
+      aBorrar.push(archivo.id);
+      archivo = { id: null, nombre: null, mime: null, tamano: null };
+    }
+
+    filas.push({
+      gasto_id: gastoId,
+      empresa_id: f.empresaId,
+      monto: f.monto,
+      numero: f.numero,
+      comprobante_drive_id: archivo.id,
+      comprobante_nombre: archivo.nombre,
+      comprobante_mime: archivo.mime,
+      comprobante_tamano: archivo.tamano,
+      orden: i,
+    });
+  }
+
+  // Las facturas de socias que ya no están (o todas, si el gasto dejó de ser
+  // en varias) se van con sus archivos.
+  for (const p of previas ?? []) {
+    if (!facturas.some((f) => f.empresaId === p.empresa_id) && p.comprobante_drive_id) {
+      aBorrar.push(p.comprobante_drive_id);
+    }
+  }
+
+  const { error: errorBorrado } = await supabase
+    .from("gasto_facturas")
+    .delete()
+    .eq("gasto_id", gastoId);
+  if (errorBorrado) {
+    await Promise.all(subidos.map((id) => eliminarArchivo(id).catch(() => {})));
+    return errorBorrado.message;
+  }
+
+  if (filas.length > 0) {
+    const { error } = await supabase.from("gasto_facturas").insert(filas);
+    if (error) {
+      await Promise.all(subidos.map((id) => eliminarArchivo(id).catch(() => {})));
+      return error.message;
+    }
+  }
+
+  await Promise.all(aBorrar.map((id) => eliminarArchivo(id).catch(() => {})));
+  return null;
 }
 
 /**
@@ -366,6 +514,26 @@ export async function crearGasto(formData: FormData) {
 
   const moneda = montos.moneda ?? "ARS";
   const reparto = montos.reparto;
+
+  // Facturado en varias facturas: se leen acá, con el monto ya resuelto,
+  // porque tienen que sumar exactamente el gasto (en la moneda en que se
+  // cargó). Es un comprobante partido, no dos compras.
+  const lecturaFacturas = leerFacturas(
+    formData,
+    compartido,
+    factura.tipo_pago === "Facturado"
+  );
+  if (lecturaFacturas.error) volver(lecturaFacturas.error);
+  const facturasDelGasto = lecturaFacturas.facturas;
+  if (facturasDelGasto.length > 0) {
+    const montoGasto = usarCaja ? montos.ars : Number(formData.get("monto") ?? 0);
+    const sumaFacturas = facturasDelGasto.reduce((acc, f) => acc + f.monto, 0);
+    if (Math.abs(sumaFacturas - montoGasto) >= 0.01) {
+      volver(
+        `Las facturas suman ${sumaFacturas.toFixed(2)} y el gasto es ${montoGasto.toFixed(2)}: tienen que coincidir.`
+      );
+    }
+  }
   const faltante = reparto ? reparto.deEmpresa : 0;
   // Si la cuenta se hizo cargo de todo, el gasto no lo puso nadie de su
   // bolsillo: ni una socia ni todas.
@@ -439,6 +607,23 @@ export async function crearGasto(formData: FormData) {
       redirect(
         `/obras/${slug}/gastos/${creado.id}/editar?error=${encodeURIComponent(
           `El gasto se guardó, pero el detalle de materiales no: ${problema}`
+        )}`
+      );
+    }
+
+    // Las facturas, si se facturó en varias: mismo criterio que el detalle,
+    // el gasto ya está y lo que falle se corrige desde la edición.
+    const problemaFacturas = await guardarFacturas(
+      supabase,
+      creado.id,
+      slug,
+      facturasDelGasto
+    );
+    if (problemaFacturas) {
+      revalidatePath("/", "layout");
+      redirect(
+        `/obras/${slug}/gastos/${creado.id}/editar?error=${encodeURIComponent(
+          `El gasto se guardó, pero las facturas no: ${problemaFacturas}`
         )}`
       );
     }
@@ -522,6 +707,26 @@ export async function actualizarGasto(formData: FormData) {
 
   const moneda = montos.moneda ?? "ARS";
   const reparto = montos.reparto;
+
+  // Facturado en varias facturas: se leen acá, con el monto ya resuelto,
+  // porque tienen que sumar exactamente el gasto (en la moneda en que se
+  // cargó). Es un comprobante partido, no dos compras.
+  const lecturaFacturas = leerFacturas(
+    formData,
+    compartido,
+    factura.tipo_pago === "Facturado"
+  );
+  if (lecturaFacturas.error) volver(lecturaFacturas.error);
+  const facturasDelGasto = lecturaFacturas.facturas;
+  if (facturasDelGasto.length > 0) {
+    const montoGasto = usarCaja ? montos.ars : Number(formData.get("monto") ?? 0);
+    const sumaFacturas = facturasDelGasto.reduce((acc, f) => acc + f.monto, 0);
+    if (Math.abs(sumaFacturas - montoGasto) >= 0.01) {
+      volver(
+        `Las facturas suman ${sumaFacturas.toFixed(2)} y el gasto es ${montoGasto.toFixed(2)}: tienen que coincidir.`
+      );
+    }
+  }
   const faltante = reparto ? reparto.deEmpresa : 0;
   // Si la cuenta se hizo cargo de todo, el gasto no lo puso nadie de su
   // bolsillo: ni una socia ni todas.
@@ -610,6 +815,18 @@ export async function actualizarGasto(formData: FormData) {
 
   if (problema) {
     volver(`El gasto se guardó, pero el detalle de materiales no: ${problema}`);
+  }
+
+  // Las facturas se reemplazan enteras; si el gasto dejó de ser en varias, la
+  // lista viene vacía y las anteriores se borran con sus archivos.
+  const problemaFacturas = await guardarFacturas(
+    supabase,
+    gastoId,
+    slug,
+    facturasDelGasto
+  );
+  if (problemaFacturas) {
+    volver(`El gasto se guardó, pero las facturas no: ${problemaFacturas}`);
   }
 
   revalidatePath("/", "layout");
