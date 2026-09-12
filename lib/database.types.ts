@@ -121,6 +121,24 @@ export type Database = {
           },
         ]
       }
+      detalles_gasto: {
+        Row: {
+          creado_en: string
+          id: string
+          nombre: string
+        }
+        Insert: {
+          creado_en?: string
+          id?: string
+          nombre: string
+        }
+        Update: {
+          creado_en?: string
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
+      }
       documento_archivos: {
         Row: {
           creado_en: string
@@ -764,8 +782,8 @@ export type Database = {
           moneda: string
           monto: number
           numero_cuota: number
-          observaciones: string | null
           obra_id: string
+          observaciones: string | null
           serie_id: string
         }
         Insert: {
@@ -777,8 +795,8 @@ export type Database = {
           moneda?: string
           monto: number
           numero_cuota: number
-          observaciones?: string | null
           obra_id: string
+          observaciones?: string | null
           serie_id?: string
         }
         Update: {
@@ -790,8 +808,8 @@ export type Database = {
           moneda?: string
           monto?: number
           numero_cuota?: number
-          observaciones?: string | null
           obra_id?: string
+          observaciones?: string | null
           serie_id?: string
         }
         Relationships: [

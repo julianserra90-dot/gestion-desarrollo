@@ -5,6 +5,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getDetallesGasto } from "@/lib/detalles-gasto";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
 import {
@@ -50,6 +51,7 @@ export default async function NuevoGastoPage({
     { data: proveedores },
     presupuestos,
     presupuestosConItems,
+    detallesPredefinidos,
   ] = await Promise.all([
     getRubrosActivos(obra.id),
     supabase
@@ -59,6 +61,7 @@ export default async function NuevoGastoPage({
     supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
     getPresupuestosDeObra(obra.id),
     getPresupuestosConItems(obra.id),
+    getDetallesGasto(),
   ]);
 
   // El catálogo de materiales, para el detalle de la factura. Es común a todas
@@ -123,6 +126,7 @@ export default async function NuevoGastoPage({
           empresaFija={perfil?.empresa_id ?? undefined}
           cotizacion={cotizacion?.promedio ?? null}
           inicioObra={obra.fecha_inicio}
+          detallesPredefinidos={detallesPredefinidos}
           materiales={(materiales ?? []).map((m) => ({
             id: m.id,
             nombre: m.nombre,

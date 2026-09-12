@@ -4,6 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getDetallesGasto } from "@/lib/detalles-gasto";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
 import {
@@ -55,6 +56,7 @@ export default async function EditarGastoPage({
     { data: proveedores },
     presupuestos,
     presupuestosConItems,
+    detallesPredefinidos,
   ] = await Promise.all([
     // El rubro del gasto viaja aunque esté desmarcado: si no, desaparecería
     // del desplegable y se perdería al guardar.
@@ -66,6 +68,7 @@ export default async function EditarGastoPage({
     supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
     getPresupuestosDeObra(obra.id),
     getPresupuestosConItems(obra.id),
+    getDetallesGasto(),
   ]);
 
   // El catálogo de materiales y el detalle ya cargado de este gasto.
@@ -136,6 +139,7 @@ export default async function EditarGastoPage({
         gasto={gasto}
         cotizacion={cotizacion?.promedio ?? null}
         inicioObra={obra.fecha_inicio}
+        detallesPredefinidos={detallesPredefinidos}
         materiales={(materiales ?? []).map((m) => ({
           id: m.id,
           nombre: m.nombre,

@@ -186,6 +186,19 @@ la cuota no borra el ingreso (`set null`), y borrar el ingreso deja la cuota
 pendiente otra vez. Estados: pendiente, vencida (pasó la fecha y no entró),
 ingresada.
 
+### Detalle de gasto predefinido
+El detalle de un gasto es texto libre y así "Jornales", "jornales sem 3" y
+"Pago jornales" son lo mismo escrito distinto. Al lado de la etiqueta *Detalle*
+hay una casilla **Predefinido**: marcada, el texto se vuelve un desplegable con
+el catálogo (`detalles_gasto`, **compartido entre obras** como proveedores y
+rubros) y una opción *Agregar uno nuevo…* que abre un campo; lo que se escribe
+ahí queda en el catálogo al guardar el gasto. El gasto sigue guardando
+`concepto` como texto —no hay FK—: el catálogo es una ayuda para escribir igual,
+y si sumar el nuevo fallara el gasto se guarda lo mismo. Al editar, la casilla
+arranca marcada si el detalle guardado está en el catálogo. Lo alimenta
+cualquiera que cargue gastos (los usuarios de empresa no son administradores);
+borrar o renombrar es del administrador, por ahora sólo desde la base.
+
 ### Rubros por obra
 Cada obra tiene el catálogo entero y **marca cuáles usa** (columna `activo`).
 Los desplegables ofrecen sólo los marcados. Desmarcar no borra: un rubro con
