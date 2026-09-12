@@ -832,8 +832,9 @@ socia, con montos iguales o los que diga cada papel, para que cada una
 compute su crédito fiscal. Se probó y se descartó "dos gastos enganchados":
 el gasto es **uno** —un monto, un reparto entre las socias, un detalle de
 materiales que cierra contra el total—; lo que se parte es el comprobante.
-En el formulario, con "Entre las socias" y factura, la casilla *Se facturó en
-más de una factura, una por socia* despliega una tarjeta por socia: monto
+En el formulario, con "Entre las socias" **o pagando con la cuenta** (la plata
+de la cuenta es de todas) y factura, la casilla *Se facturó en más de una
+factura, una por socia* despliega una tarjeta por socia: monto
 (`InputMonto`), número y archivo. Tienen que **sumar el gasto** (se muestra
 la suma y lo que falta; el server action rechaza si no coincide al centavo).
 Con eso el gasto queda sin titular, número ni archivo propios (`null`): cada

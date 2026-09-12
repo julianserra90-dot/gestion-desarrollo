@@ -422,8 +422,10 @@ export default function GastoForm({
 
   // Varias facturas: sólo entre las socias y con factura. La casilla puede
   // quedar marcada de antes; lo que manda es si aplica ahora.
-  const facturasActivas =
-    facturasMultiples && esCompartido && comprobante !== "sin" && !esAjuste;
+  // Vale entre las socias y también pagando con la cuenta: la plata de la
+  // cuenta es de todas, así que la factura puede venir partida igual.
+  const facturasPosibles = (esCompartido || pagaCaja) && comprobante !== "sin" && !esAjuste;
+  const facturasActivas = facturasMultiples && facturasPosibles;
   const sumaFacturas = socios.reduce(
     (acc, s) => acc + (Number(montoPorFactura[s.empresa_id]) || 0),
     0
@@ -1026,7 +1028,7 @@ export default function GastoForm({
                 para que cada una compute su crédito fiscal. El gasto sigue
                 siendo uno solo —un monto, un reparto, un detalle de materiales
                 que cierra contra el total—; lo que se parte es el comprobante. */}
-            {esCompartido && comprobante !== "sin" && !esAjuste && (
+            {facturasPosibles && (
               <div style={fieldAncho}>
                 <label style={casillaIva}>
                   <input

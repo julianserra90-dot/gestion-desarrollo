@@ -543,9 +543,11 @@ export async function crearGasto(formData: FormData) {
   // Facturado en varias facturas: se leen acá, con el monto ya resuelto,
   // porque tienen que sumar exactamente el gasto (en la moneda en que se
   // cargó). Es un comprobante partido, no dos compras.
+  // Entre las socias o con la cuenta (que es de todas): en los dos casos la
+  // factura puede venir partida, una por socia.
   const lecturaFacturas = leerFacturas(
     formData,
-    compartido,
+    compartido || usarCaja,
     factura.tipo_pago === "Facturado"
   );
   if (lecturaFacturas.error) volver(lecturaFacturas.error);
@@ -738,9 +740,11 @@ export async function actualizarGasto(formData: FormData) {
   // Facturado en varias facturas: se leen acá, con el monto ya resuelto,
   // porque tienen que sumar exactamente el gasto (en la moneda en que se
   // cargó). Es un comprobante partido, no dos compras.
+  // Entre las socias o con la cuenta (que es de todas): en los dos casos la
+  // factura puede venir partida, una por socia.
   const lecturaFacturas = leerFacturas(
     formData,
-    compartido,
+    compartido || usarCaja,
     factura.tipo_pago === "Facturado"
   );
   if (lecturaFacturas.error) volver(lecturaFacturas.error);
