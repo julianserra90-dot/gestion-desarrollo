@@ -149,6 +149,18 @@ define a cuánto se vendieron (cotización personalizada si fue otro cambio).
 - Al pagar un gasto con la cuenta se elige cuánto sale de cada lado; si no
   alcanza, la diferencia la pone una socia, calculada sola.
 
+**Aporte de todas las socias a la vez.** Cuando la obra pide plata la suelen
+poner todas el mismo día, así que el desplegable de empresa ofrece "Ambas
+empresas" (o "Todas las socias" si son más de dos). Se carga un monto total y
+se **divide en partes iguales** —no por el porcentaje de participación: eso es
+el reparto del gasto, no de lo que cada una decide poner—; con la casilla
+*Aportan montos diferentes* aparece un campo por empresa y el total es la
+suma. No hay un modelo nuevo: se guarda **un ingreso por socia** con su
+parte, y el balance, la caja y los listados no se enteran. Cada uno se edita
+y se borra por separado; el comprobante, si lo hubo, se sube una vez por
+ingreso para que borrar uno no deje al otro sin archivo. La opción sólo está
+al crear: un ingreso guardado es de una sola empresa.
+
 ### Rubros por obra
 Cada obra tiene el catálogo entero y **marca cuáles usa** (columna `activo`).
 Los desplegables ofrecen sólo los marcados. Desmarcar no borra: un rubro con

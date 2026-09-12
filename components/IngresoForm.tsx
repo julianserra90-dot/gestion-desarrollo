@@ -13,6 +13,27 @@ type Inversor = { id: string; tipo: string; nombreCompleto: string };
 const DE_SOCIA = "Empresa socia";
 const ORIGENES = [DE_SOCIA, "Inversor", "Comprador"];
 
+/**
+ * Valor del desplegable de empresa cuando ponen todas a la vez. Se guarda un
+ * ingreso por socia (el balance cuenta aportes por empresa), pero se carga una
+ * sola vez: cuando la obra pide plata, la suelen poner todas el mismo día.
+ */
+export const TODAS_LAS_SOCIAS = "todas";
+
+/** Cuánto va a poner cada socia: igual para todas, o lo que se escribió. */
+function repartirEntreSocias(
+  socios: Socio[],
+  total: number,
+  diferentes: boolean,
+  porSocia: Record<string, string>
+) {
+  if (diferentes) {
+    return socios.map((s) => ({ ...s, monto: Number(porSocia[s.empresa_id]) || 0 }));
+  }
+  const parte = socios.length ? total / socios.length : 0;
+  return socios.map((s) => ({ ...s, monto: parte }));
+}
+
 export type IngresoExistente = {
   id: string;
   fecha: string;
@@ -66,8 +87,23 @@ export default function IngresoForm({
   const [empresaId, setEmpresaId] = useState(ingreso?.empresa_id ?? "");
   const [inversorId, setInversorId] = useState(ingreso?.inversor_id ?? "");
   const [reemplazar, setReemplazar] = useState(false);
+  const [montosDiferentes, setMontosDiferentes] = useState(false);
+  const [montoPorSocia, setMontoPorSocia] = useState<Record<string, string>>({});
 
-  const ingresado = Number(monto) || 0;
+  // Con "todas" y montos distintos, el total sale de sumar lo de cada una;
+  // el campo Monto general no se muestra. Sólo al crear: un ingreso ya
+  // guardado es de una sola empresa.
+  const sonTodas = !ingreso && empresaId === TODAS_LAS_SOCIAS;
+  const porSocia = repartirEntreSocias(
+    socios,
+    Number(monto) || 0,
+    sonTodas && montosDiferentes,
+    montoPorSocia
+  );
+  const ingresado =
+    sonTodas && montosDiferentes
+      ? porSocia.reduce((acc, s) => acc + s.monto, 0)
+      : Number(monto) || 0;
 
   // La caja se lleva en pesos, igual que el resto de la obra.
   const total =
@@ -148,10 +184,30 @@ export default function IngresoForm({
                       {socio.nombre}
                     </option>
                   ))}
+                  {/* Sólo al crear y con más de una socia: un ingreso ya
+                      guardado es de una empresa, y con una sola no hay
+                      entre quiénes repartir. */}
+                  {!ingreso && socios.length > 1 && (
+                    <option value={TODAS_LAS_SOCIAS}>
+                      {socios.length === 2 ? "Ambas empresas" : "Todas las socias"}
+                    </option>
+                  )}
                 </select>
-                <span style={ayudaCampo}>
-                  Cuenta como aporte suyo en el balance de la obra.
-                </span>
+                {sonTodas ? (
+                  <label style={casilla}>
+                    <input
+                      type="checkbox"
+                      name="montos_diferentes"
+                      checked={montosDiferentes}
+                      onChange={(e) => setMontosDiferentes(e.target.checked)}
+                    />
+                    Aportan montos diferentes
+                  </label>
+                ) : (
+                  <span style={ayudaCampo}>
+                    Cuenta como aporte suyo en el balance de la obra.
+                  </span>
+                )}
               </label>
             ) : (
               <label style={field}>
@@ -214,20 +270,56 @@ export default function IngresoForm({
               />
             </div>
 
-            <label style={field}>
-              <span style={labelCampo}>Monto</span>
-              <input
-                type="number"
-                name="monto"
-                min="0"
-                step="0.01"
-                placeholder="0"
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                required
-                style={ui.input}
-              />
-            </label>
+            {sonTodas && montosDiferentes ? (
+              <div style={fieldAncho}>
+                <span style={labelCampo}>Monto que aporta cada una</span>
+                <div style={gridSocias}>
+                  {socios.map((socio) => (
+                    <label key={socio.empresa_id} style={field}>
+                      <span style={ayudaCampo}>{socio.nombre}</span>
+                      <input
+                        type="number"
+                        name={`monto_socia_${socio.empresa_id}`}
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={montoPorSocia[socio.empresa_id] ?? ""}
+                        onChange={(e) =>
+                          setMontoPorSocia((prev) => ({
+                            ...prev,
+                            [socio.empresa_id]: e.target.value,
+                          }))
+                        }
+                        required
+                        style={ui.input}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <label style={field}>
+                <span style={labelCampo}>
+                  {sonTodas ? "Monto total" : "Monto"}
+                </span>
+                <input
+                  type="number"
+                  name="monto"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                  value={monto}
+                  onChange={(e) => setMonto(e.target.value)}
+                  required
+                  style={ui.input}
+                />
+                {sonTodas && (
+                  <span style={ayudaCampo}>
+                    Se divide en partes iguales entre las {socios.length} socias.
+                  </span>
+                )}
+              </label>
+            )}
 
             <label style={field}>
               <span style={labelCampo}>Moneda</span>
@@ -350,7 +442,21 @@ export default function IngresoForm({
         <div style={caja}>
           <p style={tituloCaja}>En el balance entre socias</p>
 
-          {esDeSocia ? (
+          {esDeSocia && sonTodas ? (
+            // Se guarda un ingreso por socia: acá se ve cuánto le queda
+            // anotado a cada una antes de confirmar.
+            <div style={{ fontSize: "14px", lineHeight: 1.6 }}>
+              {porSocia.map((s) => (
+                <div key={s.empresa_id} style={filaSocia}>
+                  <span>{s.nombre}</span>
+                  <strong>{esUsd ? formatUSD(s.monto) : formatMoney(s.monto)}</strong>
+                </div>
+              ))}
+              <p style={{ margin: "10px 0 0", color: "#666666" }}>
+                Se carga un ingreso por empresa y cada uno suma a lo que ya puso.
+              </p>
+            </div>
+          ) : esDeSocia ? (
             <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.6 }}>
               {empresaId ? (
                 <>
@@ -415,6 +521,27 @@ const fieldAncho = {
 const labelCampo = {
   fontSize: "13px",
   color: "#555555",
+};
+
+const gridSocias = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, 1fr)",
+  gap: "20px",
+};
+
+const casilla = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "13px",
+  color: "#555555",
+  cursor: "pointer",
+};
+
+const filaSocia = {
+  display: "flex",
+  justifyContent: "space-between",
+  paddingTop: "4px",
 };
 
 const ayudaCampo = {
