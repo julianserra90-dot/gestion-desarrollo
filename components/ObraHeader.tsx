@@ -80,21 +80,14 @@ export default function ObraHeader({
 
   return (
     <>
+      {/* Sólo la identidad de la obra. "Editar obra" y "Volver a obras"
+          viven en la barra lateral, que está en todas las pantallas: acá se
+          repetían en cada una. */}
       <header style={header}>
         <div>
           <p style={eyebrow}>{obra.estado}</p>
           <h2 style={title}>{obra.nombre}</h2>
           <p style={subtitle}>{obra.ubicacion}</p>
-        </div>
-
-        <div style={headerActions}>
-          <Link href={href("/editar")} style={editLink}>
-            Editar obra
-          </Link>
-
-          <Link href="/" style={backLink}>
-            Volver a obras
-          </Link>
         </div>
       </header>
 
@@ -158,28 +151,6 @@ const title = {
 const subtitle = {
   color: "#666666",
   margin: 0,
-};
-
-const headerActions = {
-  display: "flex",
-  gap: "16px",
-  alignItems: "center",
-};
-
-const editLink = {
-  color: "#111111",
-  textDecoration: "none",
-  border: "1px solid #dcdcdc",
-  borderRadius: "10px",
-  padding: "10px 14px",
-  fontSize: "14px",
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
 };
 
 const tabsContainer = {

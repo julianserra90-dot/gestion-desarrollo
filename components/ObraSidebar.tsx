@@ -64,9 +64,17 @@ export default function ObraSidebar({
       onMouseEnter={() => setAbierta(true)}
       onMouseLeave={() => setAbierta(false)}
     >
+      {/* Lo que no es navegar por la obra: salir de ella y editarla. Juntos
+          arriba, donde se ven; abajo del todo el engranaje pasaba
+          desapercibido y la cabecera lo repetía. */}
       <Link href="/" style={filaChrome} title="Volver a obras">
         <IconoObra nombre="grid" />
         {abierta && <span>Volver a obras</span>}
+      </Link>
+
+      <Link href={href("/editar")} style={filaChrome} title="Editar obra">
+        <IconoObra nombre="engranaje" />
+        {abierta && <span>Editar obra</span>}
       </Link>
 
       <div style={separador} />
@@ -100,11 +108,6 @@ export default function ObraSidebar({
           </Link>
         ))}
       </nav>
-
-      <Link href={href("/editar")} style={filaChromeAlFondo} title="Editar obra">
-        <IconoObra nombre="engranaje" />
-        {abierta && <span>Editar obra</span>}
-      </Link>
     </aside>
   );
 }
@@ -143,11 +146,6 @@ const filaBase = {
 const filaChrome = {
   ...filaBase,
   color: "#999999",
-};
-
-const filaChromeAlFondo = {
-  ...filaChrome,
-  marginTop: "auto",
 };
 
 const separador = {
