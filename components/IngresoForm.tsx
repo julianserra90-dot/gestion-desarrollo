@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import DetallePredefinido from "@/components/DetallePredefinido";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 
@@ -71,6 +72,7 @@ export default function IngresoForm({
   ingreso,
   previsto,
   cotizacion,
+  detallesPredefinidos = [],
   textoBoton = "Guardar ingreso",
 }: {
   action: (formData: FormData) => void;
@@ -88,6 +90,8 @@ export default function IngresoForm({
   previsto?: CuotaPrevista;
   /** Dólar blue de hoy, sólo para la vista previa de la conversión. */
   cotizacion?: number | null;
+  /** El catálogo de detalles de ingreso, para elegir uno en vez de escribirlo. */
+  detallesPredefinidos?: string[];
   textoBoton?: string;
 }) {
   // Al editar se muestra el número tal como se cargó: si el ingreso se ingresó
@@ -285,10 +289,8 @@ export default function IngresoForm({
             )}
 
             <div style={fieldAncho}>
-              <span style={labelCampo}>Detalle</span>
-              <input
-                type="text"
-                name="concepto"
+              <DetallePredefinido
+                catalogo={detallesPredefinidos}
                 defaultValue={ingreso?.concepto ?? previsto?.detalle ?? ""}
                 placeholder={
                   esDeSocia
@@ -298,7 +300,6 @@ export default function IngresoForm({
                       : "Ej: Aporte de capital para la obra"
                 }
                 required
-                style={ui.input}
               />
             </div>
 

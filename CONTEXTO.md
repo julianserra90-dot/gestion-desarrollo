@@ -186,18 +186,20 @@ la cuota no borra el ingreso (`set null`), y borrar el ingreso deja la cuota
 pendiente otra vez. Estados: pendiente, vencida (pasó la fecha y no entró),
 ingresada.
 
-### Detalle de gasto predefinido
-El detalle de un gasto es texto libre y así "Jornales", "jornales sem 3" y
-"Pago jornales" son lo mismo escrito distinto. Al lado de la etiqueta *Detalle*
-hay una casilla **Predefinido**: marcada, el texto se vuelve un desplegable con
-el catálogo (`detalles_gasto`, **compartido entre obras** como proveedores y
-rubros) y una opción *Agregar uno nuevo…* que abre un campo; lo que se escribe
-ahí queda en el catálogo al guardar el gasto. El gasto sigue guardando
-`concepto` como texto —no hay FK—: el catálogo es una ayuda para escribir igual,
-y si sumar el nuevo fallara el gasto se guarda lo mismo. Al editar, la casilla
-arranca marcada si el detalle guardado está en el catálogo. Lo alimenta
-cualquiera que cargue gastos (los usuarios de empresa no son administradores);
-borrar o renombrar es del administrador, por ahora sólo desde la base.
+### Detalle predefinido (gastos e ingresos)
+El detalle es texto libre y así "Jornales", "jornales sem 3" y "Pago jornales"
+son lo mismo escrito distinto. Al lado de la etiqueta *Detalle* hay una casilla
+**Predefinido** (`DetallePredefinido`, el mismo componente en `GastoForm` y en
+`IngresoForm`): marcada, el texto se vuelve un desplegable con el catálogo y
+una opción *Agregar uno nuevo…* que abre un campo; lo que se escribe ahí queda
+en el catálogo al guardar. El catálogo (`detalles`) es **compartido entre
+obras** como proveedores y rubros, y tiene **una lista por ámbito** —Gasto o
+Ingreso—: "Jornales" no es un ingreso. El gasto y el ingreso siguen guardando
+`concepto` como texto —no hay FK—: el catálogo es una ayuda para escribir
+igual, y si sumar el nuevo fallara la carga se guarda lo mismo. Al editar, la
+casilla arranca marcada si el detalle guardado está en su lista. Lo alimenta
+cualquiera que cargue (los usuarios de empresa no son administradores); borrar
+o renombrar es del administrador, por ahora sólo desde la base.
 
 ### Rubros por obra
 Cada obra tiene el catálogo entero y **marca cuáles usa** (columna `activo`).

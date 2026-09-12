@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import DetallePredefinido from "@/components/DetallePredefinido";
 import ItemsDeMaterial, {
   type ItemCargado,
   type MaterialOpcion,
@@ -205,18 +206,6 @@ export default function GastoForm({
   detallesPredefinidos?: string[];
   textoBoton?: string;
 }) {
-  // Predefinido arranca marcado si el detalle guardado está en el catálogo:
-  // fue elegido de la lista, así que se vuelve a mostrar como lista. Un
-  // gasto nuevo arranca en texto libre, que es lo que siempre hubo.
-  const conceptoGuardado = gasto?.concepto ?? "";
-  const NUEVO_DETALLE = "__nuevo__";
-  const [predefinido, setPredefinido] = useState(
-    conceptoGuardado !== "" && detallesPredefinidos.includes(conceptoGuardado)
-  );
-  const [detalleElegido, setDetalleElegido] = useState(
-    detallesPredefinidos.includes(conceptoGuardado) ? conceptoGuardado : ""
-  );
-  const agregandoDetalle = predefinido && detalleElegido === NUEVO_DETALLE;
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
   // dólares, se ve en dólares, no su equivalente en pesos.
   const [monto, setMonto] = useState(
@@ -868,93 +857,23 @@ export default function GastoForm({
             </div>
 
             <div style={fieldAncho}>
-              <div style={filaEtiqueta}>
-                <span style={labelCampo}>Detalle</span>
-                {/* Elegir de una lista en vez de escribir: así "Jornales" se
-                    carga siempre igual y después se puede agrupar. La lista
-                    es la misma en todas las obras. */}
-                {!esAjuste && (
-                  <label style={casilla}>
-                    <input
-                      type="checkbox"
-                      checked={predefinido}
-                      onChange={(e) => {
-                        setPredefinido(e.target.checked);
-                        setDetalleElegido("");
-                      }}
-                    />
-                    Predefinido
-                  </label>
-                )}
-              </div>
-
               {esAjuste ? (
                 // Todos los ajustes se llaman igual: así son fáciles de
                 // identificar y filtrar en el listado.
                 <>
+                  <span style={labelCampo}>Detalle</span>
                   <input type="hidden" name="concepto" value={AJUSTE} />
                   <div style={campoFijo}>{AJUSTE}</div>
                 </>
-              ) : predefinido ? (
-                <>
-                  {agregandoDetalle ? (
-                    // El nuevo se escribe acá y, al guardar el gasto, queda en
-                    // el catálogo para la próxima.
-                    <>
-                      <input type="hidden" name="agregar_detalle" value="on" />
-                      <div style={filaNuevo}>
-                        <input
-                          type="text"
-                          name="concepto"
-                          placeholder="Nuevo detalle, ej: Fletes"
-                          autoFocus
-                          required
-                          style={ui.input}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setDetalleElegido("")}
-                          style={ui.secondaryButton}
-                        >
-                          Volver a la lista
-                        </button>
-                      </div>
-                      <span style={ayudaCampo}>
-                        Se agrega al catálogo, el mismo en todas las obras.
-                      </span>
-                    </>
-                  ) : (
-                    <select
-                      name="concepto"
-                      value={detalleElegido}
-                      onChange={(e) => setDetalleElegido(e.target.value)}
-                      required
-                      style={ui.input}
-                    >
-                      <option value="">Seleccionar detalle</option>
-                      {detallesPredefinidos.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                      <option value={NUEVO_DETALLE}>+ Agregar uno nuevo…</option>
-                    </select>
-                  )}
-                </>
               ) : (
-                <>
-                  {/* Opcional: con la fecha, el rubro, el destino y el monto el
-                      gasto ya está identificado. El texto queda para lo que
-                      haga falta aclarar —antes era obligatorio y terminaba
-                      siendo la semana escrita a mano, que ahora sale sola—. */}
-                  <input
-                    type="text"
-                    name="concepto"
-                    defaultValue={gasto?.concepto ?? ""}
-                    placeholder="Opcional: qué se compró o para qué"
-                    style={ui.input}
-                  />
-                </>
+                // Opcional: con la fecha, el rubro, el destino y el monto el
+                // gasto ya está identificado. El texto queda para lo que haga
+                // falta aclarar, o se elige del catálogo para escribirlo igual.
+                <DetallePredefinido
+                  catalogo={detallesPredefinidos}
+                  defaultValue={gasto?.concepto ?? ""}
+                  placeholder="Opcional: qué se compró o para qué"
+                />
               )}
             </div>
 
@@ -1555,30 +1474,6 @@ const grid = {
   gap: "20px",
 };
 
-// La etiqueta y la casilla "Predefinido" en la misma línea: la casilla es
-// una forma de cargar el mismo campo, no otro campo.
-const filaEtiqueta = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
-};
-
-const casilla = {
-  display: "flex",
-  alignItems: "center",
-  gap: "6px",
-  fontSize: "13px",
-  color: "#555555",
-  cursor: "pointer",
-};
-
-const filaNuevo = {
-  display: "grid",
-  gridTemplateColumns: "1fr auto",
-  gap: "12px",
-  alignItems: "center",
-};
 
 // `alignContent: start` mantiene los campos alineados: sin eso, una celda con
 // ayuda debajo estira a su vecina y el input de al lado queda flotando a media

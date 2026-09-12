@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Database } from "@/lib/database.types";
+import { guardarDetalleSiCorresponde } from "@/lib/detalles";
 import { convertirMonto } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { createClient } from "@/lib/supabase/server";
@@ -109,6 +110,8 @@ export async function crearIngreso(formData: FormData) {
 
   const invalido = validar(campos);
   if (invalido) volver(invalido);
+
+  await guardarDetalleSiCorresponde("Ingreso", formData, campos.concepto);
 
   const supabase = await createClient();
 
@@ -248,6 +251,8 @@ export async function actualizarIngreso(formData: FormData) {
   // Un ingreso guardado es de una sola empresa; el formulario de edición no
   // ofrece "todas", pero si llegara no hay cómo repartirlo.
   if (campos.sonTodas) volver("Elegí una sola empresa para este ingreso.");
+
+  await guardarDetalleSiCorresponde("Ingreso", formData, campos.concepto);
 
   const montos = await convertirMonto(campos.monto, campos.moneda, campos.fecha);
   if (!montos.ok) {

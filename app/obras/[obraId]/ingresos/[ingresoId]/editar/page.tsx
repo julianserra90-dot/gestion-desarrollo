@@ -4,6 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getDetalles } from "@/lib/detalles";
 import { getInversores } from "@/lib/inversores";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
@@ -40,7 +41,7 @@ export default async function EditarIngresoPage({
     return <AppShell>Ingreso no encontrado</AppShell>;
   }
 
-  const [{ data: socios }, cotizacion, caja, inversores] = await Promise.all([
+  const [{ data: socios }, cotizacion, caja, inversores, detalles] = await Promise.all([
     supabase
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")
@@ -48,6 +49,7 @@ export default async function EditarIngresoPage({
     getCotizacionActual(),
     getCaja(obra.id),
     getInversores(obra.id),
+    getDetalles("Ingreso"),
   ]);
 
   const listaSocios = (socios ?? [])
@@ -79,6 +81,7 @@ export default async function EditarIngresoPage({
         error={error}
         ingreso={ingreso}
         cotizacion={cotizacion?.promedio ?? null}
+        detallesPredefinidos={detalles}
         textoBoton="Guardar cambios"
       />
 

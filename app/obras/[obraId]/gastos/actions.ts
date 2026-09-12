@@ -6,7 +6,7 @@ import type { Database } from "@/lib/database.types";
 import { convertirMonto, getCotizacionDeFecha } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { getCaja } from "@/lib/caja";
-import { agregarDetalleGasto } from "@/lib/detalles-gasto";
+import { guardarDetalleSiCorresponde } from "@/lib/detalles";
 import { leerItems } from "@/lib/items-material";
 import type { ItemMaterial } from "@/lib/items-material";
 import { GASTO_COMPARTIDO, centavos, repartirPago } from "@/lib/reparto";
@@ -285,12 +285,7 @@ export async function crearGasto(formData: FormData) {
   const concepto = esAjuste
     ? "Ajuste de saldo"
     : String(formData.get("concepto") ?? "").trim() || null;
-  // Si se escribió un detalle nuevo desde la lista de predefinidos, queda en
-  // el catálogo para la próxima. Aparte del gasto: si esto falla, el gasto se
-  // guarda igual con su texto.
-  if (!esAjuste && concepto && formData.get("agregar_detalle") === "on") {
-    await agregarDetalleGasto(concepto).catch(() => {});
-  }
+  if (!esAjuste) await guardarDetalleSiCorresponde("Gasto", formData, concepto);
   const receptora = String(formData.get("empresa_receptora_id") ?? "");
   const observaciones = String(formData.get("observaciones") ?? "").trim();
   const comprobante = formData.get("comprobante");
@@ -459,12 +454,7 @@ export async function actualizarGasto(formData: FormData) {
   const concepto = esAjuste
     ? "Ajuste de saldo"
     : String(formData.get("concepto") ?? "").trim() || null;
-  // Si se escribió un detalle nuevo desde la lista de predefinidos, queda en
-  // el catálogo para la próxima. Aparte del gasto: si esto falla, el gasto se
-  // guarda igual con su texto.
-  if (!esAjuste && concepto && formData.get("agregar_detalle") === "on") {
-    await agregarDetalleGasto(concepto).catch(() => {});
-  }
+  if (!esAjuste) await guardarDetalleSiCorresponde("Gasto", formData, concepto);
   const receptora = String(formData.get("empresa_receptora_id") ?? "");
   const observaciones = String(formData.get("observaciones") ?? "").trim();
   const comprobante = formData.get("comprobante");

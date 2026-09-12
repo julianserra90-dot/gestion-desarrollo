@@ -4,6 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getDetalles } from "@/lib/detalles";
 import { getIngresoPrevisto } from "@/lib/ingresos-previstos";
 import { getInversores } from "@/lib/inversores";
 import { getCotizacionActual } from "@/lib/dolar";
@@ -28,7 +29,7 @@ export default async function NuevoIngresoPage({
 
   const supabase = await createClient();
 
-  const [{ data: socios }, cotizacion, caja, inversores, previsto] =
+  const [{ data: socios }, cotizacion, caja, inversores, previsto, detalles] =
     await Promise.all([
       supabase
         .from("obra_socios")
@@ -39,6 +40,7 @@ export default async function NuevoIngresoPage({
       getInversores(obra.id),
       // Desde la agenda se llega con la cuota a cumplir: se precarga todo.
       previstoId ? getIngresoPrevisto(obra.id, previstoId) : null,
+      getDetalles("Ingreso"),
     ]);
 
   // Una cuota que ya entró no se cumple dos veces: se cae al alta común.
@@ -90,6 +92,7 @@ export default async function NuevoIngresoPage({
           saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
           error={error}
           previsto={cuota}
+          detallesPredefinidos={detalles}
           cotizacion={cotizacion?.promedio ?? null}
         />
       )}

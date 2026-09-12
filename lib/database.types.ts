@@ -121,18 +121,21 @@ export type Database = {
           },
         ]
       }
-      detalles_gasto: {
+      detalles: {
         Row: {
+          ambito: string
           creado_en: string
           id: string
           nombre: string
         }
         Insert: {
+          ambito?: string
           creado_en?: string
           id?: string
           nombre: string
         }
         Update: {
+          ambito?: string
           creado_en?: string
           id?: string
           nombre?: string
