@@ -1160,6 +1160,14 @@ La base es una sola: una migración se aplica **una vez** desde cualquier máqui
 Cuando el pull trae migraciones ya aplicadas por la otra, no hay que hacer nada.
 Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
 
+**Qué puede correr Claude y qué no.** `npx supabase db push` le está bloqueado:
+lo corre el usuario. Sí puede correr `npx supabase migration list` (ver qué
+está aplicado), `npx supabase migration repair --status reverted <version>`, y
+`npx supabase db query --linked "<sql>"` para consultas de lectura y para
+`notify pgrst, 'reload schema'`. Con eso verifica sin pedir capturas. Cuando
+edita los tipos a mano (porque no puede regenerarlos), lo dice en el commit; el
+usuario regenera cuando puede y commitea si cambia algo.
+
 ## Pozos en los que ya caímos (no repetir)
 
 - **`create or replace view` sólo agrega columnas al final.** Meter una en el
@@ -1254,7 +1262,47 @@ como es el texto de la celda el filtro los separa solo. Lote: `components/PagosL
 (server components) traen los datos y se los pasan al componente cliente; la
 acción de borrar el pago del lote viaja como prop.
 
+- **Una migración con el mismo número y otro contenido no corre nunca.** Pasó
+  el 13/09: se aplicó `20260913160000` (enganche entre gastos), después se
+  descartó ese archivo y se creó otro con el mismo número. Supabase lo dio por
+  aplicado y el listado quedaba vacío consultando una tabla inexistente. Si se
+  reemplaza una migración ya aplicada: **otro número**, que deshaga lo viejo
+  (`drop column if exists`), y `npx supabase migration repair --status reverted
+  <número viejo>` para que `db push` no reclame el archivo que ya no existe.
+- **La API no ve una tabla nueva hasta que recarga su caché de esquema.** El
+  síntoma es "Could not find a relationship between X and Y in the schema
+  cache" con la tabla ya creada. Se destraba con `npx supabase db query
+  --linked "notify pgrst, 'reload schema';"`.
+- **Un error de consulta no puede pasar por "no hay datos".** El listado de
+  gastos ignoraba `error` y mostraba "Todavía no hay gastos". Ahora lo deja en
+  el log del servidor (`console.error`); hacer lo mismo en cualquier consulta
+  cuyo vacío se muestre como estado normal.
+- **En `lib/database.types.ts` hay un esquema antes de `public`.** Al insertar
+  tipos a mano, va dentro de `public.Tables`, no en el primer `Tables: {` del
+  archivo. Y el `select(...)` del cliente tipado tiene que ser un **literal**:
+  armado con `+` deja de tiparse y todo el resultado pasa a `GenericStringError`.
+- **`cotizacion` tiene cuatro decimales.** Guardar un cambio implícito
+  (pesos ÷ dólares) y esperar que `caja_usd × cotizacion` dé los pesos exactos
+  falla por hasta medio diezmilésimo por dólar. Por eso el check de la cuenta
+  y las comparaciones "¿cubrió todo?" tienen tolerancia (ver Ingresos).
+
 ## Pendientes / decisiones abiertas
+
+- **Regenerar los tipos.** Varias migraciones del 13/09 (catálogo de detalles,
+  agenda de ingresos, facturas múltiples, acopios, `precios_con_iva`,
+  `numero_factura`, `es_acopio`) tienen los tipos editados a mano. Correr
+  `npx supabase gen types typescript --linked > lib/database.types.ts` y
+  commitear lo que cambie.
+- **Probar un acopio con retiros de punta a punta** con datos reales: marcar
+  el gasto, cargar dos retiros, mirar la ficha y Materiales. La carga de gasto
+  con dos facturas y la de pesos con dólares ya se probaron y se borraron.
+- **Renombrar los 19 materiales que ya estaban** con el texto de la planilla
+  (hoy conservan su nombre viejo: "Bolsa Cemento 25 kg" contra "Bolsa cemento
+  25kg" de la planilla). Es una migración de `update` si se quiere.
+- **"Más de una cotización aprobada por rubro"** (más abajo) puede estar
+  resuelto: el commit `616719a` "Permitir varias cotizaciones aprobadas por
+  rubro y tipo" es de la otra máquina. Revisar la nota antes de tomarla como
+  pendiente.
 
 - **Rubros tipo "Colocación de revestimientos"**: se pueden crear por obra, pero
   no están en el catálogo. Si conviene que aparezcan en todas las obras nuevas,
@@ -1318,3 +1366,17 @@ acción de borrar el pago del lote viaja como prop.
 Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
+
+**Lo último (13/09/2026)**, para ubicarse rápido: obras centradas en la
+portada; ingreso de todas las socias a la vez; agenda de ingresos (cuotas
+previstas con fecha, `ingresos/agenda`); detalle predefinido en gastos e
+ingresos (catálogo `detalles` por ámbito); balance entre empresas reducido a
+aporte por moneda y diferencia; alta de material sin salir del gasto y
+selector de material por rubro en acordeones; precios con o sin IVA y cierre
+del detalle contra la factura; campos de plata con puntos de miles
+(`InputMonto`, la tecla punto es la coma); número de factura; ficha del gasto
+de sólo lectura (todo enlace a un gasto va ahí); catálogo de materiales
+cargado desde la planilla; gasto en varias facturas (`gasto_facturas`);
+pesos pagados con los dólares de la cuenta; acopios con retiros con fecha;
+"← Volver" automático en toda pantalla honda. Todas las migraciones hasta
+`20260913190000` están aplicadas.
