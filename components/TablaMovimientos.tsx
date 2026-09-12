@@ -161,8 +161,10 @@ export default function TablaMovimientos({
                 )}
               </td>
               <td style={ui.td}>
+                {/* Un ingreso se edita directo; un gasto se abre por su ficha
+                    y se edita desde ahí. */}
                 <Link href={mov.href} style={editarLink}>
-                  Editar
+                  {mov.entrada ? "Editar" : "Ver"}
                 </Link>
               </td>
             </tr>

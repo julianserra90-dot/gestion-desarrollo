@@ -119,7 +119,8 @@ export default async function IngresosPage({
       quien: g.proveedores?.nombre ?? "—",
       ars: -Number(g.caja_ars),
       usd: -Number(g.caja_usd),
-      href: `/obras/${obra.slug}/gastos/${g.id}/editar`,
+      // Un gasto se abre por su ficha; editar es un botón dentro de ella.
+      href: `/obras/${obra.slug}/gastos/${g.id}`,
       quienHref: null,
       tipoFactura: g.tipo_factura,
       comprobanteDriveId: g.comprobante_drive_id,

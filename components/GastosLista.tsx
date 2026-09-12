@@ -560,12 +560,16 @@ export default function GastosLista({
                     <td style={anulado ? tdAnuladoRight : ui.tdRight}>
                       <strong>{formatMoney(gasto.monto)}</strong>
                     </td>
+                    {/* A la ficha, no a la edición: desde el listado se va a
+                        mirar un gasto (la factura, los materiales), y una
+                        pantalla llena de campos invita a tocar algo sin
+                        querer. Editar es un botón dentro de la ficha. */}
                     <td style={celda}>
                       <Link
-                        href={`/obras/${slug}/gastos/${gasto.id}/editar`}
+                        href={`/obras/${slug}/gastos/${gasto.id}`}
                         style={editarLink}
                       >
-                        Editar
+                        Ver
                       </Link>
                     </td>
                   </tr>

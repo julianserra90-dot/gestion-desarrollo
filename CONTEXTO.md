@@ -829,8 +829,11 @@ grilla —fecha, estado, rubro, tipo, proveedor, comprobante con número, monto
 pagó, lo que salió de la cuenta, observaciones— y la tabla de materiales de la
 compra con los precios tal como se cargaron (dice "sin IVA" si son netos).
 Arriba, dos acciones y nada más: **Ver factura** (sólo si hay archivo, abre el
-visor y vuelve a la ficha) y **Editar gasto**. El listado de Gastos sigue
-yendo a la edición desde su columna Editar: ahí se entra a corregir.
+visor y vuelve a la ficha) y **Editar gasto**. **Todo enlace a un gasto va a
+la ficha**: la columna del listado de Gastos dice "Ver", los movimientos de
+Ingresos dicen "Ver" en los gastos (y "Editar" en los ingresos, que no tienen
+ficha), y las compras de Materiales también. La edición se alcanza sólo desde
+el botón de la ficha.
 
 **Un gasto entre las socias facturado en varias facturas** (`gasto_facturas`).
 El corralón parte una compra grande en dos facturas, una a nombre de cada
