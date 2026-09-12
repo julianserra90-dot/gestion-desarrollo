@@ -802,8 +802,19 @@ se guarda `null` en efectivo. Es texto porque el formato lleva punto de venta
 y guion (0001-00001234). Se ve en la etiqueta del comprobante del listado de
 gastos ("Factura A · 0001-00001234") y entra en la búsqueda. Y en el resumen
 de **Materiales** cada material lista debajo sus compras —fecha, comprobante
-con número, cantidad y costo— con enlace al gasto: es lo que vincula el
-material con la factura de la que salió.
+con número, cantidad y costo— con enlace a la ficha del gasto: es lo que
+vincula el material con la factura de la que salió.
+
+**La ficha del gasto** (`/obras/<slug>/gastos/<gastoId>`, sólo lectura). Desde
+Materiales se llegaba directo a la edición, y una pantalla llena de campos
+invita a tocar algo sin querer. La ficha muestra todo lo cargado en una
+grilla —fecha, estado, rubro, tipo, proveedor, comprobante con número, monto
+(y su valuación si fue en dólares), IVA y titular del crédito fiscal, quién
+pagó, lo que salió de la cuenta, observaciones— y la tabla de materiales de la
+compra con los precios tal como se cargaron (dice "sin IVA" si son netos).
+Arriba, dos acciones y nada más: **Ver factura** (sólo si hay archivo, abre el
+visor y vuelve a la ficha) y **Editar gasto**. El listado de Gastos sigue
+yendo a la edición desde su columna Editar: ahí se entra a corregir.
 
 **Precios con o sin IVA, y el cierre contra la factura.** El monto lleva el IVA
 adentro, pero una factura A lista los precios netos y una compra sin factura

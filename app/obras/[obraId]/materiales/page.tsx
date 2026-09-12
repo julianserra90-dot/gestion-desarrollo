@@ -217,12 +217,13 @@ export default async function MaterialesPage({
                       {/* Cada compra debajo de su material, con la factura de
                           la que salió: es lo que permite decir "estos
                           ladrillos vinieron en la 0001-00001234". El enlace
-                          abre el gasto. */}
+                          abre la ficha del gasto —para mirar, no la edición—:
+                          desde ahí se ve la factura o se pasa a editar. */}
                       {fila.compras.map((compra, i) => (
                         <tr key={`${fila.material}-${i}`} style={filaCompra}>
                           <td style={celdaCompra}>
                             <Link
-                              href={`/obras/${obra.slug}/gastos/${compra.gastoId}/editar`}
+                              href={`/obras/${obra.slug}/gastos/${compra.gastoId}`}
                               style={enlaceCompra}
                             >
                               {formatDate(compra.fecha)} · {compra.comprobante}
