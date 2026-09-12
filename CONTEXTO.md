@@ -167,7 +167,13 @@ define a cuánto se vendieron (cotización personalizada si fue otro cambio).
   que se guarda es el **implícito** (pesos ÷ dólares) para que el gasto quede
   exactamente en los pesos cargados; la moneda del gasto queda en **ARS**
   aunque de la cuenta hayan salido dólares. Si los dólares no alcanzan, el
-  resto lo pone una socia, como siempre.
+  resto lo pone una socia, como siempre. **Ojo con el redondeo**: `cotizacion`
+  es numeric(14, 4), así que `caja_usd × cotizacion` (la columna calculada
+  `monto_caja`) se aparta de `monto` hasta medio diezmilésimo por dólar —15
+  centavos con US$ 3.000—. El check `gastos_caja_coherente` tolera un
+  diezmilésimo por dólar además del centavo, y las pantallas que preguntan "¿la
+  cuenta cubrió todo?" (listado de gastos, movimientos de Ingresos, ficha)
+  comparan con **medio peso** de tolerancia, no al centavo.
 
 **Aporte de todas las socias a la vez.** Cuando la obra pide plata la suelen
 poner todas el mismo día, así que el desplegable de empresa ofrece "Ambas

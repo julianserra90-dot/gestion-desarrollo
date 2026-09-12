@@ -110,7 +110,9 @@ export default async function IngresosPage({
       // Un gasto pagado en parte con la cuenta se aclara, para que no parezca
       // que la cuenta se hizo cargo de todo.
       etiqueta:
-        Number(g.monto_caja) < Number(g.monto) ? "Gasto (parcial)" : "Gasto",
+        // Con medio peso de tolerancia: pagado en pesos con dólares, el
+        // redondeo de la cotización deja unos centavos que no son un faltante.
+        Number(g.monto_caja) < Number(g.monto) - 0.5 ? "Gasto (parcial)" : "Gasto",
       // El detalle del gasto es opcional; sin esto la celda queda muda y
       // parece un dato que faltó cargar.
       detalle: g.concepto ?? "Sin detalle",

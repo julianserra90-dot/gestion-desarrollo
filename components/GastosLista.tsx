@@ -542,7 +542,7 @@ export default function GastosLista({
                     <td style={{ ...celda, ...compacta }}>
                       {gasto.compartido ? (
                         "Entre las socias"
-                      ) : gasto.montoCaja >= gasto.monto ? (
+                      ) : gasto.montoCaja >= gasto.monto - 0.5 ? (
                         "Dinero en cuenta"
                       ) : gasto.montoCaja > 0 ? (
                         <>

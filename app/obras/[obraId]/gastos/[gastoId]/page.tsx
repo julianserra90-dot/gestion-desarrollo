@@ -67,7 +67,7 @@ export default async function FichaGastoPage({
     ? `${gasto.pagadora?.nombre ?? "—"} → ${gasto.receptora?.nombre ?? "—"}`
     : gasto.compartido
       ? "Entre las socias"
-      : pagoConCuenta && deEmpresa > 0.005
+      : pagoConCuenta && deEmpresa > 0.5
         ? `Dinero en cuenta y ${gasto.pagadora?.nombre ?? "—"} (${formatMoney(deEmpresa)})`
         : pagoConCuenta
           ? "Dinero en cuenta"
