@@ -4,6 +4,7 @@ import ObraSidebar from "@/components/ObraSidebar";
 import PresupuestoForm from "@/components/PresupuestoForm";
 import * as ui from "@/components/ui";
 import { getCotizacionActual } from "@/lib/dolar";
+import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
 import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
@@ -39,14 +40,14 @@ export default async function EditarPresupuestoPage({
     return <AppShell>Cotización no encontrada</AppShell>;
   }
 
-  const [rubros, { data: proveedores }, cotizacion, { data: materiales }, { data: items }] =
+  const [rubros, { data: proveedores }, cotizacion, materiales, { data: items }] =
     await Promise.all([
       // El rubro de la cotización viaja aunque esté desmarcado, si no
       // desaparecería del desplegable y se perdería al guardar.
       getRubrosActivos(obra.id, presupuesto.rubro_id),
       supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
       getCotizacionActual(),
-      supabase.from("materiales").select("id, nombre, unidad, rubro_id").order("nombre"),
+      getMaterialesCatalogo(),
       supabase
         .from("presupuesto_materiales")
         .select("material_id, cantidad, precio_unitario")
@@ -82,12 +83,7 @@ export default async function EditarPresupuestoPage({
         error={error}
         presupuesto={presupuesto}
         cotizacion={cotizacion?.promedio ?? null}
-        materiales={(materiales ?? []).map((m) => ({
-          id: m.id,
-          nombre: m.nombre,
-          unidad: m.unidad,
-          rubroId: m.rubro_id,
-        }))}
+        materiales={materiales}
         itemsIniciales={(items ?? []).map((i) => ({
           materialId: i.material_id,
           cantidad: String(i.cantidad),

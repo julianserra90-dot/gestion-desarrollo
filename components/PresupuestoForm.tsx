@@ -382,8 +382,7 @@ export default function PresupuestoForm({
                 <span style={labelCampo}>Detallar materiales cotizados</span>
                 <ItemsDeMaterial
                   materiales={materiales}
-                  rubroId={rubroId}
-                  slug={slug}
+                  rubroNombre={rubros.find((r) => r.id === rubroId)?.nombre ?? ""}
                   iniciales={itemsIniciales}
                   origen="presupuesto"
                   onTotal={setSumaItems}

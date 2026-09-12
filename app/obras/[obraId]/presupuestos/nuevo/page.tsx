@@ -5,6 +5,7 @@ import ObraSidebar from "@/components/ObraSidebar";
 import PresupuestoForm from "@/components/PresupuestoForm";
 import * as ui from "@/components/ui";
 import { getCotizacionActual } from "@/lib/dolar";
+import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
 import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
@@ -27,14 +28,14 @@ export default async function NuevoPresupuestoPage({
 
   const supabase = await createClient();
 
-  const [rubros, { data: proveedores }, cotizacion, { data: materiales }] =
+  const [rubros, { data: proveedores }, cotizacion, materiales] =
     await Promise.all([
       getRubrosActivos(obra.id),
       supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
       getCotizacionActual(),
       // El catálogo de materiales, para detallar qué se cotizó. Es común a
       // todas las obras, igual que el de proveedores.
-      supabase.from("materiales").select("id, nombre, unidad, rubro_id").order("nombre"),
+      getMaterialesCatalogo(),
     ]);
 
   return (
@@ -70,12 +71,7 @@ export default async function NuevoPresupuestoPage({
           cotizacion={cotizacion?.promedio ?? null}
           rubroSugerido={rubro}
           tipoSugerido={tipo}
-          materiales={(materiales ?? []).map((m) => ({
-            id: m.id,
-            nombre: m.nombre,
-            unidad: m.unidad,
-            rubroId: m.rubro_id,
-          }))}
+          materiales={materiales}
         />
       )}
     </AppShell>

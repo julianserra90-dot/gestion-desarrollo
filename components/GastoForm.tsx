@@ -1144,8 +1144,7 @@ export default function GastoForm({
                 <ItemsDeMaterial
                   key={vuelta}
                   materiales={materiales}
-                  rubroId={rubroId}
-                  slug={slug}
+                  rubroNombre={rubros.find((r) => r.id === rubroId)?.nombre ?? ""}
                   iniciales={itemsTraidos ?? itemsIniciales}
                 />
               </div>

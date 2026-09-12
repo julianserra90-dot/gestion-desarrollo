@@ -7,6 +7,7 @@ import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getDetalles } from "@/lib/detalles";
 import { getCotizacionActual } from "@/lib/dolar";
+import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
 import {
   getPresupuestosConItems,
@@ -66,10 +67,7 @@ export default async function NuevoGastoPage({
 
   // El catálogo de materiales, para el detalle de la factura. Es común a todas
   // las obras, igual que el de proveedores.
-  const { data: materiales } = await supabase
-    .from("materiales")
-    .select("id, nombre, unidad, rubro_id")
-    .order("nombre");
+  const materiales = await getMaterialesCatalogo();
 
   const cotizacion = await getCotizacionActual();
   const caja = await getCaja(obra.id);
@@ -127,12 +125,7 @@ export default async function NuevoGastoPage({
           cotizacion={cotizacion?.promedio ?? null}
           inicioObra={obra.fecha_inicio}
           detallesPredefinidos={detallesPredefinidos}
-          materiales={(materiales ?? []).map((m) => ({
-            id: m.id,
-            nombre: m.nombre,
-            unidad: m.unidad,
-            rubroId: m.rubro_id,
-          }))}
+          materiales={materiales}
         />
       )}
     </AppShell>

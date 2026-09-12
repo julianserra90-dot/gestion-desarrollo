@@ -48,7 +48,7 @@ export type MaterialCreado = {
   id: string;
   nombre: string;
   unidad: string;
-  rubroId: string | null;
+  rubroNombre: string | null;
 };
 
 /**
@@ -61,7 +61,7 @@ export type MaterialCreado = {
 export async function crearMaterialDesdeGasto(
   nombre: string,
   unidad: string,
-  rubroId: string | null
+  rubroNombre: string | null
 ): Promise<{ ok: true; material: MaterialCreado } | { ok: false; error: string }> {
   const limpio = nombre.trim();
   if (!limpio) return { ok: false, error: "Poné el nombre del material." };
@@ -71,9 +71,22 @@ export async function crearMaterialDesdeGasto(
 
   const supabase = await createClient();
 
+  // El catálogo apunta a los rubros de la plantilla (obra_id nulo), no al de
+  // la obra desde la que se carga: se busca el de la plantilla por nombre.
+  let rubroId: string | null = null;
+  if (rubroNombre) {
+    const { data: plantilla } = await supabase
+      .from("rubros")
+      .select("id")
+      .is("obra_id", null)
+      .eq("nombre", rubroNombre)
+      .maybeSingle();
+    rubroId = plantilla?.id ?? null;
+  }
+
   const { data: creado, error } = await supabase
     .from("materiales")
-    .insert({ nombre: limpio, unidad, rubro_id: rubroId || null })
+    .insert({ nombre: limpio, unidad, rubro_id: rubroId })
     .select("id, nombre, unidad, rubro_id")
     .single();
 
@@ -85,7 +98,7 @@ export async function crearMaterialDesdeGasto(
         id: creado.id,
         nombre: creado.nombre,
         unidad: creado.unidad,
-        rubroId: creado.rubro_id,
+        rubroNombre: rubroId ? rubroNombre : null,
       },
     };
   }
@@ -93,7 +106,7 @@ export async function crearMaterialDesdeGasto(
   if (error?.code === "23505") {
     const { data: existente } = await supabase
       .from("materiales")
-      .select("id, nombre, unidad, rubro_id")
+      .select("id, nombre, unidad, rubros(nombre)")
       .eq("nombre", limpio)
       .maybeSingle();
     if (existente) {
@@ -103,7 +116,7 @@ export async function crearMaterialDesdeGasto(
           id: existente.id,
           nombre: existente.nombre,
           unidad: existente.unidad,
-          rubroId: existente.rubro_id,
+          rubroNombre: existente.rubros?.nombre ?? null,
         },
       };
     }

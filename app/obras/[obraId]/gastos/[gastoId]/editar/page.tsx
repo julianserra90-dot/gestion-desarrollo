@@ -6,6 +6,7 @@ import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
 import { getDetalles } from "@/lib/detalles";
 import { getCotizacionActual } from "@/lib/dolar";
+import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
 import {
   getPresupuestosConItems,
@@ -72,11 +73,8 @@ export default async function EditarGastoPage({
   ]);
 
   // El catálogo de materiales y el detalle ya cargado de este gasto.
-  const [{ data: materiales }, { data: items }] = await Promise.all([
-    supabase
-      .from("materiales")
-      .select("id, nombre, unidad, rubro_id")
-      .order("nombre"),
+  const [materiales, { data: items }] = await Promise.all([
+    getMaterialesCatalogo(),
     supabase
       .from("gasto_materiales")
       .select("material_id, cantidad, precio_unitario")
@@ -140,12 +138,7 @@ export default async function EditarGastoPage({
         cotizacion={cotizacion?.promedio ?? null}
         inicioObra={obra.fecha_inicio}
         detallesPredefinidos={detallesPredefinidos}
-        materiales={(materiales ?? []).map((m) => ({
-          id: m.id,
-          nombre: m.nombre,
-          unidad: m.unidad,
-          rubroId: m.rubro_id,
-        }))}
+        materiales={materiales}
         itemsIniciales={(items ?? []).map((i) => ({
           materialId: i.material_id,
           cantidad: String(i.cantidad),

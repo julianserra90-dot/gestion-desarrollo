@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { crearMaterialDesdeGasto } from "@/app/obras/[obraId]/materiales/actions";
+import SelectorMaterial, { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 import { UNIDADES } from "@/lib/unidades";
@@ -22,12 +23,7 @@ import { UNIDADES } from "@/lib/unidades";
  * repetidos: el server action los lee con `getAll` y los cruza por posición.
  */
 
-export type MaterialOpcion = {
-  id: string;
-  nombre: string;
-  unidad: string;
-  rubroId: string | null;
-};
+export type { MaterialOpcion } from "@/components/SelectorMaterial";
 
 export type ItemCargado = {
   materialId: string;
@@ -53,14 +49,18 @@ const VACIO: Record<Origen, string> = {
 
 export default function ItemsDeMaterial({
   materiales,
-  rubroId,
+  rubroNombre,
   iniciales = [],
   origen = "factura",
   onTotal,
 }: {
   materiales: MaterialOpcion[];
-  /** El rubro elegido en el formulario: sus materiales se ofrecen primero. */
-  rubroId: string;
+  /**
+   * El rubro elegido en el formulario, **por nombre**: el catálogo apunta a
+   * los rubros de la plantilla y el gasto al de su obra, y lo único que las
+   * dos filas comparten es el nombre. Su acordeón arranca abierto y primero.
+   */
+  rubroNombre: string;
   /** Ya no se usa: el alta se hace acá mismo. Queda para no romper llamadas. */
   slug?: string;
   iniciales?: ItemCargado[];
@@ -131,7 +131,7 @@ export default function ItemsDeMaterial({
     const resultado = await crearMaterialDesdeGasto(
       altaNombre,
       altaUnidad,
-      rubroId || null
+      rubroNombre || null
     ).catch(() => ({ ok: false as const, error: "No se pudo guardar el material." }));
 
     setGuardando(false);
@@ -172,12 +172,6 @@ export default function ItemsDeMaterial({
   useEffect(() => {
     onTotal?.(total);
   }, [total, onTotal]);
-
-  // Los del rubro que se está cargando arriba, el resto abajo: en una obra de
-  // albañilería no hay que bajar veinte materiales de plomería para llegar al
-  // ladrillo.
-  const delRubro = catalogo.filter((m) => rubroId && m.rubroId === rubroId);
-  const resto = catalogo.filter((m) => !rubroId || m.rubroId !== rubroId);
 
   const unidadDe = (id: string) =>
     catalogo.find((m) => m.id === id)?.unidad ?? "";
@@ -274,31 +268,15 @@ export default function ItemsDeMaterial({
 
           {filas.map((fila) => (
             <div key={fila.clave} style={renglon}>
-              <select
+              {/* Agrupado por rubro en acordeones, con el del gasto abierto:
+                  el catálogo entero en una lista se hacía infinito. */}
+              <SelectorMaterial
                 name="item_material"
+                materiales={catalogo}
+                rubroNombre={rubroNombre}
                 value={fila.materialId}
-                onChange={(e) => cambiar(fila.clave, "materialId", e.target.value)}
-                required
-                style={ui.input}
-              >
-                <option value="">Elegí el material</option>
-                {delRubro.length > 0 && (
-                  <optgroup label="De este rubro">
-                    {delRubro.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.nombre}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label={delRubro.length > 0 ? "Otros" : "Materiales"}>
-                  {resto.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nombre}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+                onChange={(id) => cambiar(fila.clave, "materialId", id)}
+              />
 
               <span style={conUnidad}>
                 <input

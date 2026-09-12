@@ -817,6 +817,26 @@ Ojo con los server actions: viven en `materiales/actions.ts` (compartidos) pero
 formularios. Volver al resumen dejaría el "listo, se guardó" sin mostrar qué
 cambió.
 
+**Materiales y rubros se cruzan por nombre.** El catálogo de materiales es
+común y su `rubro_id` apunta a los rubros de la **plantilla** (`obra_id` nulo);
+un gasto apunta al rubro de su obra, que es otra fila con otro id. Durante un
+tiempo el "De este rubro" del desplegable comparaba ids y nunca coincidía, y
+el alta desde el gasto le pegaba al material el rubro de la obra (los dejaba en
+"Sin rubro" en el catálogo; la migración `materiales_rubro_de_plantilla` los
+enderezó). Ahora `getMaterialesCatalogo` (`lib/materiales.ts`) trae cada
+material con el **nombre** de su rubro, los formularios pasan el rubro del
+gasto por nombre, y el alta busca el rubro de la plantilla por nombre antes de
+insertar.
+
+**El desplegable de material es propio** (`SelectorMaterial`): un `<select>`
+nativo no pliega grupos y con el catálogo entero se hacía infinito. Cada rubro
+es un acordeón; el del gasto va primero, en negrita y abierto, los demás
+cerrados pero a mano —una compra de albañilería puede traer un material de
+impermeabilización—. Arriba un buscador que mira en todos los rubros y abre
+los que tienen resultado. Manda el id por un input oculto `item_material`, así
+el server action lee lo mismo de siempre. Al cambiar el rubro arriba, vuelve a
+arrancar con ése abierto (ajuste de estado durante el render, no en un efecto).
+
 **El alta desde el gasto no sale del formulario.** "Cargar un material nuevo
 al catálogo" en `ItemsDeMaterial` era un enlace al catálogo (en otra pestaña) y
 se perdía el gasto a medio cargar. Ahora abre un panel ahí mismo —nombre y
@@ -824,7 +844,7 @@ unidad— que llama a `crearMaterialDesdeGasto`, un server action que **devuelve
 el material en vez de redirigir**; el componente lo suma a su catálogo en
 estado y lo deja elegido en la primera fila sin material (o en una fila nueva).
 El material queda con el rubro del gasto, para que la próxima vez aparezca en
-"De este rubro". Si el nombre ya existía, se devuelve ese. Dos cuidados: los
+su acordeón. Si el nombre ya existía, se devuelve ese. Dos cuidados: los
 botones del panel son `type="button"` y el Enter en el nombre se frena, porque
 un Enter suelto mandaría el gasto entero.
 
