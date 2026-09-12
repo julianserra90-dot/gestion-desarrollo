@@ -30,11 +30,21 @@ function leerCaja(formData: FormData, esAjuste: boolean) {
   const manual = formData.get("cotizacion_manual") === "on";
   const valor = Number(formData.get("cotizacion_valor") ?? 0);
 
+  // El gasto es en pesos pero se paga con los dólares de la cuenta: viene el
+  // monto en pesos y los dólares se calculan al cambio, en `resolverMontos`,
+  // que es donde se conoce la cotización.
+  const pesosEnDolares = usarCaja
+    ? Number(formData.get("caja_pesos_en_dolares") ?? 0) || 0
+    : 0;
+
   return {
     usarCaja,
     cotizacionManual: manual && Number.isFinite(valor) && valor > 0 ? valor : null,
-    pedidoArs: usarCaja ? Number(formData.get("caja_ars") ?? 0) || 0 : 0,
-    pedidoUsd: usarCaja ? Number(formData.get("caja_usd") ?? 0) || 0 : 0,
+    pesosEnDolares,
+    pedidoArs:
+      usarCaja && pesosEnDolares <= 0 ? Number(formData.get("caja_ars") ?? 0) || 0 : 0,
+    pedidoUsd:
+      usarCaja && pesosEnDolares <= 0 ? Number(formData.get("caja_usd") ?? 0) || 0 : 0,
   };
 }
 
@@ -76,11 +86,11 @@ async function resolverMontos(
     };
   }
 
-  const cotizacion =
+  let cotizacion =
     caja.cotizacionManual ?? (await getCotizacionDeFecha(fecha));
 
   // Sin cotización no hay forma de saber cuántos pesos son esos dólares.
-  if (caja.pedidoUsd > 0 && !cotizacion) {
+  if ((caja.pedidoUsd > 0 || caja.pesosEnDolares > 0) && !cotizacion) {
     return {
       ok: false,
       error:
@@ -88,9 +98,22 @@ async function resolverMontos(
     };
   }
 
+  // Pesos pagados con dólares: los dólares salen de dividir por el cambio, al
+  // centavo, y el cambio se recalcula desde ahí para que el gasto quede
+  // exactamente en los pesos cargados: el papel dice pesos, no 9.993,85.
+  let pedidoUsd = caja.pedidoUsd;
+  const enPesos = caja.pesosEnDolares > 0;
+  if (enPesos && cotizacion) {
+    pedidoUsd = centavos(caja.pesosEnDolares / cotizacion);
+    if (pedidoUsd <= 0) {
+      return { ok: false, error: "El monto en pesos es demasiado chico para descontar dólares." };
+    }
+    cotizacion = caja.pesosEnDolares / pedidoUsd;
+  }
+
   const reparto = repartirPago({
     pedidoArs: caja.pedidoArs,
-    pedidoUsd: caja.pedidoUsd,
+    pedidoUsd,
     disponibleArs: disponibles.ars,
     disponibleUsd: disponibles.usd,
     cotizacion,
@@ -108,8 +131,10 @@ async function resolverMontos(
     ars: reparto.total,
     usd: cotizacion ? centavos(reparto.total / cotizacion) : null,
     cotizacion,
-    // Se guarda como cargado en dólares sólo si se pagó enteramente con dólares.
-    moneda: caja.pedidoUsd > 0 && caja.pedidoArs === 0 ? "USD" : "ARS",
+    // Se guarda como cargado en dólares sólo si se pagó enteramente con
+    // dólares. Pesos pagados con dólares es un gasto en pesos: el papel dice
+    // pesos, aunque de la cuenta hayan salido dólares.
+    moneda: !enPesos && pedidoUsd > 0 && caja.pedidoArs === 0 ? "USD" : "ARS",
     reparto,
   };
 }

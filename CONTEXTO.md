@@ -158,6 +158,16 @@ define a cuánto se vendieron (cotización personalizada si fue otro cambio).
   todavía está en la cuenta. Vacía la cuenta, vuelve a dar cero.
 - Al pagar un gasto con la cuenta se elige cuánto sale de cada lado; si no
   alcanza, la diferencia la pone una socia, calculada sola.
+- **Un gasto en pesos pagado con los dólares de la cuenta.** En la cuenta
+  suele haber sólo dólares y el papel dice pesos. La casilla *El gasto es en
+  pesos: descontar dólares al cambio* (dentro de "Pagar con el dinero en
+  cuenta") pide el monto en pesos (`caja_pesos_en_dolares`) y los dólares
+  salen de dividir por el cambio, al centavo, en `resolverMontos`. Como
+  redondear los dólares desvía unos pesos (6,51 × 1.535 = 9.992,85), el cambio
+  que se guarda es el **implícito** (pesos ÷ dólares) para que el gasto quede
+  exactamente en los pesos cargados; la moneda del gasto queda en **ARS**
+  aunque de la cuenta hayan salido dólares. Si los dólares no alcanzan, el
+  resto lo pone una socia, como siempre.
 
 **Aporte de todas las socias a la vez.** Cuando la obra pide plata la suelen
 poner todas el mismo día, así que el desplegable de empresa ofrece "Ambas

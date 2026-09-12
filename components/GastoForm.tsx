@@ -307,6 +307,11 @@ export default function GastoForm({
   const [cajaUsd, setCajaUsd] = useState(
     gasto && Number(gasto.caja_usd) > 0 ? String(gasto.caja_usd) : ""
   );
+  // El gasto es en pesos pero en la cuenta hay dólares: se carga el monto en
+  // pesos y los dólares que salen se calculan al cambio, en vez de hacer la
+  // división a mano.
+  const [pesosConDolares, setPesosConDolares] = useState(false);
+  const [pesosEnDolares, setPesosEnDolares] = useState("");
   const [cotizManual, setCotizManual] = useState(gasto?.cotizacion_manual ?? false);
   const [cotizValor, setCotizValor] = useState(
     gasto?.cotizacion_manual ? String(gasto.cotizacion ?? "") : ""
@@ -338,15 +343,38 @@ export default function GastoForm({
   // Lo que se carga es cuánto se quiere pagar con la cuenta, y eso define el
   // gasto. Si el saldo no llega, la cuenta pone lo que tiene y la diferencia
   // queda a cargo de una socia: se calcula sola, no se tipea.
-  const pedidoArs = pagaCaja ? Number(cajaArs) || 0 : 0;
-  const pedidoUsd = pagaCaja ? Number(cajaUsd) || 0 : 0;
+  // Pesos pagados con dólares: los dólares salen de dividir por el cambio, al
+  // centavo, y el cambio efectivo se recalcula desde ahí para que el gasto
+  // quede exactamente en los pesos cargados (el papel dice pesos).
+  const modoPesosConDolares = pagaCaja && pesosConDolares;
+  const pesosPedidos = modoPesosConDolares ? Number(pesosEnDolares) || 0 : 0;
+  const usdParaPesos =
+    pesosPedidos > 0 && cotizEfectiva
+      ? Math.round((pesosPedidos / cotizEfectiva) * 100) / 100
+      : 0;
+
+  // El cambio con que se valúan los dólares del gasto: el efectivo, o el
+  // implícito cuando se cargaron pesos (así el resumen muestra los pesos
+  // exactos y no 9.992,85 por el redondeo al centavo de los dólares).
+  const cambioDelGasto =
+    modoPesosConDolares && usdParaPesos > 0 ? pesosPedidos / usdParaPesos : cotizEfectiva;
+
+  const pedidoArs = pagaCaja && !modoPesosConDolares ? Number(cajaArs) || 0 : 0;
+  const pedidoUsd = pagaCaja
+    ? modoPesosConDolares
+      ? usdParaPesos
+      : Number(cajaUsd) || 0
+    : 0;
 
   const pago = repartirPago({
     pedidoArs,
     pedidoUsd,
     disponibleArs: dispArs,
     disponibleUsd: dispUsd,
-    cotizacion: cotizEfectiva,
+    cotizacion:
+      modoPesosConDolares && usdParaPesos > 0
+        ? pesosPedidos / usdParaPesos
+        : cotizEfectiva,
   });
 
   // Sin la cuenta, el monto se carga a mano como siempre.
@@ -617,6 +645,35 @@ export default function GastoForm({
                     Eso es el gasto: no hace falta repetir el monto abajo.
                   </span>
 
+                  {/* El gasto es en pesos y en la cuenta hay dólares: se
+                      carga el monto en pesos y los dólares que salen se
+                      calculan al cambio, en vez de dividir a mano. */}
+                  <label style={checkboxFila}>
+                    <input
+                      type="checkbox"
+                      checked={pesosConDolares}
+                      onChange={(e) => setPesosConDolares(e.target.checked)}
+                    />
+                    <span>El gasto es en pesos: descontar dólares al cambio</span>
+                  </label>
+
+                  {modoPesosConDolares ? (
+                    <label style={field}>
+                      <span style={labelCampo}>Pesos del gasto</span>
+                      <InputMonto
+                        name="caja_pesos_en_dolares"
+                        value={pesosEnDolares}
+                        onChange={setPesosEnDolares}
+                        required
+                        style={ui.input}
+                      />
+                      <span style={ayudaCampo}>
+                        {usdParaPesos > 0 && cotizEfectiva
+                          ? `Se descuentan ${formatUSD(usdParaPesos)} de la cuenta al cambio de ${formatMoney(cotizEfectiva)}. Disponible: ${formatUSD(Math.max(dispUsd, 0))}.`
+                          : `Disponible: ${formatUSD(Math.max(dispUsd, 0))}.`}
+                      </span>
+                    </label>
+                  ) : (
                   <div style={grid}>
                     <label style={field}>
                       <span style={labelCampo}>Pesos de la cuenta</span>
@@ -643,10 +700,11 @@ export default function GastoForm({
                         Disponible: {formatUSD(Math.max(dispUsd, 0))}
                         {pedidoUsd > 0 &&
                           cotizEfectiva &&
-                          ` · rinden ${formatMoney(pedidoUsd * cotizEfectiva)}`}
+                          ` · rinden ${formatMoney(pedidoUsd * (cambioDelGasto ?? 0))}`}
                       </span>
                     </label>
                   </div>
+                  )}
 
                   {/* La cotización sólo hace falta si hay dólares de por medio:
                       es lo que define cuántos pesos son. */}
@@ -1522,7 +1580,7 @@ export default function GastoForm({
                 <span>{formatUSD(pedidoUsd)} de la cuenta</span>
                 <span>
                   {cotizEfectiva
-                    ? formatMoney(pedidoUsd * cotizEfectiva)
+                    ? formatMoney(pedidoUsd * (cambioDelGasto ?? 0))
                     : "falta cotización"}
                 </span>
               </div>
