@@ -2,7 +2,6 @@ import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import Volver from "@/components/Volver";
 import { getObraPorSlug } from "@/lib/obras";
 import { TIPOS_DE_PROVEEDOR } from "@/lib/proveedores-tipos";
 import { createClient } from "@/lib/supabase/server";
@@ -103,7 +102,6 @@ export default async function ContratistasPage({
       <ObraHeader obra={obra} activeSection="presupuestos" ocultarNav />
 
       <section style={ui.sectionHeader}>
-        <Volver href={`/obras/${obra.slug}/presupuestos`}>Presupuestos</Volver>
         <p style={ui.eyebrow}>Situación económica</p>
         <h2 style={ui.pageTitle}>Contratistas y proveedores</h2>
         <p style={ui.subtitle}>

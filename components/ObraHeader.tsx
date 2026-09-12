@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Volver from "@/components/Volver";
 
 type Obra = {
   /** Identificador que va en la URL. */
@@ -80,6 +81,11 @@ export default function ObraHeader({
 
   return (
     <>
+      {/* El "← Volver" sale solo en toda pantalla que esté adentro de una
+          solapa (fichas, formularios, detalles): sin él, salir de cualquiera
+          era volver a entrar por el menú. */}
+      <Volver />
+
       {/* Sólo la identidad de la obra. "Editar obra" y "Volver a obras"
           viven en la barra lateral, que está en todas las pantallas: acá se
           repetían en cada una. */}

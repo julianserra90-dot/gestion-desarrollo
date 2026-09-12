@@ -4,7 +4,6 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import TablaGastosRubro, { type FilaGastoRubro } from "@/components/TablaGastosRubro";
 import * as ui from "@/components/ui";
-import Volver from "@/components/Volver";
 import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { getPresupuestosDeObra } from "@/lib/presupuestos";
@@ -94,7 +93,6 @@ export default async function RubroDetalle({
         {/* "Balance" y no "Economía": es el nombre de la solapa que queda
             marcada al llegar, y así todas las vueltas a esa pantalla se
             llaman igual. */}
-        <Volver href={`/obras/${obra.slug}`}>Balance</Volver>
         <p style={ui.eyebrow}>En qué se gastó</p>
         <h2 style={ui.pageTitle}>{rubro.nombre}</h2>
       </section>

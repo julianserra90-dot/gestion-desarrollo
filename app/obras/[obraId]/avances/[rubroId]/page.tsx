@@ -4,7 +4,6 @@ import CargarAvanceForm from "@/components/CargarAvanceForm";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import Volver from "@/components/Volver";
 import { getCargasDeRubro } from "@/lib/avances";
 import { estadoDe } from "@/lib/estado-avance";
 import { formatDate } from "@/lib/format";
@@ -58,7 +57,6 @@ export default async function AvanceDeRubroPage({
     >
       <ObraHeader obra={obra} activeSection="avances" ocultarNav />
 
-      <Volver href={`/obras/${obra.slug}/avances`}>Avances</Volver>
 
       <section style={cabecera}>
         <div>

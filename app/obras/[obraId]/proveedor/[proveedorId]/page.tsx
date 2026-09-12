@@ -5,7 +5,6 @@ import TablaPagosProveedor, {
   type FilaPagoProveedor,
 } from "@/components/TablaPagosProveedor";
 import * as ui from "@/components/ui";
-import Volver from "@/components/Volver";
 import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -105,7 +104,6 @@ export default async function ProveedorDetalle({
       <ObraHeader obra={obra} activeSection="gastos" ocultarNav />
 
       <section style={ui.sectionHeader}>
-        <Volver href={`/obras/${obra.slug}/gastos`}>Gastos</Volver>
         <p style={ui.eyebrow}>{proveedor.tipo}</p>
         <h2 style={ui.pageTitle}>{proveedor.nombre}</h2>
         {ficha && <p style={ui.subtitle}>{ficha}</p>}

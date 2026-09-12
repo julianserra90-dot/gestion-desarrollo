@@ -1,28 +1,63 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 /**
- * El "volver" de las pantallas de detalle, siempre arriba del título.
+ * El "← Volver" de toda pantalla que está adentro de una solapa: fichas,
+ * formularios, catálogos, detalles.
  *
- * A estas pantallas se entra desde otra —un mes del flujo, un rubro, un
- * proveedor— y no están en las solapas, así que salir dependía del botón del
- * navegador. Cada una lo resolvía a su manera: un botón a mitad de página, una
- * nota al pie, o nada. Estando siempre en el mismo lugar no hay que buscarlo.
+ * Sin props sale solo, desde la cabecera de la obra: si la URL es más honda
+ * que `/obras/<slug>/<solapa>`, hay adónde volver. Vuelve a la pantalla
+ * anterior, que es lo que uno espera —una ficha abierta desde Materiales
+ * vuelve a Materiales, abierta desde Gastos vuelve a Gastos—. Cuando la
+ * anterior es un formulario que acaba de guardar (se llegó por su
+ * redirección) o no hay historial, va a la solapa: volver al formulario recién
+ * enviado no es volver.
  *
- * Dice **adónde** vuelve, no "volver" a secas: el nombre de la pantalla de
- * origen es lo que confirma que uno no se va a ir a cualquier lado.
+ * Con `href` es un enlace fijo que dice adónde va ("← Balance"): para las
+ * pantallas de primer nivel que igual tienen un origen claro, como Gastos
+ * cuando se entra por una tarjeta del Balance.
  */
 export default function Volver({
   href,
   children,
 }: {
-  href: string;
-  children: ReactNode;
+  href?: string;
+  children?: ReactNode;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  if (href) {
+    return (
+      <Link href={href} style={enlace}>
+        ← {children ?? "Volver"}
+      </Link>
+    );
+  }
+
+  const partes = pathname.split("/").filter(Boolean);
+  if (partes[0] !== "obras" || partes.length <= 3) return null;
+
+  const solapa = "/" + partes.slice(0, 3).join("/");
+
+  const volver = () => {
+    const anterior = document.referrer;
+    const esDeLaApp = anterior.startsWith(window.location.origin);
+    const esFormulario = /\/(nuevo|editar)(\?|$)/.test(anterior);
+    if (esDeLaApp && !esFormulario && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(solapa);
+    }
+  };
+
   return (
-    <Link href={href} style={enlace}>
-      ← {children}
-    </Link>
+    <button type="button" onClick={volver} style={boton}>
+      ← Volver
+    </button>
   );
 }
 
@@ -32,4 +67,13 @@ const enlace = {
   fontSize: "14px",
   textDecoration: "none",
   marginBottom: "12px",
+};
+
+const boton = {
+  ...enlace,
+  background: "none",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  fontFamily: "inherit",
 };

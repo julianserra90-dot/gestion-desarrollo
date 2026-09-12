@@ -3,7 +3,6 @@ import GraficoBarras from "@/components/GraficoBarras";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import Volver from "@/components/Volver";
 import { formatDate, formatMoney, formatMoneyEje } from "@/lib/format";
 import { esClaveDeMes, nombreMes, rangoDeMes } from "@/lib/meses";
 import { getObraPorSlug } from "@/lib/obras";
@@ -169,7 +168,6 @@ export default async function MesDeFlujo({
 
       <section style={ui.sectionHeader}>
         {/* Sin eyebrow: decía "Flujo" y el enlace de arriba ya lo dice. */}
-        <Volver href={`/obras/${obra.slug}/flujo`}>Flujo</Volver>
         <h2 style={ui.pageTitle}>{nombreMes(mes)}</h2>
       </section>
 

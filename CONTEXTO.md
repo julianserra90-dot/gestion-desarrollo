@@ -835,6 +835,15 @@ Ingresos dicen "Ver" en los gastos (y "Editar" en los ingresos, que no tienen
 ficha), y las compras de Materiales también. La edición se alcanza sólo desde
 el botón de la ficha.
 
+**El "← Volver" sale solo.** `Volver` sin props, puesto en `ObraHeader`, se
+muestra en toda pantalla más honda que `/obras/<slug>/<solapa>` (fichas,
+formularios, catálogos, detalles) y vuelve a la pantalla anterior; si la
+anterior es un formulario que acaba de guardar, o no hay historial, va a la
+solapa. Antes cada pantalla de detalle ponía el suyo con destino fijo
+(`<Volver href>` con el nombre de adónde va), que sigue existiendo para las de
+primer nivel con un origen claro —Gastos entrando por una tarjeta del
+Balance— pero se sacó de las hondas para no tener dos.
+
 **Un gasto entre las socias facturado en varias facturas** (`gasto_facturas`).
 El corralón parte una compra grande en dos facturas, una a nombre de cada
 socia, con montos iguales o los que diga cada papel, para que cada una
