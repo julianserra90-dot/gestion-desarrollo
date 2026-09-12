@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import * as ui from "@/components/ui";
-import { formatMoney, formatUSD } from "@/lib/format";
+import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 
 type Socio = { empresa_id: string; nombre: string; porcentaje: number };
 
@@ -50,6 +50,16 @@ export type IngresoExistente = {
   comprobante_nombre: string | null;
 };
 
+/** La cuota de la agenda que este ingreso viene a cumplir, si es el caso. */
+export type CuotaPrevista = {
+  id: string;
+  empresaId: string;
+  fechaPrevista: string;
+  detalle: string;
+  monto: number;
+  moneda: string;
+};
+
 export default function IngresoForm({
   action,
   obraId,
@@ -59,6 +69,7 @@ export default function IngresoForm({
   saldosCaja,
   error,
   ingreso,
+  previsto,
   cotizacion,
   textoBoton = "Guardar ingreso",
 }: {
@@ -73,18 +84,28 @@ export default function IngresoForm({
   error?: string;
   /** Si viene, el formulario edita ese ingreso en vez de crear uno nuevo. */
   ingreso?: IngresoExistente;
+  /** Si viene, el ingreso nuevo cumple esa cuota: todo llega precargado. */
+  previsto?: CuotaPrevista;
   /** Dólar blue de hoy, sólo para la vista previa de la conversión. */
   cotizacion?: number | null;
   textoBoton?: string;
 }) {
   // Al editar se muestra el número tal como se cargó: si el ingreso se ingresó
-  // en dólares, se ve en dólares, no su equivalente en pesos.
+  // en dólares, se ve en dólares, no su equivalente en pesos. Al cumplir una
+  // cuota prevista se arranca con lo previsto, que casi siempre es lo que
+  // entró.
   const [monto, setMonto] = useState(
-    ingreso ? String(ingreso.moneda === "USD" ? (ingreso.monto_usd ?? "") : ingreso.monto) : ""
+    ingreso
+      ? String(ingreso.moneda === "USD" ? (ingreso.monto_usd ?? "") : ingreso.monto)
+      : previsto
+        ? String(previsto.monto)
+        : ""
   );
-  const [moneda, setMoneda] = useState(ingreso?.moneda ?? "ARS");
+  const [moneda, setMoneda] = useState(ingreso?.moneda ?? previsto?.moneda ?? "ARS");
   const [origen, setOrigen] = useState(ingreso?.origen ?? DE_SOCIA);
-  const [empresaId, setEmpresaId] = useState(ingreso?.empresa_id ?? "");
+  const [empresaId, setEmpresaId] = useState(
+    ingreso?.empresa_id ?? previsto?.empresaId ?? ""
+  );
   const [inversorId, setInversorId] = useState(ingreso?.inversor_id ?? "");
   const [reemplazar, setReemplazar] = useState(false);
   const [montosDiferentes, setMontosDiferentes] = useState(false);
@@ -135,9 +156,20 @@ export default function IngresoForm({
       <input type="hidden" name="obra_id" value={obraId} />
       <input type="hidden" name="slug" value={slug} />
       {ingreso && <input type="hidden" name="ingreso_id" value={ingreso.id} />}
+      {previsto && <input type="hidden" name="previsto_id" value={previsto.id} />}
 
       <div>
         {error && <p style={errorBox}>{error}</p>}
+
+        {/* Lo que se está cumpliendo, para no perder de vista que este
+            ingreso va a quedar enganchado a esa cuota de la agenda. */}
+        {previsto && (
+          <p style={avisoPrevisto}>
+            Cumple <strong>{previsto.detalle}</strong>, prevista para el{" "}
+            {formatDate(previsto.fechaPrevista)}. Si entró otro monto, corregilo
+            acá: la agenda muestra lo que entró de verdad.
+          </p>
+        )}
 
         <div style={ui.panel}>
           <div style={grid}>
@@ -146,7 +178,7 @@ export default function IngresoForm({
               <input
                 type="date"
                 name="fecha"
-                defaultValue={ingreso?.fecha ?? ""}
+                defaultValue={ingreso?.fecha ?? previsto?.fechaPrevista ?? ""}
                 required
                 style={ui.input}
               />
@@ -257,7 +289,7 @@ export default function IngresoForm({
               <input
                 type="text"
                 name="concepto"
-                defaultValue={ingreso?.concepto ?? ""}
+                defaultValue={ingreso?.concepto ?? previsto?.detalle ?? ""}
                 placeholder={
                   esDeSocia
                     ? "Ej: Fondos para cubrir gastos de agosto"
@@ -634,4 +666,13 @@ const errorBox = {
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",
+};
+
+const avisoPrevisto = {
+  border: "1px solid #e5e5e5",
+  padding: "14px",
+  marginBottom: "20px",
+  fontSize: "14px",
+  color: "#555555",
+  lineHeight: 1.6,
 };

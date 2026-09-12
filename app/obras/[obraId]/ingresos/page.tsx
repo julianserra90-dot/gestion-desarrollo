@@ -186,9 +186,18 @@ export default async function IngresosPage({
       <div style={ui.toolbar}>
         <h3 style={ui.sectionTitle}>Movimientos</h3>
 
-        <Link href={`/obras/${obra.slug}/ingresos/nuevo`} style={ui.button}>
-          Nuevo ingreso
-        </Link>
+        <div style={botones}>
+          {/* La agenda es lo que todavía no entró; acá está lo que sí. */}
+          <Link
+            href={`/obras/${obra.slug}/ingresos/agenda`}
+            style={ui.secondaryButton}
+          >
+            Agenda de ingresos
+          </Link>
+          <Link href={`/obras/${obra.slug}/ingresos/nuevo`} style={ui.button}>
+            Nuevo ingreso
+          </Link>
+        </div>
       </div>
 
       <section style={ui.panel}>
@@ -203,3 +212,8 @@ export default async function IngresosPage({
     </AppShell>
   );
 }
+
+const botones = {
+  display: "flex",
+  gap: "12px",
+};

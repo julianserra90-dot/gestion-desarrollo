@@ -75,6 +75,8 @@ function leerFormulario(formData: FormData) {
     moneda: String(formData.get("moneda") ?? "ARS"),
     observaciones: String(formData.get("observaciones") ?? "").trim(),
     comprobante: formData.get("comprobante"),
+    // La cuota de la agenda que este ingreso cumple, si se llegó desde ahí.
+    previstoId: String(formData.get("previsto_id") ?? "") || null,
   };
 }
 
@@ -211,6 +213,9 @@ export async function crearIngreso(formData: FormData) {
       comprobante_nombre: archivo?.nombre ?? null,
       comprobante_mime: archivo?.mimeType ?? null,
       comprobante_tamano: archivo?.tamano ?? null,
+      // Una cuota prevista es de una sola empresa: se engancha sólo cuando el
+      // ingreso también lo es. Repartido entre todas no hay a cuál colgarlo.
+      previsto_id: campos.sonTodas ? null : campos.previstoId,
     };
   });
 

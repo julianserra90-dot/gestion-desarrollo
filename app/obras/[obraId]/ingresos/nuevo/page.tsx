@@ -4,6 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
+import { getIngresoPrevisto } from "@/lib/ingresos-previstos";
 import { getInversores } from "@/lib/inversores";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
@@ -15,10 +16,10 @@ export default async function NuevoIngresoPage({
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; previsto?: string }>;
 }) {
   const { obraId } = await params;
-  const { error } = await searchParams;
+  const { error, previsto: previstoId } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -27,15 +28,31 @@ export default async function NuevoIngresoPage({
 
   const supabase = await createClient();
 
-  const [{ data: socios }, cotizacion, caja, inversores] = await Promise.all([
-    supabase
-      .from("obra_socios")
-      .select("empresa_id, porcentaje, empresas(nombre)")
-      .eq("obra_id", obra.id),
-    getCotizacionActual(),
-    getCaja(obra.id),
-    getInversores(obra.id),
-  ]);
+  const [{ data: socios }, cotizacion, caja, inversores, previsto] =
+    await Promise.all([
+      supabase
+        .from("obra_socios")
+        .select("empresa_id, porcentaje, empresas(nombre)")
+        .eq("obra_id", obra.id),
+      getCotizacionActual(),
+      getCaja(obra.id),
+      getInversores(obra.id),
+      // Desde la agenda se llega con la cuota a cumplir: se precarga todo.
+      previstoId ? getIngresoPrevisto(obra.id, previstoId) : null,
+    ]);
+
+  // Una cuota que ya entró no se cumple dos veces: se cae al alta común.
+  const cuota =
+    previsto && !previsto.ingreso
+      ? {
+          id: previsto.id,
+          empresaId: previsto.empresaId,
+          fechaPrevista: previsto.fechaPrevista,
+          detalle: previsto.detalle,
+          monto: previsto.monto,
+          moneda: previsto.moneda,
+        }
+      : undefined;
 
   const listaSocios = (socios ?? [])
     .map((s) => ({
@@ -72,6 +89,7 @@ export default async function NuevoIngresoPage({
           inversores={inversores}
           saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
           error={error}
+          previsto={cuota}
           cotizacion={cotizacion?.promedio ?? null}
         />
       )}

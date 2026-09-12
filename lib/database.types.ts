@@ -656,6 +656,7 @@ export type Database = {
           obra_id: string
           observaciones: string | null
           origen: string
+          previsto_id: string | null
         }
         Insert: {
           aportante?: string | null
@@ -677,6 +678,7 @@ export type Database = {
           obra_id: string
           observaciones?: string | null
           origen: string
+          previsto_id?: string | null
         }
         Update: {
           aportante?: string | null
@@ -698,6 +700,7 @@ export type Database = {
           obra_id?: string
           observaciones?: string | null
           origen?: string
+          previsto_id?: string | null
         }
         Relationships: [
           {
@@ -737,6 +740,84 @@ export type Database = {
           },
           {
             foreignKeyName: "ingresos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_previsto_id_fkey"
+            columns: ["previsto_id"]
+            isOneToOne: false
+            referencedRelation: "ingresos_previstos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingresos_previstos: {
+        Row: {
+          creado_en: string
+          detalle: string
+          empresa_id: string
+          fecha_prevista: string
+          id: string
+          moneda: string
+          monto: number
+          numero_cuota: number
+          observaciones: string | null
+          obra_id: string
+          serie_id: string
+        }
+        Insert: {
+          creado_en?: string
+          detalle: string
+          empresa_id: string
+          fecha_prevista: string
+          id?: string
+          moneda?: string
+          monto: number
+          numero_cuota: number
+          observaciones?: string | null
+          obra_id: string
+          serie_id?: string
+        }
+        Update: {
+          creado_en?: string
+          detalle?: string
+          empresa_id?: string
+          fecha_prevista?: string
+          id?: string
+          moneda?: string
+          monto?: number
+          numero_cuota?: number
+          observaciones?: string | null
+          obra_id?: string
+          serie_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingresos_previstos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingresos_previstos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "ingresos_previstos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "ingresos_previstos_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
             referencedRelation: "obras"

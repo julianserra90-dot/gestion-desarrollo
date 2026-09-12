@@ -161,6 +161,31 @@ y se borra por separado; el comprobante, si lo hubo, se sube una vez por
 ingreso para que borrar uno no deje al otro sin archivo. La opción sólo está
 al crear: un ingreso guardado es de una sola empresa.
 
+**Agenda de ingresos** (botón al lado de *Nuevo ingreso*; ruta
+`ingresos/agenda`). Los aportes de las socias a veces vienen en cuotas de
+afuera —otro emprendimiento que se está cobrando y cuyas cuotas entran acá
+como aporte de las empresas— y los ingresos reales no dicen cuánto falta ni
+cuándo. La agenda es una capa de planificación encima: tabla
+`ingresos_previstos` (empresa, fecha prevista, monto en su moneda, detalle,
+serie y número de cuota), **sólo para socias** —los inversores y compradores
+tienen su compromiso total en su propia agenda y con eso alcanza—. Nada de
+esto toca la caja ni el balance: la plata cuenta recién cuando entra.
+
+Se cargan **en serie**: cantidad, monto habitual y primera fecha, y la lista
+se arma sola (una por mes, el 31 cae al último día del mes corto) con cada
+fila editable, porque lo normal es "11 de 4.000 y una de 6.000". El detalle no
+se escribe: es *Cuota Nº x*, con el concepto adelante si se puso. "Ambas
+empresas" reparte cada cuota en partes iguales y da una serie por empresa.
+
+**Cumplir una cuota es cargar el ingreso real** desde *Registrar ingreso* en
+la fila: abre el alta de ingreso con todo precargado y el ingreso guarda
+`previsto_id` (único: una cuota se cumple con un solo ingreso). La agenda
+cuenta lo ingresado por lo que entró de verdad, no por lo previsto —si la
+cuota de 4.000 entró como 3.800, faltan 200 aunque figure cumplida—. Borrar
+la cuota no borra el ingreso (`set null`), y borrar el ingreso deja la cuota
+pendiente otra vez. Estados: pendiente, vencida (pasó la fecha y no entró),
+ingresada.
+
 ### Rubros por obra
 Cada obra tiene el catálogo entero y **marca cuáles usa** (columna `activo`).
 Los desplegables ofrecen sólo los marcados. Desmarcar no borra: un rubro con
