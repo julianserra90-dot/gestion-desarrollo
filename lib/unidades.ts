@@ -25,6 +25,8 @@ export const UNIDADES = [
   "barra",
   "chapa",
   "rollo",
+  // El porcelanato se compra por caja (de tantos m²), no por pieza.
+  "caja",
   "global",
 ] as const;
 
