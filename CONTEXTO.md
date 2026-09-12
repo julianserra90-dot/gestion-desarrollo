@@ -815,8 +815,18 @@ elegir al cargar—, y una se consulta mientras la otra se edita.
 Ojo con los server actions: viven en `materiales/actions.ts` (compartidos) pero
 `rutaDeVuelta` apunta a **`materiales/catalogo`**, que es donde están los
 formularios. Volver al resumen dejaría el "listo, se guardó" sin mostrar qué
-cambió. Por lo mismo, los enlaces de `ItemsDeMaterial` ("cargar un material
-nuevo al catálogo") van a la solapa del catálogo y no a la sección.
+cambió.
+
+**El alta desde el gasto no sale del formulario.** "Cargar un material nuevo
+al catálogo" en `ItemsDeMaterial` era un enlace al catálogo (en otra pestaña) y
+se perdía el gasto a medio cargar. Ahora abre un panel ahí mismo —nombre y
+unidad— que llama a `crearMaterialDesdeGasto`, un server action que **devuelve
+el material en vez de redirigir**; el componente lo suma a su catálogo en
+estado y lo deja elegido en la primera fila sin material (o en una fila nueva).
+El material queda con el rubro del gasto, para que la próxima vez aparezca en
+"De este rubro". Si el nombre ya existía, se devuelve ese. Dos cuidados: los
+botones del panel son `type="button"` y el Enter en el nombre se frena, porque
+un Enter suelto mandaría el gasto entero.
 
 Sin precio cargado el costo va con guion y no con cero, que se leería como
 "salió gratis".

@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { crearMaterialDesdeGasto } from "@/app/obras/[obraId]/materiales/actions";
 import * as ui from "@/components/ui";
 import { formatMoney } from "@/lib/format";
+import { UNIDADES } from "@/lib/unidades";
 
 /**
  * El detalle de un gasto de materiales: qué se compró, cuánto y a cuánto.
@@ -53,7 +54,6 @@ const VACIO: Record<Origen, string> = {
 export default function ItemsDeMaterial({
   materiales,
   rubroId,
-  slug,
   iniciales = [],
   origen = "factura",
   onTotal,
@@ -61,7 +61,8 @@ export default function ItemsDeMaterial({
   materiales: MaterialOpcion[];
   /** El rubro elegido en el formulario: sus materiales se ofrecen primero. */
   rubroId: string;
-  slug: string;
+  /** Ya no se usa: el alta se hace acá mismo. Queda para no romper llamadas. */
+  slug?: string;
   iniciales?: ItemCargado[];
   origen?: Origen;
   /**
@@ -78,6 +79,19 @@ export default function ItemsDeMaterial({
   // La clave sube siempre, aunque se borren filas del medio: si se reusara el
   // índice, React confundiría una fila con otra al quitar una.
   const [proxima, setProxima] = useState(iniciales.length);
+
+  // El catálogo vive en estado porque el alta en línea lo agranda sin recargar
+  // la página: el material recién creado tiene que aparecer en el desplegable
+  // en el acto.
+  const [catalogo, setCatalogo] = useState(materiales);
+
+  // El alta de un material sin salir del formulario. Antes era un enlace al
+  // catálogo y se perdía el gasto a medio cargar.
+  const [altaAbierta, setAltaAbierta] = useState(false);
+  const [altaNombre, setAltaNombre] = useState("");
+  const [altaUnidad, setAltaUnidad] = useState<string>("un");
+  const [altaError, setAltaError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   /**
    * El "+" de una fila agrega la siguiente **abajo de ella**, no al final: se
@@ -105,6 +119,49 @@ export default function ItemsDeMaterial({
       previas.map((f) => (f.clave === clave ? { ...f, [campo]: valor } : f))
     );
 
+  /**
+   * Guarda el material y lo deja elegido: en la primera fila que todavía no
+   * tiene material, o en una fila nueva al final si todas tienen.
+   */
+  const guardarMaterial = async () => {
+    if (guardando) return;
+    setGuardando(true);
+    setAltaError(null);
+
+    const resultado = await crearMaterialDesdeGasto(
+      altaNombre,
+      altaUnidad,
+      rubroId || null
+    ).catch(() => ({ ok: false as const, error: "No se pudo guardar el material." }));
+
+    setGuardando(false);
+
+    if (!resultado.ok) {
+      setAltaError(resultado.error);
+      return;
+    }
+
+    const nuevo = resultado.material;
+    setCatalogo((previos) =>
+      previos.some((m) => m.id === nuevo.id) ? previos : [...previos, nuevo]
+    );
+
+    setFilas((previas) => {
+      const vacia = previas.find((f) => f.materialId === "");
+      if (vacia) {
+        return previas.map((f) =>
+          f.clave === vacia.clave ? { ...f, materialId: nuevo.id } : f
+        );
+      }
+      return [...previas, { clave: proxima, materialId: nuevo.id, cantidad: "", precio: "" }];
+    });
+    setProxima((n) => n + 1);
+
+    setAltaAbierta(false);
+    setAltaNombre("");
+    setAltaUnidad("un");
+  };
+
   const subtotal = (fila: Fila) =>
     (Number(fila.cantidad) || 0) * (Number(fila.precio) || 0);
 
@@ -119,26 +176,90 @@ export default function ItemsDeMaterial({
   // Los del rubro que se está cargando arriba, el resto abajo: en una obra de
   // albañilería no hay que bajar veinte materiales de plomería para llegar al
   // ladrillo.
-  const delRubro = materiales.filter((m) => rubroId && m.rubroId === rubroId);
-  const resto = materiales.filter((m) => !rubroId || m.rubroId !== rubroId);
+  const delRubro = catalogo.filter((m) => rubroId && m.rubroId === rubroId);
+  const resto = catalogo.filter((m) => !rubroId || m.rubroId !== rubroId);
 
   const unidadDe = (id: string) =>
-    materiales.find((m) => m.id === id)?.unidad ?? "";
+    catalogo.find((m) => m.id === id)?.unidad ?? "";
 
-  if (materiales.length === 0) {
-    return (
-      <p style={ui.note}>
-        Todavía no hay materiales en el catálogo. Cargalos en{" "}
-        <Link href={`/obras/${slug}/materiales/catalogo`} style={enlace}>
-          Materiales
-        </Link>{" "}
-        (solapa Obra) y después volvé acá.
-      </p>
-    );
-  }
+  // El panel de alta. Los botones son `type="button"` y el Enter se frena a
+  // mano: esto vive adentro del formulario del gasto, y un Enter suelto lo
+  // mandaría entero antes de tiempo.
+  const alta = altaAbierta ? (
+    <div style={panelAlta}>
+      <div style={camposAlta}>
+        <label style={campoAlta}>
+          <span style={etiquetaAlta}>Material nuevo</span>
+          <input
+            type="text"
+            value={altaNombre}
+            onChange={(e) => setAltaNombre(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void guardarMaterial();
+              }
+            }}
+            placeholder="Ej: Ladrillo común"
+            autoFocus
+            style={ui.input}
+          />
+        </label>
+        <label style={campoAlta}>
+          <span style={etiquetaAlta}>Unidad</span>
+          <select
+            value={altaUnidad}
+            onChange={(e) => setAltaUnidad(e.target.value)}
+            style={ui.input}
+          >
+            {UNIDADES.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {altaError && <p style={errorAlta}>{altaError}</p>}
+
+      <div style={accionesAlta}>
+        <button
+          type="button"
+          onClick={() => {
+            setAltaAbierta(false);
+            setAltaError(null);
+          }}
+          style={ui.secondaryButton}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => void guardarMaterial()}
+          disabled={guardando}
+          style={ui.button}
+        >
+          {guardando ? "Guardando…" : "Guardar material"}
+        </button>
+      </div>
+
+      {/* Queda en el catálogo de todas las obras, y con el rubro del gasto
+          para que la próxima vez aparezca arriba. */}
+      <span style={notaAlta}>
+        Se guarda en el catálogo, el mismo en todas las obras.
+      </span>
+    </div>
+  ) : null;
 
   return (
     <div style={contenedor}>
+      {catalogo.length === 0 && filas.length === 0 && (
+        <p style={ui.note}>
+          Todavía no hay materiales en el catálogo. Cargá el primero acá abajo.
+        </p>
+      )}
+
       {filas.length === 0 ? (
         <p style={ui.note}>{VACIO[origen]}</p>
       ) : (
@@ -263,18 +384,20 @@ export default function ItemsDeMaterial({
           </button>
         )}
 
-        {/* Se abre en otra pestaña a propósito: yendo y viniendo se perdería
-            el gasto a medio cargar. Al volver hay que recargar esta pantalla
-            para que el material nuevo aparezca en el desplegable. */}
-        <a
-          href={`/obras/${slug}/materiales/catalogo`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={enlaceChico}
-        >
-          Cargar un material nuevo al catálogo
-        </a>
+        {/* Abre el alta acá mismo: ir al catálogo y volver perdía el gasto
+            a medio cargar. */}
+        {!altaAbierta && (
+          <button
+            type="button"
+            onClick={() => setAltaAbierta(true)}
+            style={botonEnlace}
+          >
+            Cargar un material nuevo al catálogo
+          </button>
+        )}
       </div>
+
+      {alta}
     </div>
   );
 }
@@ -375,12 +498,57 @@ const botonQuitar = {
   fontSize: "15px",
 };
 
-const enlace = {
+// Un botón que se ve como el enlace que había antes: hace lo mismo que
+// aquél, sólo que sin irse de la pantalla.
+const botonEnlace = {
+  background: "none",
+  border: "none",
+  padding: 0,
   color: "#111111",
   textDecoration: "underline",
+  fontSize: "13px",
+  cursor: "pointer",
+  fontFamily: "inherit",
 };
 
-const enlaceChico = {
-  ...enlace,
+const panelAlta = {
+  border: "1px solid #dcdcdc",
+  borderRadius: "10px",
+  padding: "16px",
+  display: "grid",
+  gap: "12px",
+};
+
+const camposAlta = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)",
+  gap: "12px",
+};
+
+const campoAlta = {
+  display: "grid",
+  gap: "6px",
+  alignContent: "start" as const,
+};
+
+const etiquetaAlta = {
   fontSize: "13px",
+  color: "#555555",
+};
+
+const accionesAlta = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "10px",
+};
+
+const notaAlta = {
+  fontSize: "13px",
+  color: "#999999",
+};
+
+const errorAlta = {
+  margin: 0,
+  fontSize: "13px",
+  color: "#b91c1c",
 };
