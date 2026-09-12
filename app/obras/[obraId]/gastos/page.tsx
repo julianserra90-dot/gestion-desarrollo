@@ -47,7 +47,7 @@ export default async function GastosPage({
   const vista = VISTAS.find((v) => v === ver);
 
   const supabase = await createClient();
-  const [{ data: gastos }, { data: socias }] = await Promise.all([
+  const [{ data: gastos, error: errorGastos }, { data: socias }] = await Promise.all([
     supabase
       .from("gastos")
       .select(
@@ -80,6 +80,10 @@ export default async function GastosPage({
   const totalEfectivo = vigentes
     .filter((g) => g.tipo_pago === "Efectivo")
     .reduce((acc, g) => acc + Number(g.monto), 0);
+
+  // Un error de la consulta no puede pasar por "no hay gastos": se deja en el
+  // log del servidor, que es donde se lo va a buscar.
+  if (errorGastos) console.error("Listado de gastos:", errorGastos.message);
 
   const filas: GastoFila[] = lista.map((g) => ({
     id: g.id,

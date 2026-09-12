@@ -18,6 +18,11 @@
 --
 -- Un gasto de una sola factura sigue exactamente como estaba: sin filas acá.
 
+-- La versión anterior de esta migración (mismo número, distinto contenido)
+-- alcanzó a aplicarse en la base antes de descartarse: dejó una columna que
+-- no usa nada. Se limpia acá, y por eso este archivo lleva otro número.
+alter table gastos drop column if exists compra_de_gasto_id;
+
 create table gasto_facturas (
   id                   uuid primary key default gen_random_uuid(),
   gasto_id             uuid not null references gastos(id) on delete cascade,
