@@ -385,9 +385,9 @@ sin tener que cargar dos pagos. El centinela del desplegable es
 En este orden, todo a lo ancho y **sin párrafos explicativos**: las tarjetas en
 una línea (Total gastado · Facturado · En efectivo · Crédito fiscal · Dinero en
 cuenta · Resta pagar), el gráfico de torta, la ejecución presupuestaria en
-cuatro columnas, el **balance entre empresas** con su liquidación, y el
-**terreno** reducido a qué puso cada socia y —si el precio pactado no está
-saldado— cuánto le resta según su porcentaje.
+cuatro columnas, el **balance entre empresas** (aporte por moneda y
+diferencia), y el **terreno** reducido a qué puso cada socia y —si el precio
+pactado no está saldado— cuánto le resta según su porcentaje.
 
 La pantalla mostraba lo mismo varias veces: dos tablas de saldos, dos
 liquidaciones, y el desglose de la torta repetido en tarjetas. Se fue todo lo
@@ -445,56 +445,44 @@ hay efectivo que poner, entrando por Efectivo no hay crédito—; y sale **sólo
 llegar por una tarjeta** (`ver` presente), porque la solapa Gastos se abre para
 cargar y revisar movimientos, no para leer un resumen.
 
-Usa `repartirComprobantes` (`lib/comprobantes.ts`), el mismo cálculo puro que el
-balance entre empresas: los dos tienen que dar el mismo número, y sin filtrar
-nada el desglose es exactamente las columnas de comprobantes del Balance.
+Usa `repartirComprobantes` (`lib/comprobantes.ts`), un cálculo puro que antes
+compartía con el balance entre empresas; desde que el balance se simplificó,
+este desglose es el único lugar donde se ve lo facturado, lo efectivo y el
+crédito fiscal **por empresa**.
 
 El listado suma además el **total de lo que se está viendo** al lado del
 contador ("34 gastos de 36 · $ 43.250.000"). Deja afuera anulados y ajustes de
 saldo, igual que todos los totales de la app, así cuadra exacto con la tarjeta
 de la que se vino.
 
-#### La tabla "Balance entre empresas": tres bloques que no suman entre sí
-Las columnas contestan tres preguntas distintas sobre los mismos gastos, y por
-eso van agrupadas bajo un rótulo y separadas por una línea vertical: **sólo
-suman dentro de su bloque**.
+#### La tabla "Balance entre empresas": aporte por moneda y diferencia
+Cinco columnas: Empresa · Particip. · Aporte en dólares · Aporte en pesos ·
+Diferencia. **Nada se valúa**: lo que cada socia puso en pesos son pesos y lo
+que puso en dólares son dólares, como en el resto de la app. Antes eran nueve
+columnas en tres bloques (comprobantes, lo que puso, el reparto) con una
+liquidación sugerida abajo, y no se entendía cuál era el número que importaba.
 
-- **Comprobantes** (Facturado · Efectivo · Crédito fiscal): a nombre de quién
-  salió cada gasto. Toma el **monto entero** del gasto, no lo que salió del
-  bolsillo: la factura es por el total aunque una parte la haya cubierto el
-  dinero en cuenta —mismo criterio que el crédito fiscal, que computa el IVA
-  completo del comprobante—. El total de Facturado cuadra con la tarjeta
-  "Facturado" de arriba, y el de Efectivo con "En efectivo".
-- **Lo que puso** (De su bolsillo · Puso en cuenta · Ajustes · Total obra): de
-  dónde salió la plata. Los tres primeros suman **Total obra**, que es el
-  `pagado` de `obra_balance` y lo único que alimenta el saldo.
-- **El reparto** (Le corresponde · Saldo).
+**Qué cuenta como aporte** de una socia, en la moneda en que salió: lo que pagó
+de su bolsillo (el gasto menos lo que salió de la cuenta; un gasto cargado en
+dólares y pagado sin la cuenta salió en dólares, con parte de la cuenta la
+diferencia la puso en pesos), su parte de los gastos compartidos (en partes
+iguales, como en la vista), lo que metió en la cuenta (`ingresos` de socia) y
+los ajustes de saldo (suma a la que transfirió, resta a la que recibió). Lo
+pagado con la cuenta no es de nadie: esa plata ya contó como aporte cuando
+entró. Se calcula en la página, sobre `gastos` e `ingresos`; `obra_balance`
+sólo aporta la ficha y el porcentaje.
 
-**A quién se le facturó no es quién pagó.** Es el arreglo del que salió esta
-tabla: la columna Facturado atribuía por `empresa_pagadora_id`, así que una
-compra grande pagada "Entre las socias" se partía al medio aunque la factura
-saliera a nombre de una sola. Ahora el orden es `empresa_factura_id` →
-`empresa_pagadora_id` → partes iguales si es compartido. Las **B y C son
-consumidor final**: no llevan CUIT (el `check` de la base sólo admite titular en
-la A), así que van por quien pagó — pero siguen siendo facturado, porque lo son;
-lo único que se reserva para la A es el crédito fiscal, que es lo único que la A
-tiene de distinto. Los gastos viejos sin tipo de factura caen en el mismo lugar.
+**La diferencia** es lo que cada una puso de más (+, verde) o de menos (−,
+rojo) respecto de lo que le toca por su porcentaje del total que pusieron las
+socias, **moneda por moneda**; suma cero entre todas. Es más simple que el
+`saldo` de la vista, que descontaba lo puesto por inversores y compradores del
+total a repartir: acá los terceros no entran, la tabla habla sólo de las socias
+entre sí. La columna de dólares y su línea de diferencia aparecen sólo si
+alguna socia puso dólares.
 
-Lo que no se puede atribuir —pagado entero con el dinero en cuenta y sin factura
-a nombre de una socia— **no se reparte**: va en una línea debajo de la tabla,
-mismo criterio que los pagos del lote sin socia. Así las columnas de
-comprobantes quedan cortas contra el total gastado sin que parezca un error.
-
-Todo esto se calcula en **`lib/comprobantes.ts`** —`repartirComprobantes`, puro y
-sin base— y no en la vista: `obra_balance.pagado_facturado` y `pagado_efectivo`
-—que atribuyen por pagadora y descuentan la caja— **quedaron sin uso**. Siguen
-ahí porque son otra pregunta válida ("de lo que puso de su bolsillo, cuánto
-tenía factura"), por si alguna vez hace falta.
-
-El módulo es puro porque lo usan los dos lados: el Balance en el servidor y el
-desglose del listado de gastos en el navegador, que lo rehace con cada filtro.
-Si el cálculo viviera en la página, el listado tendría que copiarlo y los dos
-números se irían separando.
+**Lo facturado, lo efectivo y el crédito fiscal por empresa** salieron de esta
+tabla —eran la mitad de las columnas y otra pregunta— y siguen en el desglose
+del listado de gastos, que llega por las tarjetas de arriba.
 
 **Lo que se perdió a propósito**: la tabla "Total por empresa" —obra + terreno
 sumados— y su liquidación consolidada. Resolvía un caso real: una socia pone el

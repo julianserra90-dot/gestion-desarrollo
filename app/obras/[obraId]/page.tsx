@@ -5,9 +5,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getCaja } from "@/lib/caja";
-import { repartirComprobantes } from "@/lib/comprobantes";
 import { formatMoney, formatUSD } from "@/lib/format";
-import { calcularLiquidacion } from "@/lib/liquidacion";
 import { getLote } from "@/lib/lote";
 import { createClient } from "@/lib/supabase/server";
 import { ordenarPorTipo } from "@/lib/tipos-gasto";
@@ -45,12 +43,11 @@ export default async function ObraDetalle({
     { data: rubrosObra },
     caja,
     lote,
+    { data: aportesSocias },
   ] = await Promise.all([
     supabase
       .from("obra_balance")
-      .select(
-        "empresa_id, empresa, porcentaje, pagado, le_corresponde, saldo, ajustes, aportes, total_a_repartir"
-      )
+      .select("empresa_id, empresa, porcentaje")
       .eq("obra_id", obra.id),
     supabase
       .from("obra_resumen")
@@ -62,7 +59,7 @@ export default async function ObraDetalle({
     supabase
       .from("gastos")
       .select(
-        "monto, iva, empresa_factura_id, empresa_pagadora_id, compartido, tipo_pago, estado, tipo_gasto, rubro_id, rubros(nombre)"
+        "monto, iva, moneda, monto_usd, monto_caja, empresa_pagadora_id, empresa_receptora_id, compartido, estado, tipo_gasto, rubro_id, rubros(nombre)"
       )
       .eq("obra_id", obra.id),
     // Lo cotizado y aprobado contra lo gastado, por rubro y tipo: de ahí sale
@@ -85,6 +82,12 @@ export default async function ObraDetalle({
     // El valor pactado del lote hace falta para calcular cuánto le resta pagar
     // a cada socia; el resto de la ficha acá no se usa.
     getLote(obra.id, obra.lote_valor_usd, null, null, null),
+    // Lo que cada socia metió en la cuenta, en la moneda en que lo metió.
+    supabase
+      .from("ingresos")
+      .select("empresa_id, moneda, monto, monto_usd")
+      .eq("obra_id", obra.id)
+      .eq("origen", "Empresa socia"),
   ]);
 
   // Desglose de en qué se gastó. No cuentan los anulados ni los ajustes de
@@ -93,70 +96,77 @@ export default async function ObraDetalle({
     (g) => g.estado !== "Anulado" && g.tipo_gasto !== "Ajuste de saldo"
   );
 
-  // Lo facturado, lo efectivo y el crédito fiscal de cada socia: a quién se le
-  // facturó, que no es lo mismo que quién puso la plata. El detalle está en
-  // `lib/comprobantes.ts`, que es el mismo cálculo que rehace el listado de
-  // gastos con cada filtro. Por tomar el monto entero del comprobante, estas
-  // columnas ya no suman hasta "Total obra".
-  const { porEmpresa, facturadoSinAsignar, efectivoSinAsignar } =
-    repartirComprobantes(
-      vigentes.map((g) => ({
-        monto: Number(g.monto),
-        iva: Number(g.iva ?? 0),
-        tipoPago: g.tipo_pago,
-        empresaFacturaId: g.empresa_factura_id,
-        empresaPagadoraId: g.empresa_pagadora_id,
-        compartido: g.compartido ?? false,
-      })),
-      (balance ?? [])
-        .map((b) => b.empresa_id)
-        .filter((id): id is string => Boolean(id))
-    );
-
-  // La vista no trae orden propio, así que se ordena acá: alfabético, el mismo
-  // que usa el desglose por empresa del listado de gastos.
-  const socios = (balance ?? [])
-    .slice()
+  // ------------------------ Balance entre empresas --------------------------
+  // Lo que puso cada socia, en la moneda en que lo puso y sin valuar: los pesos
+  // son pesos y los dólares son dólares, como en toda la app. Cuenta lo que
+  // pagó de su bolsillo (el gasto menos lo que salió de la cuenta), su parte de
+  // los gastos compartidos, lo que metió en la cuenta y los ajustes con la otra
+  // socia. Lo pagado con la cuenta no es de nadie: esa plata ya contó como
+  // aporte el día que entró.
+  //
+  // La diferencia es contra lo que le toca por su porcentaje del total que
+  // pusieron las socias, moneda por moneda. Suma cero entre todas.
+  const fichas = (balance ?? [])
+    .filter((b): b is typeof b & { empresa_id: string } => Boolean(b.empresa_id))
     .sort((a, b) => (a.empresa ?? "").localeCompare(b.empresa ?? ""))
-    .map((item) => ({
-      empresaId: item.empresa_id,
-      empresa: item.empresa ?? "—",
-      porcentaje: Number(item.porcentaje ?? 0),
-      pagado: Number(item.pagado ?? 0),
-      leCorresponde: Number(item.le_corresponde ?? 0),
-      saldo: Number(item.saldo ?? 0),
-      // Lo que adelantó de su bolsillo. El resto de lo que puso son aportes al
-      // dinero en cuenta y ajustes con la otra socia, que van en su columna: los
-      // tres juntos dan "Total obra".
-      bolsillo:
-        Number(item.pagado ?? 0) -
-        Number(item.aportes ?? 0) -
-        Number(item.ajustes ?? 0),
-      ajustes: Number(item.ajustes ?? 0),
-      aportes: Number(item.aportes ?? 0),
-      facturado: item.empresa_id
-        ? (porEmpresa.get(item.empresa_id)?.facturado ?? 0)
-        : 0,
-      efectivo: item.empresa_id
-        ? (porEmpresa.get(item.empresa_id)?.efectivo ?? 0)
-        : 0,
-      creditoFiscal: item.empresa_id
-        ? (porEmpresa.get(item.empresa_id)?.creditoFiscal ?? 0)
-        : 0,
+    .map((b) => ({
+      empresaId: b.empresa_id,
+      empresa: b.empresa ?? "—",
+      porcentaje: Number(b.porcentaje ?? 0),
     }));
 
-  // Las columnas de bolsillo, ajustes, aportes y crédito fiscal sólo aparecen
-  // si alguna socia tiene.
-  const hayBolsillo = socios.some((s) => s.bolsillo !== 0);
-  const hayAjustes = socios.some((s) => s.ajustes !== 0);
-  const hayAportes = socios.some((s) => s.aportes !== 0);
-  const hayCreditoFiscal = socios.some((s) => s.creditoFiscal > 0);
+  const puesto = new Map<string, { ars: number; usd: number }>();
+  const sumarPuesto = (id: string | null, ars: number, usd: number) => {
+    if (!id) return;
+    const actual = puesto.get(id) ?? { ars: 0, usd: 0 };
+    puesto.set(id, { ars: actual.ars + ars, usd: actual.usd + usd });
+  };
 
-  // Las columnas vienen en tres bloques que contestan preguntas distintas y
-  // sólo suman dentro de su bloque; los encabezados de arriba los agrupan.
-  const colsComprobantes = 2 + (hayCreditoFiscal ? 1 : 0);
-  const colsPuso =
-    1 + (hayBolsillo ? 1 : 0) + (hayAportes ? 1 : 0) + (hayAjustes ? 1 : 0);
+  // Un gasto compartido se divide en partes iguales, como en la vista de la
+  // base. Nunca da cero: hay al menos una socia si hay filas.
+  const cantidadSocias = fichas.length || 1;
+
+  for (const g of gastos ?? []) {
+    if (g.estado === "Anulado") continue;
+
+    // Cargado en dólares y pagado sin la cuenta, salió en dólares. Con parte
+    // de la cuenta, la diferencia la puso la socia en pesos.
+    const enUsd = g.moneda === "USD" && Number(g.monto_caja ?? 0) === 0;
+    const bolsilloArs = enUsd ? 0 : Number(g.monto) - Number(g.monto_caja ?? 0);
+    const bolsilloUsd = enUsd ? Number(g.monto_usd ?? 0) : 0;
+
+    if (g.tipo_gasto === "Ajuste de saldo") {
+      // Va de una socia a otra: suma a la que transfirió, resta a la que recibió.
+      sumarPuesto(g.empresa_pagadora_id, bolsilloArs, bolsilloUsd);
+      sumarPuesto(g.empresa_receptora_id, -bolsilloArs, -bolsilloUsd);
+    } else if (g.compartido) {
+      for (const f of fichas) {
+        sumarPuesto(f.empresaId, bolsilloArs / cantidadSocias, bolsilloUsd / cantidadSocias);
+      }
+    } else {
+      sumarPuesto(g.empresa_pagadora_id, bolsilloArs, bolsilloUsd);
+    }
+  }
+
+  for (const i of aportesSocias ?? []) {
+    const esUsd = i.moneda === "USD";
+    sumarPuesto(i.empresa_id, esUsd ? 0 : Number(i.monto), esUsd ? Number(i.monto_usd ?? 0) : 0);
+  }
+
+  const totalPuestoArs = fichas.reduce((acc, f) => acc + (puesto.get(f.empresaId)?.ars ?? 0), 0);
+  const totalPuestoUsd = fichas.reduce((acc, f) => acc + (puesto.get(f.empresaId)?.usd ?? 0), 0);
+  const hayDolares = Math.abs(totalPuestoUsd) >= 0.005;
+
+  const socios = fichas.map((f) => {
+    const suyo = puesto.get(f.empresaId) ?? { ars: 0, usd: 0 };
+    return {
+      ...f,
+      ars: suyo.ars,
+      usd: suyo.usd,
+      diferenciaArs: suyo.ars - (totalPuestoArs * f.porcentaje) / 100,
+      diferenciaUsd: suyo.usd - (totalPuestoUsd * f.porcentaje) / 100,
+    };
+  });
 
   // Los saldos de la cuenta, cada uno en su moneda y sólo los que tienen algo.
   // Con la cuenta vacía queda el cero en pesos, que es cómo se lee "no hay".
@@ -165,13 +175,6 @@ export default async function ObraDetalle({
     ...(caja.usdSaldo !== 0 ? [formatUSD(caja.usdSaldo)] : []),
   ];
   if (saldosCuenta.length === 0) saldosCuenta.push(formatMoney(0));
-
-  const aRepartir = Number(balance?.[0]?.total_a_repartir ?? 0);
-
-  const suma = (campo: (s: (typeof socios)[number]) => number) =>
-    socios.reduce((acc, s) => acc + campo(s), 0);
-
-  const liquidacion = calcularLiquidacion(socios);
 
   const totalVigente = vigentes.reduce((acc, g) => acc + Number(g.monto), 0);
 
@@ -435,178 +438,72 @@ export default async function ObraDetalle({
       <section style={panelWithMargin}>
         <h3 style={sectionTitle}>Balance entre empresas</h3>
 
-        {/* Nueve columnas no entran en una ventana angosta. Scrollean acá
-            adentro en vez de correr la página entera de costado. */}
-        <div style={scrollX}>
-          <table style={table}>
-            <thead>
-              {/* Comprobantes contesta "a nombre de quién salió" y la plata
-                  "quién la puso": son dos cuentas distintas sobre los mismos
-                  gastos, y sin el rótulo se leen como columnas que suman. */}
-              <tr>
-                <th style={thGrupo} colSpan={2} />
-                <th style={thGrupoCorte} colSpan={colsComprobantes}>
-                  Comprobantes
-                </th>
-                <th style={thGrupoCorte} colSpan={colsPuso}>
-                  Lo que puso
-                </th>
-                <th style={thGrupoCorte} colSpan={2}>
-                  El reparto
-                </th>
-              </tr>
-              <tr>
-                <th style={th}>Empresa</th>
-                <th style={th}>Particip.</th>
-                <th style={thRightCorte}>Facturado</th>
-                <th style={thRight}>Efectivo</th>
-                {hayCreditoFiscal && <th style={thRight}>Crédito fiscal</th>}
-                {hayBolsillo && <th style={thRightCorte}>De su bolsillo</th>}
-                {hayAportes && (
-                  <th style={hayBolsillo ? thRight : thRightCorte}>
-                    Puso en cuenta
-                  </th>
-                )}
-                {hayAjustes && (
-                  <th style={hayBolsillo || hayAportes ? thRight : thRightCorte}>
-                    Ajustes
-                  </th>
-                )}
-                <th style={colsPuso > 1 ? thRight : thRightCorte}>Total obra</th>
-                <th style={thRightCorte}>Le corresponde</th>
-                <th style={thRight}>Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {socios.map((socio) => (
-                <tr key={socio.empresa}>
-                  <td style={td}>{socio.empresa}</td>
-                  <td style={td}>{socio.porcentaje}%</td>
-                  <td style={tdRightCorte}>
-                    {socio.facturado > 0 ? formatMoney(socio.facturado) : "—"}
-                  </td>
-                  <td style={tdRight}>
-                    {socio.efectivo > 0 ? formatMoney(socio.efectivo) : "—"}
-                  </td>
-                  {hayCreditoFiscal && (
-                    <td style={tdRight}>
-                      {socio.creditoFiscal > 0
-                        ? formatMoney(socio.creditoFiscal)
-                        : "—"}
-                    </td>
+        {/* Sólo lo que cada una puso, en la moneda en que lo puso, y cuánto se
+            aparta de lo que le toca. Antes había nueve columnas en tres bloques
+            —comprobantes, lo que puso, el reparto— y no se entendía cuál era
+            el número que importaba. Lo facturado y el crédito fiscal por
+            empresa siguen en el listado de gastos. */}
+        <table style={table}>
+          <thead>
+            <tr>
+              <th style={th}>Empresa</th>
+              <th style={th}>Particip.</th>
+              <th style={thRight}>Aporte en dólares</th>
+              <th style={thRight}>Aporte en pesos</th>
+              <th style={thRight}>Diferencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {socios.map((socio) => (
+              <tr key={socio.empresaId}>
+                <td style={td}>{socio.empresa}</td>
+                <td style={td}>{socio.porcentaje}%</td>
+                <td style={tdRight}>
+                  {hayDolares ? formatUSD(socio.usd) : "—"}
+                </td>
+                <td style={tdRight}>{formatMoney(socio.ars)}</td>
+                <td style={tdRight}>
+                  {/* Una línea por moneda, con signo y color: puso de más
+                      (+, verde) o de menos (−, rojo) respecto de su
+                      porcentaje. El signo acompaña al color para que se lea
+                      igual impreso en blanco y negro. */}
+                  {hayDolares && (
+                    <div style={estiloSaldo(socio.diferenciaUsd)}>
+                      <strong>
+                        {socio.diferenciaUsd > 0.005 ? "+" : ""}
+                        {formatUSD(socio.diferenciaUsd)}
+                      </strong>
+                    </div>
                   )}
-                  {hayBolsillo && (
-                    <td style={tdRightCorte}>
-                      {socio.bolsillo !== 0 ? formatMoney(socio.bolsillo) : "—"}
-                    </td>
-                  )}
-                  {hayAportes && (
-                    <td style={hayBolsillo ? tdRight : tdRightCorte}>
-                      {socio.aportes > 0 ? formatMoney(socio.aportes) : "—"}
-                    </td>
-                  )}
-                  {hayAjustes && (
-                    <td style={hayBolsillo || hayAportes ? tdRight : tdRightCorte}>
-                      {socio.ajustes !== 0 ? (
-                        <span>
-                          {socio.ajustes > 0 ? "+" : ""}
-                          {formatMoney(socio.ajustes)}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  )}
-                  <td style={colsPuso > 1 ? tdRight : tdRightCorte}>
-                    <strong>{formatMoney(socio.pagado)}</strong>
-                  </td>
-                  <td style={tdRightCorte}>{formatMoney(socio.leCorresponde)}</td>
-                  <td style={tdRight}>
-                    {/* El signo acompaña al color: así se entiende igual en una
-                        impresión en blanco y negro o con daltonismo. */}
-                    <strong style={estiloSaldo(socio.saldo)}>
-                      {socio.saldo > 0 ? "+" : ""}
-                      {formatMoney(socio.saldo)}
+                  <div style={estiloSaldo(socio.diferenciaArs)}>
+                    <strong>
+                      {socio.diferenciaArs > 0.005 ? "+" : ""}
+                      {formatMoney(socio.diferenciaArs)}
                     </strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                {/* "Total" a secas: cada bloque suma lo suyo y no son la misma
-                    plata contada de nuevo. */}
-                <td style={tdTotal} colSpan={2}>
-                  Total
+                  </div>
                 </td>
-                <td style={tdTotalRightCorte}>
-                  {formatMoney(suma((s) => s.facturado))}
-                </td>
-                <td style={tdTotalRight}>{formatMoney(suma((s) => s.efectivo))}</td>
-                {hayCreditoFiscal && (
-                  <td style={tdTotalRight}>
-                    {formatMoney(suma((s) => s.creditoFiscal))}
-                  </td>
-                )}
-                {hayBolsillo && (
-                  <td style={tdTotalRightCorte}>
-                    {formatMoney(suma((s) => s.bolsillo))}
-                  </td>
-                )}
-                {hayAportes && (
-                  <td style={hayBolsillo ? tdTotalRight : tdTotalRightCorte}>
-                    {formatMoney(suma((s) => s.aportes))}
-                  </td>
-                )}
-                {hayAjustes && (
-                  <td
-                    style={
-                      hayBolsillo || hayAportes ? tdTotalRight : tdTotalRightCorte
-                    }
-                  >
-                    —
-                  </td>
-                )}
-                <td style={colsPuso > 1 ? tdTotalRight : tdTotalRightCorte}>
-                  {formatMoney(suma((s) => s.pagado))}
-                </td>
-                <td style={tdTotalRightCorte}>{formatMoney(aRepartir)}</td>
-                <td style={tdTotalRight}>{formatMoney(suma((s) => s.saldo))}</td>
               </tr>
-            </tfoot>
-          </table>
-        </div>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td style={tdTotal} colSpan={2}>
+                Total
+              </td>
+              <td style={tdTotalRight}>
+                {hayDolares ? formatUSD(totalPuestoUsd) : "—"}
+              </td>
+              <td style={tdTotalRight}>{formatMoney(totalPuestoArs)}</td>
+              <td style={tdTotalRight} />
+            </tr>
+          </tfoot>
+        </table>
 
-        {/* Un gasto pagado entero con el dinero en cuenta y sin factura a
-            nombre de una socia no es de ninguna: se dice aparte para que las
-            columnas de comprobantes no parezcan cortas contra el total
-            gastado. */}
-        {facturadoSinAsignar + efectivoSinAsignar > 0 && (
-          <p style={note}>
-            {formatMoney(facturadoSinAsignar + efectivoSinAsignar)} sin atribuir
-            a ninguna empresa —salieron del dinero en cuenta y no llevan factura
-            a nombre de una socia—, así que no entran en Facturado ni en
-            Efectivo.
-          </p>
-        )}
-
-        <div style={resultBox}>
-          <p style={resultTitle}>Liquidación sugerida</p>
-
-          {liquidacion.length === 0 ? (
-            <p style={resultText}>Las empresas están equilibradas.</p>
-          ) : (
-            <ul style={resultList}>
-              {liquidacion.map((mov, i) => (
-                <li key={i} style={resultText}>
-                  <strong>{mov.de}</strong> le transfiere{" "}
-                  <strong>{formatMoney(mov.monto)}</strong> a{" "}
-                  <strong>{mov.a}</strong>.
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <p style={note}>
+          La diferencia es lo que cada empresa puso de más (+) o de menos (−)
+          respecto de lo que le toca por su porcentaje, en cada moneda por
+          separado.
+        </p>
       </section>
 
       {hayTerreno && (
@@ -783,9 +680,6 @@ const enlaceNota = {
   textDecoration: "underline",
 };
 
-const scrollX = {
-  overflowX: "auto" as const,
-};
 
 const table = {
   width: "100%",
@@ -810,21 +704,11 @@ const thRight = {
 
 // La línea vertical separa los bloques de columnas. Va en la primera columna de
 // cada bloque, y es lo que avisa que de un lado al otro los números no suman.
-const corte = { borderLeft: "1px solid #eeeeee" };
 
-const thRightCorte = { ...thRight, ...corte };
 
 // El rótulo del bloque, arriba de sus columnas: más chico y sin la línea de
 // abajo, que le corresponde a la fila de encabezados de verdad.
-const thGrupo = {
-  ...th,
-  textAlign: "center" as const,
-  color: "#b5b5b5",
-  borderBottom: "none",
-  padding: "0 12px 6px",
-};
 
-const thGrupoCorte = { ...thGrupo, ...corte };
 
 const td = {
   borderBottom: "1px solid #f2f2f2",
@@ -838,7 +722,6 @@ const tdRight = {
   textAlign: "right" as const,
 };
 
-const tdRightCorte = { ...tdRight, ...corte };
 
 // Verde: puso de más y le deben. Rojo: debe compensar. Negro: está en cero.
 const { VERDE, ROJO } = ui;
@@ -861,34 +744,10 @@ const tdTotalRight = {
   textAlign: "right" as const,
 };
 
-const tdTotalRightCorte = { ...tdTotalRight, ...corte };
 
 // Antes era un recuadro con borde negro grueso; ahora es una tarjeta clara
 // dentro de la tarjeta, para que la conclusión —quién le transfiere a quién—
 // se note sin gritar tanto como antes.
-const resultBox = {
-  background: "#f7f7f8",
-  borderRadius: "14px",
-  padding: "20px 22px",
-  marginTop: "24px",
-};
 
-const resultTitle = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.08em",
-  fontWeight: 600,
-  color: "#8a8a8a",
-  margin: "0 0 12px",
-};
 
-const resultText = {
-  fontSize: "16px",
-  lineHeight: 1.6,
-  margin: 0,
-};
 
-const resultList = {
-  margin: 0,
-  paddingLeft: "20px",
-};
