@@ -4,7 +4,6 @@ import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import { getFacturasVinculadas, textoComprobante } from "@/lib/compras";
 import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -35,7 +34,7 @@ export default async function FichaGastoPage({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, tipo_gasto, tipo_pago, tipo_factura, numero_factura, compra_de_gasto_id, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre)"
+        "id, fecha, concepto, tipo_gasto, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre)"
       )
       .eq("id", gastoId)
       .eq("obra_id", obra.id)
@@ -50,22 +49,6 @@ export default async function FichaGastoPage({
   if (!gasto) {
     return <AppShell>Gasto no encontrado</AppShell>;
   }
-
-  // Una compra partida en varias facturas: si ésta es la principal, las
-  // otras se listan; si es una enganchada, los materiales se muestran desde la
-  // principal, que es donde están cargados.
-  const [vinculadas, { data: principal }] = await Promise.all([
-    getFacturasVinculadas(gasto.id),
-    gasto.compra_de_gasto_id
-      ? supabase
-          .from("gastos")
-          .select(
-            "id, fecha, monto, tipo_factura, numero_factura, gasto_materiales(cantidad, precio_unitario, materiales(nombre, unidad))"
-          )
-          .eq("id", gasto.compra_de_gasto_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
 
   const base = `/obras/${obra.slug}/gastos`;
   const esAjuste = gasto.tipo_gasto === "Ajuste de saldo";
@@ -85,8 +68,7 @@ export default async function FichaGastoPage({
           ? "Dinero en cuenta"
           : (gasto.pagadora?.nombre ?? "—");
 
-  // Enganchada a otra factura, los materiales son los de la principal.
-  const detalle = principal ? principal.gasto_materiales : (items ?? []);
+  const detalle = items ?? [];
   // Los precios del detalle se muestran como se cargaron; si son netos se
   // dice, para que no se comparen a ojo con el monto, que lleva el IVA.
   const preciosNetos = gasto.tipo_factura === "A" && gasto.precios_con_iva === false;
@@ -198,40 +180,6 @@ export default async function FichaGastoPage({
         </div>
       </section>
 
-      {/* La compra en varias facturas: desde cualquiera se ven las otras. */}
-      {(vinculadas.length > 0 || principal) && (
-        <section style={{ ...ui.panel, marginTop: "20px" }}>
-          <h3 style={{ ...ui.sectionTitle, marginBottom: "12px" }}>
-            Compra en {vinculadas.length + (principal ? 2 : 1)} facturas
-          </h3>
-          <p style={{ ...ui.note, margin: "0 0 12px" }}>
-            {principal
-              ? "Los materiales de esta compra están cargados en la factura principal, abajo se muestran desde allá."
-              : "Los materiales se cargaron una sola vez, en esta factura; las otras son de la misma compra."}
-          </p>
-          <ul style={listaFacturas}>
-            {principal && (
-              <li>
-                <Link href={`${base}/${principal.id}`} style={enlaceFactura}>
-                  {textoComprobante(principal.tipo_factura, principal.numero_factura)} del{" "}
-                  {formatDate(principal.fecha)}
-                </Link>{" "}
-                · {formatMoney(Number(principal.monto))} · principal
-              </li>
-            )}
-            {vinculadas.map((f) => (
-              <li key={f.id}>
-                <Link href={`${base}/${f.id}`} style={enlaceFactura}>
-                  {f.comprobante} del {formatDate(f.fecha)}
-                </Link>{" "}
-                · {formatMoney(f.monto)}
-                {f.pagadora ? ` · pagó ${f.pagadora}` : ""}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {detalle.length > 0 && (
         <section style={{ ...ui.panel, marginTop: "20px" }}>
           <h3 style={{ ...ui.sectionTitle, marginBottom: "12px" }}>
@@ -331,19 +279,6 @@ const valor = {
   fontSize: "15px",
   color: "#111111",
   lineHeight: 1.5,
-};
-
-const listaFacturas = {
-  margin: 0,
-  paddingLeft: "18px",
-  fontSize: "14px",
-  color: "#555555",
-  lineHeight: 1.8,
-};
-
-const enlaceFactura = {
-  color: "#111111",
-  textDecoration: "underline",
 };
 
 const tdTotal = {
