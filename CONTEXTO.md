@@ -684,6 +684,21 @@ de la app donde se redondea**: no es un dato sino una referencia para leer una
 altura de reojo. El techo se redondea al múltiplo lindo más cercano
 (`escalaDe`), porque marcas en "$ 12.904.662" no se leen de costado.
 
+**El período se elige** (`?periodo=`, selector a la derecha del título del
+gráfico, con la forma del segundo nivel de solapas): *Toda la obra* mes a mes
+—lo de siempre—, **un año solo** mes a mes, o **Año a año** con una barra por
+año. Una obra de dos o tres años junta treinta meses en un gráfico de ancho
+fijo y las barras se vuelven palitos; con un año a la vista vuelven a leerse,
+y el año a año contesta la otra pregunta —cuánto se fue en cada año— sin
+sumar barras de reojo. Tocar un año en el año a año lo abre mes a mes. Las
+tarjetas **Egresos**, **Ingresos a la cuenta** y **Promedio por mes**
+responden al mismo período que el gráfico (con un año elegido la etiqueta lo
+dice: "Egresos 2026"); la semana de obra es siempre la de hoy. El selector
+sólo aparece con **dos años o más**: con uno, "toda la obra" y ese año son el
+mismo gráfico y el año a año sería una sola barra. Un `periodo` inválido en la
+URL cae a toda la obra sin error. En esta pantalla las series se llaman
+**Egresos** e Ingresos, y no Gastos: es la pareja natural de un flujo.
+
 **Tocando un mes se entra a `flujo/[mes]`**: ese mes semana por semana, con cada
 barra de gastos **partida por rubro** —apilada, en los colores de
 `lib/paleta-rubros.ts`—, la tabla de semanas y en qué se gastó el mes. El
@@ -1367,7 +1382,10 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (13/09/2026)**, para ubicarse rápido: obras centradas en la
+**Lo último (14/09/2026)**: Flujo con selector de período (toda la obra, un
+año, año a año) y tarjetas que responden al período.
+
+**Antes (13/09/2026)**, para ubicarse rápido: obras centradas en la
 portada; ingreso de todas las socias a la vez; agenda de ingresos (cuotas
 previstas con fecha, `ingresos/agenda`); detalle predefinido en gastos e
 ingresos (catálogo `detalles` por ámbito); balance entre empresas reducido a

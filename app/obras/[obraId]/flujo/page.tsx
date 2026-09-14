@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import GraficoBarras from "@/components/GraficoBarras";
+import GraficoBarras, { type PuntoBarras } from "@/components/GraficoBarras";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
@@ -11,7 +11,7 @@ import { semanaDeObra } from "@/lib/semanas";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * El flujo de la obra: cuánto salió y cuánto entró, mes a mes.
+ * El flujo de la obra: cuánto salió y cuánto entró, período a período.
  *
  * Los totales de Economía dicen cuánto se lleva gastado; esto dice **cuándo**.
  * Es la lectura que anticipa la plata que va a hacer falta: tres meses seguidos
@@ -23,17 +23,31 @@ import { createClient } from "@/lib/supabase/server";
  * pasar el mouse y todo el detalle —incluido el semana a semana— está a un clic,
  * tocando el mes.
  *
+ * **El período se elige** (`?periodo=`): toda la obra mes a mes, un año solo
+ * mes a mes, o año a año con una barra por año. Una obra de dos o tres años
+ * junta treinta meses en un gráfico de ancho fijo y las barras se vuelven
+ * palitos; con un año a la vista vuelven a leerse, y el año a año contesta la
+ * otra pregunta —cuánto se fue en cada año— sin sumar barras de reojo. Las
+ * tarjetas de arriba responden al mismo período que el gráfico, salvo la
+ * semana de obra, que es la de hoy.
+ *
  * Los ingresos son lo que entró a la cuenta, y muchos gastos los paga una socia
  * de su bolsillo sin pasar por ahí: las dos series conviven en el gráfico pero
- * **no se restan entre sí**. Por eso acá no hay "resultado del mes".
+ * **no se restan entre sí**. Por eso acá no hay "resultado del período".
  */
+
+const ANUAL = "anual";
+const TODO = "todo";
 
 export default async function FlujoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ obraId: string }>;
+  searchParams: Promise<{ periodo?: string }>;
 }) {
   const { obraId } = await params;
+  const { periodo: periodoPedido } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -63,9 +77,6 @@ export default async function FlujoPage({
   );
   const entradas = ingresos ?? [];
 
-  const totalGastado = salidas.reduce((acc, g) => acc + Number(g.monto), 0);
-  const totalIngresado = entradas.reduce((acc, i) => acc + Number(i.monto), 0);
-
   const gastosPorMes = new Map<string, number>();
   for (const g of salidas) {
     const clave = g.fecha.slice(0, 7);
@@ -82,41 +93,116 @@ export default async function FlujoPage({
     ...new Set([...gastosPorMes.keys(), ...ingresosPorMes.keys()]),
   ].sort();
 
-  const claves =
+  // Todos los meses de la obra, del primer movimiento al último, con los
+  // vacíos adentro: una obra parada es información.
+  const todosLosMeses =
     conMovimiento.length > 0
       ? mesesEntre(conMovimiento[0], conMovimiento[conMovimiento.length - 1])
       : [];
 
-  // El mes en que arrancó la obra, para marcarlo en el gráfico. Sólo si quedó
-  // algún mes antes: una línea pegada al borde izquierdo no separa nada, y lo
-  // que la marca explica es justamente que a la izquierda hay movimientos que
-  // no son obra —acopios, anticipos, impuestos del terreno—, que a veces se
-  // vienen pagando de mucho antes.
-  const mesDeArranque = obra.fecha_inicio?.slice(0, 7) ?? null;
-  const marcarArranque =
-    mesDeArranque !== null &&
-    claves.indexOf(mesDeArranque) > 0;
+  const años = [...new Set(todosLosMeses.map((clave) => clave.slice(0, 4)))];
 
-  const meses = claves.map((clave) => ({
-    clave,
-    etiqueta: etiquetaMes(clave),
-    gastado: gastosPorMes.get(clave) ?? 0,
-    ingresado: ingresosPorMes.get(clave) ?? 0,
-    marca:
-      marcarArranque && clave === mesDeArranque
-        ? "Arranque de obra"
-        : undefined,
-  }));
+  // Qué se muestra. Un año que no tiene movimientos, o cualquier otra cosa en
+  // la URL, cae a toda la obra: no vale la pena una pantalla de error por un
+  // enlace viejo.
+  const periodo =
+    periodoPedido === ANUAL && años.length > 1
+      ? ANUAL
+      : periodoPedido && años.includes(periodoPedido)
+        ? periodoPedido
+        : TODO;
+  const esUnAño = periodo !== TODO && periodo !== ANUAL;
+
+  const mesDeArranque = obra.fecha_inicio?.slice(0, 7) ?? null;
+
+  const mesesAMostrar = esUnAño
+    ? todosLosMeses.filter((clave) => clave.startsWith(periodo))
+    : todosLosMeses;
+
+  const gastadoEn = (claves: string[]) =>
+    claves.reduce((acc, clave) => acc + (gastosPorMes.get(clave) ?? 0), 0);
+  const ingresadoEn = (claves: string[]) =>
+    claves.reduce((acc, clave) => acc + (ingresosPorMes.get(clave) ?? 0), 0);
+
+  // Los totales de las tarjetas son del período a la vista. Con "toda la obra"
+  // y "año a año" es todo; con un año, ese año.
+  const totalGastado = gastadoEn(mesesAMostrar);
+  const totalIngresado = ingresadoEn(mesesAMostrar);
 
   // El promedio se calcula sobre los meses que tuvieron gasto: dividir por los
   // meses parados lo hundiría y no diría nada del ritmo real de la obra.
-  const mesesConGasto = meses.filter((m) => m.gastado > 0).length;
+  const mesesConGasto = mesesAMostrar.filter(
+    (clave) => (gastosPorMes.get(clave) ?? 0) > 0
+  ).length;
   const promedio = mesesConGasto > 0 ? totalGastado / mesesConGasto : 0;
+
+  // El arranque de la obra se marca sólo si quedó algún grupo antes: una línea
+  // pegada al borde izquierdo no separa nada, y lo que la marca explica es
+  // justamente que a la izquierda hay movimientos que no son obra —acopios,
+  // anticipos, impuestos del terreno—, que a veces se vienen pagando de mucho
+  // antes. Mirando un año solo, la marca aparece si el arranque cae adentro y
+  // no en su primer mes; año a año, si arrancó en un año que no es el primero.
+  let puntos: PuntoBarras[];
+  if (periodo === ANUAL) {
+    const añoDeArranque = mesDeArranque?.slice(0, 4) ?? null;
+    const marcarArranque =
+      añoDeArranque !== null && años.indexOf(añoDeArranque) > 0;
+
+    puntos = años.map((año) => {
+      const meses = todosLosMeses.filter((clave) => clave.startsWith(año));
+      const gastado = gastadoEn(meses);
+      const ingresado = ingresadoEn(meses);
+      return {
+        etiqueta: año,
+        valores: [gastado, ingresado],
+        marca:
+          marcarArranque && año === añoDeArranque
+            ? "Arranque de obra"
+            : undefined,
+        // Tocar un año lo abre mes a mes.
+        href:
+          gastado > 0 || ingresado > 0
+            ? `/obras/${obra.slug}/flujo?periodo=${año}`
+            : undefined,
+      };
+    });
+  } else {
+    const marcarArranque =
+      mesDeArranque !== null && mesesAMostrar.indexOf(mesDeArranque) > 0;
+
+    // Los meses vacíos no llevan enlace: entrar a un mes sin nada sería una
+    // pantalla en blanco.
+    puntos = mesesAMostrar.map((clave) => {
+      const gastado = gastosPorMes.get(clave) ?? 0;
+      const ingresado = ingresosPorMes.get(clave) ?? 0;
+      return {
+        etiqueta: etiquetaMes(clave),
+        valores: [gastado, ingresado],
+        marca:
+          marcarArranque && clave === mesDeArranque
+            ? "Arranque de obra"
+            : undefined,
+        href:
+          gastado > 0 || ingresado > 0
+            ? `/obras/${obra.slug}/flujo/${clave}`
+            : undefined,
+      };
+    });
+  }
+
+  const hayMarcaDeArranque = puntos.some((p) => p.marca);
 
   // La semana en curso, contada desde el arranque de la obra.
   const hoy = new Date();
   const hoyIso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
   const semanaActual = semanaDeObra(hoyIso, obra.fecha_inicio);
+
+  const titulo =
+    periodo === ANUAL
+      ? "Año a año"
+      : esUnAño
+        ? `Mes a mes, ${periodo}`
+        : "Mes a mes";
 
   return (
     <AppShell
@@ -142,11 +228,11 @@ export default async function FlujoPage({
           )}
         </div>
         <div style={ui.statCard}>
-          <p style={ui.label}>Gastado</p>
+          <p style={ui.label}>Egresos{esUnAño && ` ${periodo}`}</p>
           <h3 style={ui.statNumber}>{formatMoney(totalGastado)}</h3>
         </div>
         <div style={ui.statCard}>
-          <p style={ui.label}>Ingresado a la cuenta</p>
+          <p style={ui.label}>Ingresos a la cuenta{esUnAño && ` ${periodo}`}</p>
           <h3 style={ui.statNumber}>{formatMoney(totalIngresado)}</h3>
         </div>
         <div style={ui.statCard}>
@@ -157,10 +243,39 @@ export default async function FlujoPage({
 
       <section style={ui.panelConMargen}>
         <div style={ui.toolbar}>
-          <h3 style={{ ...ui.sectionTitle, margin: 0 }}>Mes a mes</h3>
+          <h3 style={{ ...ui.sectionTitle, margin: 0 }}>{titulo}</h3>
+
+          {/* Con un solo año, "toda la obra" y ese año son el mismo gráfico y
+              el año a año sería una sola barra: el selector no tiene nada que
+              elegir. */}
+          {años.length > 1 && (
+            <nav style={selector}>
+              <Link
+                href={`/obras/${obra.slug}/flujo`}
+                style={periodo === TODO ? opcionActiva : opcion}
+              >
+                Toda la obra
+              </Link>
+              {años.map((año) => (
+                <Link
+                  key={año}
+                  href={`/obras/${obra.slug}/flujo?periodo=${año}`}
+                  style={periodo === año ? opcionActiva : opcion}
+                >
+                  {año}
+                </Link>
+              ))}
+              <Link
+                href={`/obras/${obra.slug}/flujo?periodo=${ANUAL}`}
+                style={periodo === ANUAL ? opcionActiva : opcion}
+              >
+                Año a año
+              </Link>
+            </nav>
+          )}
         </div>
 
-        {meses.length === 0 ? (
+        {puntos.length === 0 ? (
           <p style={ui.vacio}>
             Todavía no hay gastos ni ingresos cargados en esta obra. Cargá el
             primero en{" "}
@@ -171,20 +286,10 @@ export default async function FlujoPage({
           </p>
         ) : (
           <>
-            {/* Los meses vacíos no llevan enlace: entrar a un mes sin nada sería
-                una pantalla en blanco. */}
             <GraficoBarras
-              datos={meses.map((m) => ({
-                etiqueta: m.etiqueta,
-                valores: [m.gastado, m.ingresado],
-                marca: m.marca,
-                href:
-                  m.gastado > 0 || m.ingresado > 0
-                    ? `/obras/${obra.slug}/flujo/${m.clave}`
-                    : undefined,
-              }))}
+              datos={puntos}
               series={[
-                { nombre: "Gastos", color: "#111827" },
+                { nombre: "Egresos", color: "#111827" },
                 { nombre: "Ingresos a la cuenta", color: "#93b8e8" },
               ]}
               formato={formatMoney}
@@ -192,16 +297,16 @@ export default async function FlujoPage({
             />
 
             <p style={{ ...ui.note, marginTop: "20px", marginBottom: 0 }}>
-              {marcarArranque && (
+              {hayMarcaDeArranque && (
                 <>
                   A la izquierda del arranque no hay obra: son acopios de
                   material, anticipos e impuestos del terreno, que se vienen
                   pagando desde antes de empezar.{" "}
                 </>
               )}
-              Los ingresos son lo que entró a la cuenta de la obra; muchos gastos
-              los paga una socia de su bolsillo sin pasar por ahí, así que las
-              dos columnas no se restan entre sí.
+              Los ingresos son lo que entró a la cuenta de la obra; muchos
+              egresos los paga una socia de su bolsillo sin pasar por ahí, así
+              que las dos columnas no se restan entre sí.
             </p>
           </>
         )}
@@ -213,4 +318,26 @@ export default async function FlujoPage({
 const enlace = {
   color: "#111111",
   textDecoration: "underline",
+};
+
+// El selector de período, con la forma del segundo nivel de solapas de la obra
+// (ver MaterialesNav): texto gris, y el elegido en negro y subrayado.
+const selector = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "20px",
+};
+
+const opcion = {
+  color: "#777777",
+  textDecoration: "none",
+  fontSize: "14px",
+  paddingBottom: "4px",
+  borderBottom: "2px solid transparent",
+};
+
+const opcionActiva = {
+  ...opcion,
+  color: "#111111",
+  borderBottom: "2px solid #111111",
 };
