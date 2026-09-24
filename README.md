@@ -290,10 +290,12 @@ Ciudad 3D trae la ficha catastral (nomenclatura, frente, fondo, superficie,
 lo construido) y la normativa del Código Urbanístico (unidad de
 edificabilidad, altura máxima, plano límite, superficie edificable en planta,
 mixtura de usos, APH, catalogación, afectaciones, plusvalía). La ficha calcula
-una primera aproximación: superficie construible e incidencia del terreno
-por m² construible. Es el techo que da la normativa, no el proyecto, y es
-una lectura automática: hay que verificarla contra la mensura antes de
-decidir.
+una primera aproximación: superficie construible, incidencia del terreno
+por m² construible y la plusvalía urbana, que dice "No paga" o cuánto en
+UVA, pesos y dólares. Debajo dibuja el volumen edificable en 3D sobre la
+forma real de la parcela, girable con el mouse. Es el techo que da la
+normativa, no el proyecto, y es una lectura automática: hay que verificarla
+contra la mensura antes de decidir.
 
 Todo se corrige desde **Editar**, y la ficha marca cada dato corregido con el
 valor que traía la Ciudad. **Actualizar desde la Ciudad** vuelve a consultar y

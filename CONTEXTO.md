@@ -1191,7 +1191,10 @@ con la fecha y los avisos de lo que no contestó.
 corregido con el valor que traía la Ciudad: compara la columna contra
 `valoresDesdeCiudad(ciudad)`, no hay una tabla de fuentes. *Actualizar
 desde la Ciudad* vuelve a consultar —por SMP si lo hay, que es exacto; si no,
-por dirección— y pisa las correcciones. Lo que la Ciudad no da se carga a
+por dirección— y pisa las correcciones. **Lo que la Ciudad no contesta al
+actualizar no borra lo que contestó antes** (`fusionarConsultas`): pasó que
+un Actualizar con Ciudad 3D caído dejó un estudio sin normativa. Se conserva
+pieza por pieza y el aviso dice de qué fecha es lo que quedó. Lo que la Ciudad no da se carga a
 mano: valor del terreno, tipo de desarrollo, LFI y LIB numéricas (sí da la
 huella, `sup_edificable_planta_m2`, que manda sobre frente × LFI en el
 cálculo), patios, usos permitidos. La ficha es de sólo lectura con Editar
@@ -1215,6 +1218,33 @@ eficiencia, siempre explicando el porqué); 3 económica (vendible, eficiencia
 = vendible / construida, plusvalía, tres alternativas A/B/C); 4 diseño
 generativo de plantas. Sin IA: reglas y geometría, con los parámetros
 editables desde un panel interno.
+
+**El volumen en 3D** (`components/VolumenLote.tsx`, SVG puro, sin librería,
+como la torta). El lote es el polígono real del catastro
+(`catastro/geometria`, guardado en `ciudad`) pasado a metros en
+`lib/geometria.ts`; sin polígono, un rectángulo de frente × fondo. La
+huella edificable no viene como polígono sino como superficie, así que se
+recorta como la banda desde el frente cuya área es esa (recorte por
+semiplano y bisección sobre la profundidad): es lo que hace la LFI en un
+lote entre medianeras, sobre la forma real. El frente es el lado más cercano
+a la puerta que dio USIG; sin puerta, el lado más corto. Se levanta hasta la
+altura máxima con una línea por planta (PB 3,4 m, pisos 2,8 m), el plano
+límite va punteado si está más arriba, y se gira arrastrando. Es la
+envolvente, no un proyecto: sin patios ni núcleo.
+
+**Plusvalía** (Ley 6062, `plusvaliaUva` en `lib/prefactibilidad.ts`): se
+paga en UVA por los m² que el Código nuevo deja construir de más respecto
+del CPU. La fórmula salió de los números de `calcular_plusvalia` de Ciudad
+3D y cierra exacta: capacidad del CPU = FOT × superficie de la parcela ×
+1,25 (premios), y sobre el exceso incidencia (UVA/m²) × alícuota × 0,8. En
+Núñez 4167 (053-128-020) da lo mismo que la API para 400, 800, 1.000 y
+1.200 m²; en Andonaegui 1229 el CPU permitía 984,75 m² y no paga. La ficha
+lo calcula en vivo sobre la superficie construible del estudio —sigue a las
+plantas corregidas— y dice "No paga" o cuánto en UVA, pesos (UVA de
+ArgentinaDatos, serie del BCRA, guardada en `ciudad.uva`) y dólares al blue.
+En la consulta se le pide además a Ciudad 3D el monto para la superficie
+estimada (`ciudad.plusvaliaCiudad`) y, si difiere de la fórmula en más de
+una UVA, la tarjeta lo dice: es el chequeo de que la fórmula sigue vigente.
 
 **Las fuentes, y sus mañas.** USIG (documentado): `normalizar` da la
 dirección oficial, `cod_calle` y el punto de la puerta; el geocodificador
@@ -1409,8 +1439,10 @@ acción de borrar el pago del lote viaja como prop.
   memoria; con eso `plantas_sobre_pb` deja de cargarse a mano; (b) tres a
   cinco lotes reales con prefactibilidad conocida para validar
   `lib/prefactibilidad.ts`; (c) usos permitidos desde `cuadrosdeuso/rubros`
-  de Ciudad 3D, por categoría y mixtura; (d) enrase y plusvalía calculada
-  desde `parcelas_plausibles_a_enrase` y `calcular_plusvalia`; (e) etapa 2:
+  de Ciudad 3D, por categoría y mixtura; (d) enrase desde
+  `parcelas_plausibles_a_enrase` (devuelve `{"enrase": false}` y, si es
+  true, las parcelas linderas con su altura: sumaría una franja al volumen);
+  (e) etapa 2:
   las tres alternativas (vivienda + local, vivienda + cocheras, oficinas +
   local) con vendible, eficiencia y explicación.
 - **Borrar un estudio está en la ficha y pregunta antes** (`BotonConfirmar`,

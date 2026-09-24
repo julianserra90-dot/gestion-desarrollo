@@ -57,7 +57,7 @@ export type ParcelaCatastro = {
   unidades_funcionales: string;
   locales: string;
   fuente: string;
-  puertas?: { calle: string; altura: number; puerta_oficial: boolean }[];
+  puertas?: { calle: string; altura: number; codigo_calle: number; puerta_oficial: boolean }[];
 };
 
 /** `cur3d/seccion_edificabilidad`. Las alturas van por franja: la primera es la de la unidad. */
@@ -100,6 +100,14 @@ export type ConsultaCiudad = {
   codCalle: number | null;
   altura: number | null;
   coordenadas: { lng: number; lat: number } | null;
+  /** El punto de la puerta según USIG: dice de qué lado del lote está la calle. */
+  puerta: { lng: number; lat: number } | null;
+  /** El polígono de la parcela (GeoJSON de `catastro/geometria`). */
+  geometria: unknown | null;
+  /** El valor de la UVA del día de la consulta, para pasar la plusvalía a pesos. */
+  uva: { fecha: string; valor: number } | null;
+  /** Lo que Ciudad 3D calculó de plusvalía para la superficie construible estimada, como chequeo de la fórmula propia. */
+  plusvaliaCiudad: { areaEdificar: number; uva: number } | null;
   barrio: string | null;
   comuna: string | null;
   parcela: ParcelaCatastro | null;
@@ -146,19 +154,24 @@ export async function consultarPorDireccion(texto: string): Promise<ConsultaCiud
   }
 
   let coordenadas = await centroideDePuerta(d.cod_calle, d.altura);
-  let parcela = coordenadas ? await parcelaEnPunto(coordenadas) : null;
+  let busqueda: BusquedaParcela = coordenadas ? await parcelaEnPunto(coordenadas) : null;
 
-  if (!parcela) {
-    // Sin centroide (la altura no es puerta oficial, o USIG no contestó) se
-    // prueba con el punto de la puerta: a veces cae adentro.
+  if (busqueda === null) {
+    // Sin centroide (la altura no es puerta oficial, o USIG no contestó), o
+    // con el centroide fuera de toda parcela, se prueba con el punto de la
+    // puerta: a veces cae adentro.
     const puerta = { lng: Number(d.coordenadas.x), lat: Number(d.coordenadas.y) };
-    parcela = await parcelaEnPunto(puerta);
+    busqueda = await parcelaEnPunto(puerta);
     coordenadas ??= puerta;
-    if (!parcela) {
-      avisos.push(
-        "No se encontró la parcela: la altura no es una puerta oficial o USIG no respondió. Cargá la nomenclatura catastral (sección-manzana-parcela) y volvé a consultar, o reintentá más tarde."
-      );
-    }
+  }
+
+  const parcela = busqueda === "mudo" ? null : busqueda;
+  if (!parcela) {
+    avisos.push(
+      busqueda === "mudo"
+        ? "Ciudad 3D no contestó la consulta de la parcela. Actualizá desde la Ciudad en un rato."
+        : "No se encontró la parcela: la altura no es una puerta oficial o USIG no ubicó el centroide. Cargá la nomenclatura catastral (sección-manzana-parcela) desde Editar y actualizá desde la Ciudad."
+    );
   }
 
   return completar(
@@ -167,6 +180,7 @@ export async function consultarPorDireccion(texto: string): Promise<ConsultaCiud
       codCalle: d.cod_calle,
       altura: d.altura,
       coordenadas,
+      puerta: { lng: Number(d.coordenadas.x), lat: Number(d.coordenadas.y) },
     },
     parcela,
     avisos
@@ -182,19 +196,42 @@ export async function consultarPorSmp(
     altura: null,
   }
 ): Promise<ConsultaCiudad> {
-  const parcela = await parcelaPorSmp(smp);
-  if (!parcela) {
-    throw new Error(`La Ciudad no tiene una parcela ${smp}. El formato es sección-manzana-parcela, como 061-056-019.`);
+  const busqueda = await parcelaPorSmp(smp);
+  if (busqueda === "mudo") {
+    throw new Error("Ciudad 3D no contestó. Suele pasar: probá de nuevo en un momento.");
   }
+  if (!busqueda) {
+    throw new Error(
+      `La Ciudad no tiene una parcela ${smp}. El formato es sección-manzana-parcela, como 061-056-019.`
+    );
+  }
+  const parcela = busqueda;
+  // La puerta dice de qué lado está la calle, y el volumen 3D la necesita
+  // para saber cuál es el frente. Por SMP no hay dirección escrita, pero la
+  // parcela trae sus puertas oficiales: se geocodifica la principal.
+  const principal =
+    parcela.puertas?.find((p) => p.puerta_oficial) ?? parcela.puertas?.[0] ?? null;
+  const puerta =
+    principal && principal.codigo_calle && principal.altura
+      ? await geocodificar(principal.codigo_calle, principal.altura, "puertas")
+      : null;
+
   return completar(
-    { ...base, coordenadas: { lng: parcela.centroide[0], lat: parcela.centroide[1] } },
+    {
+      ...base,
+      coordenadas: { lng: parcela.centroide[0], lat: parcela.centroide[1] },
+      puerta,
+    },
     parcela,
     []
   );
 }
 
 async function completar(
-  base: Pick<ConsultaCiudad, "direccionNormalizada" | "codCalle" | "altura" | "coordenadas">,
+  base: Pick<
+    ConsultaCiudad,
+    "direccionNormalizada" | "codCalle" | "altura" | "coordenadas" | "puerta"
+  >,
   parcela: ParcelaCatastro | null,
   avisos: string[]
 ): Promise<ConsultaCiudad> {
@@ -211,13 +248,33 @@ async function completar(
     punto ? datosUtiles(punto) : null,
     smp ? epok<Edificabilidad>(`cur3d/seccion_edificabilidad/?smp=${smp}`, ESENCIAL) : null,
   ]);
-  const [mixtura, ficha, monumento, microcentro] = await Promise.all([
+  // La plusvalía se le pide a la Ciudad para la superficie construible que
+  // sale de sus propios datos, como chequeo de la fórmula de
+  // `lib/prefactibilidad.ts`; con alícuota 0 no hace falta preguntar.
+  const alturaBase = edificabilidad?.altura_max.find((a) => a > 0) ?? null;
+  const plantas = plantasSobrePbEstimadas(alturaBase);
+  const areaEstimada =
+    edificabilidad && edificabilidad.sup_edificable_planta > 0 && plantas !== null
+      ? Math.round(edificabilidad.sup_edificable_planta * (plantas + 1) * 100) / 100
+      : null;
+  const pedirPlusvalia =
+    smp !== null && areaEstimada !== null && (edificabilidad?.plusvalia.alicuota ?? 0) > 0;
+
+  const [mixtura, ficha, monumento, microcentro, geometria, plusvalia, uva] = await Promise.all([
     smp ? epok<{ usos: number[] | null }>(`cur3d/mixtura_usos/?smp=${smp}`, SECUNDARIO) : null,
     smp ? epok<{ exists: boolean }>(`cur3d/fichadecatalogacion/?smp=${smp}`, SECUNDARIO) : null,
     smp
       ? epok<{ data: unknown[] }>(`cur3d/monumento_historico_nacional/?smp=${smp}`, SECUNDARIO)
       : null,
     smp ? epok<{ in: boolean }>(`cur3d/parcela_en_microcentro/?smp=${smp}`, SECUNDARIO) : null,
+    smp ? epok<unknown>(`catastro/geometria/?smp=${smp}`, SECUNDARIO) : null,
+    pedirPlusvalia
+      ? epok<{ plusvalia_em: number }>(
+          `cur3d/calcular_plusvalia/?smp=${smp}&area_edificar=${areaEstimada}`,
+          SECUNDARIO
+        )
+      : null,
+    valorUva(),
   ]);
   // Las afectaciones vienen adentro de la edificabilidad; el endpoint aparte
   // repite lo mismo.
@@ -239,6 +296,12 @@ async function completar(
     barrio: utiles?.barrio || null,
     comuna: utiles?.comuna || null,
     parcela,
+    geometria: geometria && typeof geometria === "object" && "type" in geometria ? geometria : null,
+    uva,
+    plusvaliaCiudad:
+      plusvalia && areaEstimada !== null && typeof plusvalia.plusvalia_em === "number"
+        ? { areaEdificar: areaEstimada, uva: plusvalia.plusvalia_em }
+        : null,
     edificabilidad: edificabilidad && "altura_max" in edificabilidad ? edificabilidad : null,
     mixtura: mixtura?.usos?.find((u) => u > 0) ?? null,
     afectaciones,
@@ -247,6 +310,69 @@ async function completar(
     microcentro: microcentro ? Boolean(microcentro.in) : null,
     avisos,
   };
+}
+
+// ------------------- Volver a consultar sin perder lo que había ------------
+
+/**
+ * Al volver a consultar, lo que la Ciudad no contestó esta vez no borra lo
+ * que contestó la vez anterior: un "Actualizar" con Ciudad 3D caído dejaba
+ * el estudio sin normativa. Se conserva pieza por pieza, y el aviso dice de
+ * cuándo es lo que quedó. Lo que sí contestó pisa lo viejo, que es el
+ * sentido de actualizar.
+ */
+export function fusionarConsultas(
+  vieja: ConsultaCiudad | null,
+  nueva: ConsultaCiudad
+): ConsultaCiudad {
+  if (!vieja) return nueva;
+
+  const conservado: string[] = [];
+  const elegir = <T>(n: T | null | undefined, v: T | null | undefined, nombre: string): T | null => {
+    if (n !== null && n !== undefined) return n;
+    if (v !== null && v !== undefined) {
+      conservado.push(nombre);
+      return v;
+    }
+    return null;
+  };
+
+  const fusion: ConsultaCiudad = {
+    ...nueva,
+    coordenadas: nueva.coordenadas ?? vieja.coordenadas ?? null,
+    puerta: nueva.puerta ?? vieja.puerta ?? null,
+    barrio: nueva.barrio ?? vieja.barrio ?? null,
+    comuna: nueva.comuna ?? vieja.comuna ?? null,
+    parcela: elegir(nueva.parcela, vieja.parcela, "la parcela"),
+    edificabilidad: elegir(nueva.edificabilidad, vieja.edificabilidad, "la edificabilidad"),
+    geometria: elegir(nueva.geometria, vieja.geometria, "el polígono"),
+    mixtura: elegir(nueva.mixtura, vieja.mixtura, "la mixtura de usos"),
+    afectaciones: nueva.afectaciones ?? vieja.afectaciones ?? null,
+    catalogado: elegir(nueva.catalogado, vieja.catalogado, "la catalogación"),
+    monumentoHistorico: elegir(nueva.monumentoHistorico, vieja.monumentoHistorico, "los monumentos"),
+    microcentro: elegir(nueva.microcentro, vieja.microcentro, "el microcentro"),
+    uva: elegir(nueva.uva, vieja.uva, "la UVA"),
+    plusvaliaCiudad: elegir(nueva.plusvaliaCiudad, vieja.plusvaliaCiudad, "el chequeo de plusvalía"),
+  };
+
+  let avisos = nueva.avisos;
+  if (conservado.length > 0) {
+    // El aviso genérico de "no devolvió" se reemplaza por uno que dice qué
+    // quedó y de cuándo.
+    avisos = avisos.filter((a) => !a.startsWith("Ciudad 3D no devolvió") && !a.startsWith("Ciudad 3D no contestó"));
+    const [y, m, d] = vieja.consultadoEn.slice(0, 10).split("-");
+    avisos = [
+      ...avisos,
+      `La Ciudad no contestó ${enumerar(conservado)}: quedó lo de la consulta del ${d}/${m}/${y}. Se puede volver a actualizar más tarde.`,
+    ];
+  }
+
+  return { ...fusion, avisos };
+}
+
+function enumerar(partes: string[]) {
+  if (partes.length <= 1) return partes.join("");
+  return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
 }
 
 // ------------------- De la consulta a las columnas del estudio -------------
@@ -419,14 +545,20 @@ async function normalizarDireccion(texto: string): Promise<DireccionUsig[] | nul
   return (r.direccionesNormalizadas ?? []).filter((d) => d.cod_partido === "caba");
 }
 
+/** El centroide de la parcela de una puerta oficial. */
+function centroideDePuerta(codCalle: number, altura: number) {
+  return geocodificar(codCalle, altura, "centroide");
+}
+
 /**
- * El centroide de la parcela de una puerta oficial. El geocodificador lo da
- * en Gauss-Krüger Buenos Aires; USIG mismo lo pasa a lon/lat.
+ * Calle y altura a un punto: el centroide de la parcela (`centroide`, sólo
+ * para puertas oficiales) o la puerta misma (`puertas`). El geocodificador
+ * lo da en Gauss-Krüger Buenos Aires; USIG mismo lo pasa a lon/lat.
  */
-async function centroideDePuerta(codCalle: number, altura: number) {
+async function geocodificar(codCalle: number, altura: number, metodo: "centroide" | "puertas") {
   const gk = json<{ x: string | number; y: string | number }>(
     await pedir(
-      `${USIG_WS}/geocoder/2.2/geocoding?cod_calle=${codCalle}&altura=${altura}&metodo=centroide`
+      `${USIG_WS}/geocoder/2.2/geocoding?cod_calle=${codCalle}&altura=${altura}&metodo=${metodo}`
     )
   );
   if (!gk?.x || !gk?.y) return null;
@@ -456,21 +588,53 @@ async function datosUtiles(p: { lng: number; lat: number }) {
   );
 }
 
-// --------------------------- Ciudad 3D (epok) -----------------------------
+// ------------------------------ UVA ---------------------------------------
 
-async function parcelaEnPunto(p: { lng: number; lat: number }) {
-  const r = await epok<ParcelaCatastro | Record<string, never>>(
-    `catastro/parcela/?lng=${p.lng}&lat=${p.lat}`
+/**
+ * El valor de la UVA de hoy (o el último publicado hasta hoy): la plusvalía
+ * se liquida en UVA y hay que decir cuántos pesos son. La serie es la del
+ * BCRA republicada por ArgentinaDatos, que no pide clave; la API propia del
+ * BCRA cambia de versión y corta las viejas.
+ */
+async function valorUva(): Promise<{ fecha: string; valor: number } | null> {
+  const serie = json<{ fecha: string; valor: number }[]>(
+    await pedir("https://api.argentinadatos.com/v1/finanzas/indices/uva", {
+      intentos: 2,
+      timeoutMs: 8000,
+      escalonadoMs: 4000,
+    })
   );
-  // Fuera de toda parcela contesta `{}`, no un error.
-  return r && "smp" in r ? (r as ParcelaCatastro) : null;
+  if (!Array.isArray(serie) || serie.length === 0) return null;
+
+  // Viene ordenada por fecha y publica también los días que vienen.
+  const hoy = new Date().toISOString().slice(0, 10);
+  const hastaHoy = serie.filter((d) => d.fecha <= hoy && Number.isFinite(d.valor));
+  const ultimo = hastaHoy[hastaHoy.length - 1] ?? serie[serie.length - 1];
+  return ultimo ? { fecha: ultimo.fecha, valor: ultimo.valor } : null;
 }
 
-async function parcelaPorSmp(smp: string) {
-  const r = await epok<ParcelaCatastro | Record<string, never>>(
-    `catastro/parcela/?smp=${encodeURIComponent(smp.trim())}`
-  );
-  return r && "smp" in r ? (r as ParcelaCatastro) : null;
+// --------------------------- Ciudad 3D (epok) -----------------------------
+
+/**
+ * Tres respuestas distintas, que piden tres reacciones distintas: la
+ * parcela; `null` cuando la Ciudad contestó que ahí no hay ninguna (`{}`
+ * con 200, no un error); y "mudo" cuando no contestó, que no dice nada
+ * sobre la parcela y sólo pide reintentar.
+ */
+type BusquedaParcela = ParcelaCatastro | null | "mudo";
+
+async function parcelaEnPunto(p: { lng: number; lat: number }): Promise<BusquedaParcela> {
+  return buscarParcela(`catastro/parcela/?lng=${p.lng}&lat=${p.lat}`);
+}
+
+async function parcelaPorSmp(smp: string): Promise<BusquedaParcela> {
+  return buscarParcela(`catastro/parcela/?smp=${encodeURIComponent(smp.trim())}`);
+}
+
+async function buscarParcela(ruta: string): Promise<BusquedaParcela> {
+  const r = await epok<ParcelaCatastro | Record<string, never>>(ruta);
+  if (r === null) return "mudo";
+  return "smp" in r ? (r as ParcelaCatastro) : null;
 }
 
 type Opciones = { intentos?: number; timeoutMs?: number; escalonadoMs?: number };

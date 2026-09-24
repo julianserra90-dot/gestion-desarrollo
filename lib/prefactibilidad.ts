@@ -117,6 +117,44 @@ export function incidenciaPorM2Construible(d: DatosLote): number | null {
   return redondear(d.valor_terreno / construible);
 }
 
+/**
+ * El derecho de participación en la plusvalía urbana (Ley 6062), en UVA.
+ *
+ * Se paga por los metros que el Código Urbanístico deja construir de más
+ * respecto del Código de Planeamiento anterior. La cuenta es la que hace
+ * Ciudad 3D en `calcular_plusvalia`, sacada de sus propios números: la
+ * capacidad del CPU es FOT × superficie de la parcela × 1,25 (los premios
+ * máximos que daba el CPU), y sobre el exceso se aplica la incidencia en
+ * UVA/m² por la alícuota y por 0,8. Coincide al centavo con la API en Núñez
+ * 4167 (053-128-020) para 400, 800, 1.000 y 1.200 m² y da cero en
+ * Andonaegui 1229, donde el CPU permitía más que el Código nuevo.
+ *
+ * `null` es "no hay con qué calcular"; 0 es "no paga".
+ */
+export const PREMIOS_CPU = 1.25;
+export const FACTOR_PLUSVALIA = 0.8;
+
+export function capacidadCpu(fot: number | null, superficieParcela: number | null): number | null {
+  if (!fot || !superficieParcela) return null;
+  return redondear(fot * superficieParcela * PREMIOS_CPU);
+}
+
+export function plusvaliaUva(d: {
+  superficieConstruible: number | null;
+  fot: number | null;
+  superficieParcela: number | null;
+  incidenciaUva: number | null;
+  alicuota: number | null;
+}): number | null {
+  if (d.incidenciaUva === null || d.alicuota === null) return null;
+  if (d.incidenciaUva === 0 || d.alicuota === 0) return 0;
+  const capacidad = capacidadCpu(d.fot, d.superficieParcela);
+  if (capacidad === null || d.superficieConstruible === null) return null;
+  const exceso = d.superficieConstruible - capacidad;
+  if (exceso <= 0) return 0;
+  return redondear(exceso * d.incidenciaUva * d.alicuota * FACTOR_PLUSVALIA);
+}
+
 export function resumenLote(d: DatosLote) {
   return {
     superficieLote: superficieLote(d),

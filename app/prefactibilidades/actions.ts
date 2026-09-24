@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   consultarPorDireccion,
   consultarPorSmp,
+  fusionarConsultas,
   valoresDesdeCiudad,
   type ConsultaCiudad,
 } from "@/lib/ciudad";
@@ -69,7 +70,7 @@ export async function reconsultarPrefactibilidad(formData: FormData) {
   const supabase = await createClient();
   const { data: estudio } = await supabase
     .from("prefactibilidades")
-    .select("id, direccion, direccion_normalizada, cod_calle, smp")
+    .select("id, direccion, direccion_normalizada, cod_calle, smp, ciudad")
     .eq("id", id)
     .maybeSingle();
 
@@ -78,9 +79,9 @@ export async function reconsultarPrefactibilidad(formData: FormData) {
     return;
   }
 
-  let consulta: ConsultaCiudad;
+  let nueva: ConsultaCiudad;
   try {
-    consulta = estudio.smp
+    nueva = estudio.smp
       ? await consultarPorSmp(estudio.smp, {
           direccionNormalizada: estudio.direccion_normalizada,
           codCalle: estudio.cod_calle,
@@ -91,6 +92,12 @@ export async function reconsultarPrefactibilidad(formData: FormData) {
     volverCon(ficha, mensajeDe(e));
     return;
   }
+
+  // Lo que no contestó esta vez no borra lo que contestó la anterior.
+  const consulta = fusionarConsultas(
+    estudio.ciudad as unknown as ConsultaCiudad | null,
+    nueva
+  );
 
   const { error } = await supabase
     .from("prefactibilidades")

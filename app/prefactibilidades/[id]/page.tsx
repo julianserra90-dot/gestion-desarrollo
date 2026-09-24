@@ -4,9 +4,20 @@ import AppSidebar from "@/components/AppSidebar";
 import EstadoPrefactibilidad from "@/components/EstadoPrefactibilidad";
 import Volver from "@/components/Volver";
 import * as ui from "@/components/ui";
+import VolumenLote from "@/components/VolumenLote";
 import { valoresDesdeCiudad, type ConsultaCiudad, type ValoresCiudad } from "@/lib/ciudad";
 import { formatDate, formatM2, formatMoney, formatUSD } from "@/lib/format";
-import { resumenLote } from "@/lib/prefactibilidad";
+import {
+  aMetros,
+  anilloExterior,
+  frenteDe,
+  huellaPorSuperficie,
+  rectangulo,
+  simplificar,
+  type Punto,
+} from "@/lib/geometria";
+import { getCotizacionActual } from "@/lib/dolar";
+import { capacidadCpu, plusvaliaUva, resumenLote } from "@/lib/prefactibilidad";
 import { createClient } from "@/lib/supabase/server";
 import BotonConfirmar from "@/components/BotonConfirmar";
 import { eliminarPrefactibilidad, reconsultarPrefactibilidad } from "../actions";
@@ -108,6 +119,57 @@ export default async function FichaPrefactibilidadPage({
 
   const e = ciudad?.edificabilidad ?? null;
   const franjas = (e?.altura_max ?? []).filter((a) => a > 0);
+
+  // El volumen: el polígono real de la parcela si la Ciudad lo dio, o un
+  // rectángulo de frente × fondo. La huella es la banda desde el frente que
+  // suma la superficie edificable en planta; el frente es el lado más
+  // cercano a la puerta.
+  const anillo = ciudad?.geometria ? anilloExterior(ciudad.geometria) : null;
+  const centro: [number, number] = ciudad?.parcela?.centroide ?? [
+    estudio.lng ?? 0,
+    estudio.lat ?? 0,
+  ];
+  const lote: Punto[] | null =
+    anillo && anillo.length >= 3
+      ? simplificar(aMetros(anillo, centro))
+      : estudio.ancho_m && estudio.profundidad_m
+        ? rectangulo(estudio.ancho_m, estudio.profundidad_m)
+        : null;
+  const puerta =
+    anillo && ciudad?.puerta
+      ? aMetros([[ciudad.puerta.lng, ciudad.puerta.lat]], centro)[0]
+      : null;
+  const frente = lote ? frenteDe(lote, puerta) : null;
+  const huella =
+    lote && frente && cuentas.areaEdificablePlanta !== null
+      ? huellaPorSuperficie(lote, frente, cuentas.areaEdificablePlanta)
+      : null;
+
+  // La plusvalía se calcula acá y no en la consulta, para que siga a las
+  // plantas y a la huella que el usuario corrija.
+  const datosPlusvalia = {
+    fot: e?.fot.fot_medianera ?? null,
+    superficieParcela: e?.superficie_parcela ?? null,
+    incidenciaUva: e?.plusvalia.incidencia_uva ?? null,
+    alicuota: e?.plusvalia.alicuota ?? null,
+  };
+  const plusvalia = plusvaliaUva({
+    superficieConstruible: cuentas.superficieConstruible,
+    ...datosPlusvalia,
+  });
+  const capacidad = capacidadCpu(datosPlusvalia.fot, datosPlusvalia.superficieParcela);
+  const uva = ciudad?.uva ?? null;
+  // En dólares al blue de hoy, que es como se habla de un terreno; sólo si
+  // hay algo que pagar.
+  const dolar = plusvalia && uva ? await getCotizacionActual() : null;
+  // Si la Ciudad calculó otra cosa para la misma superficie, se dice: es el
+  // chequeo de la fórmula propia.
+  const chequeo = ciudad?.plusvaliaCiudad ?? null;
+  const chequeoPropio = chequeo
+    ? plusvaliaUva({ superficieConstruible: chequeo.areaEdificar, ...datosPlusvalia })
+    : null;
+  const chequeoDifiere =
+    chequeo !== null && chequeoPropio !== null && Math.abs(chequeoPropio - chequeo.uva) > 1;
 
   const normativa = [
     estudio.unidad_edificabilidad
@@ -235,6 +297,35 @@ export default async function FichaPrefactibilidadPage({
       : cuentas.incidenciaLote !== null
         ? tarjeta("Incidencia por m² de lote", formatValor(cuentas.incidenciaLote))
         : null,
+    plusvalia === null
+      ? null
+      : plusvalia === 0
+        ? tarjeta(
+            "Plusvalía urbana",
+            "No paga",
+            capacidad !== null
+              ? `el CPU ya permitía ${formatM2(capacidad)}, más que lo construible`
+              : "alícuota cero en esta parcela"
+          )
+        : tarjeta(
+            "Plusvalía urbana",
+            `${formatUva(plusvalia)} UVA`,
+            [
+              uva
+                ? `≈ ${formatMoney(plusvalia * uva.valor)}${
+                    dolar ? ` o ${formatUSD((plusvalia * uva.valor) / dolar.venta)} al blue` : ""
+                  } · UVA a ${formatMoney(uva.valor)} del ${formatDate(uva.fecha)}`
+                : null,
+              capacidad !== null
+                ? `sobre ${formatM2(Math.max(0, (cuentas.superficieConstruible ?? 0) - capacidad))} que exceden el CPU`
+                : null,
+              chequeoDifiere && chequeo
+                ? `Ciudad 3D calcula ${formatUva(chequeo.uva)} UVA para ${formatM2(chequeo.areaEdificar)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          ),
   ].filter(esTarjeta);
 
   const avisos = ciudad?.avisos ?? [];
@@ -316,6 +407,36 @@ export default async function FichaPrefactibilidadPage({
           </>
         )}
       </section>
+
+      {lote && frente && (
+        <section style={ui.panelConMargen}>
+          <h3 style={ui.sectionTitle}>Volumen edificable</h3>
+          <VolumenLote
+            lote={lote}
+            huella={huella?.huella ?? lote}
+            frente={frente}
+            alturaMaxima={estudio.altura_maxima_m}
+            planoLimite={estudio.plano_limite_m}
+            plantasSobrePb={estudio.plantas_sobre_pb}
+            etiquetaFrente={
+              estudio.ancho_m !== null ? `${formatMetros(estudio.ancho_m)} m de frente` : undefined
+            }
+            etiquetaProfundidad={
+              huella
+                ? `huella hasta ${formatMetros(huella.profundidad)} m desde la Línea Oficial`
+                : undefined
+            }
+          />
+          <p style={notaFinal}>
+            {anillo
+              ? "La forma del lote es la del catastro de la Ciudad. "
+              : "Sin el polígono de la Ciudad, el lote se dibuja como un rectángulo de frente por fondo. "}
+            La huella es la banda desde el frente que suma la superficie
+            edificable en planta, levantada hasta la altura máxima: la
+            envolvente, no un proyecto.
+          </p>
+        </section>
+      )}
 
       <section style={ui.panelConMargen}>
         <h3 style={ui.sectionTitle}>El terreno</h3>
@@ -427,6 +548,10 @@ function Dato({
 
 function formatMetros(valor: number) {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor);
+}
+
+function formatUva(valor: number) {
+  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(valor);
 }
 
 const acciones = {
