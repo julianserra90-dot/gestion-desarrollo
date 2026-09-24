@@ -68,6 +68,11 @@ export default async function Home({
               Ver obras activas
             </Link>
           ) : (
+            <Link href="/prefactibilidades" style={buttonLinkSecundario}>
+              Estudio prefactibilidad
+            </Link>
+          )}
+          {!viendoArchivadas && (
             <Link href="/obras/nueva" style={buttonLink}>
               Nueva obra
             </Link>
@@ -229,6 +234,19 @@ const subtitle = {
   color: "#666666",
   margin: 0,
   fontSize: "16px",
+};
+
+// El estudio de un terreno no es una obra: va al lado de "Nueva obra" porque
+// es lo otro que se empieza desde acá, pero en blanco, que es la acción
+// secundaria.
+const buttonLinkSecundario = {
+  background: "#ffffff",
+  color: "#111111",
+  border: "1px solid #dcdcdc",
+  borderRadius: "10px",
+  padding: "12px 20px",
+  fontSize: "14px",
+  textDecoration: "none",
 };
 
 const buttonLink = {

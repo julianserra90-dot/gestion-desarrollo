@@ -16,6 +16,7 @@ export type NombreIcono =
   | "inversores"
   | "flujo"
   | "lote"
+  | "prefactibilidad"
   | "dolares"
   | "beneficio"
   | "estado"
@@ -99,6 +100,13 @@ const TRAZOS: Record<NombreIcono, React.ReactNode> = {
     <>
       <path d="M12 21s7-6.7 7-11.8A7 7 0 0 0 5 9.2C5 14.3 12 21 12 21Z" />
       <circle cx="12" cy="9.3" r="2.2" />
+    </>
+  ),
+  // Un lote con el frente acotado: la parcela y, arriba, la cota de medida.
+  prefactibilidad: (
+    <>
+      <rect x="4" y="8.5" width="16" height="11.5" rx="1.2" />
+      <path d="M4 4.5h16M4 3v3M20 3v3" />
     </>
   ),
   dolares: (

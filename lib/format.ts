@@ -49,6 +49,13 @@ export function formatUSD(valor: number | null | undefined) {
   }).format(valor);
 }
 
+/** Una superficie: "303,10 m²". Hasta dos decimales, y ninguno si es redonda. */
+export function formatM2(valor: number | null | undefined) {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+
+  return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor)} m²`;
+}
+
 /**
  * Pasa una fecha de Postgres ("2026-06-01") a formato local ("01/06/2026").
  *

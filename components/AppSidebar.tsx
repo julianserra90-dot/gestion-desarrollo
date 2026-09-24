@@ -8,6 +8,12 @@ import { ANCHO_SIDEBAR_CERRADO } from "@/lib/layout";
 
 const ITEMS: { clave: string; label: string; href: string; icono: NombreIcono }[] = [
   { clave: "obras", label: "Obras", href: "/", icono: "grid" },
+  {
+    clave: "prefactibilidades",
+    label: "Prefactibilidades",
+    href: "/prefactibilidades",
+    icono: "prefactibilidad",
+  },
   { clave: "empresas", label: "Empresas", href: "/empresas", icono: "edificio" },
   { clave: "usuarios", label: "Usuarios", href: "/usuarios", icono: "usuarios" },
   { clave: "perfil", label: "Mi perfil", href: "/perfil", icono: "perfil" },
@@ -15,7 +21,7 @@ const ITEMS: { clave: string; label: string; href: string; icono: NombreIcono }[
 
 /**
  * La misma franja lateral de `ObraSidebar`, pero para las pantallas que no
- * son de una obra puntual. Sin grupos ni selector: son cuatro destinos fijos
+ * son de una obra puntual. Sin grupos ni selector: son cinco destinos fijos
  * y Salir, así que va todo en una sola lista.
  */
 export default function AppSidebar({ activo }: { activo: string }) {

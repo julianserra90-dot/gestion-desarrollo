@@ -277,6 +277,31 @@ Reglas contables, que conviene tener presentes:
 Consecuencia: **la suma de los saldos ya no da cero**, da la plata de las socias
 que todavía está en la cuenta. Cuando la cuenta se vacía, vuelve a dar cero.
 
+## Prefactibilidades
+
+Estudios de terrenos en CABA, antes de comprar: qué deja construir la
+normativa y a cuánto sale el metro construible. Se entra desde la barra
+lateral o con el botón **Estudio prefactibilidad** de la portada, al lado de
+Nueva obra. No tienen relación con las obras: un lote en estudio no es de
+ninguna obra ni de ninguna empresa, y sólo el administrador los ve.
+
+Se carga sólo la dirección. Con eso USIG ubica la parcela y la API de
+Ciudad 3D trae la ficha catastral (nomenclatura, frente, fondo, superficie,
+lo construido) y la normativa del Código Urbanístico (unidad de
+edificabilidad, altura máxima, plano límite, superficie edificable en planta,
+mixtura de usos, APH, catalogación, afectaciones, plusvalía). La ficha calcula
+una primera aproximación: superficie construible e incidencia del terreno
+por m² construible. Es el techo que da la normativa, no el proyecto, y es
+una lectura automática: hay que verificarla contra la mensura antes de
+decidir.
+
+Todo se corrige desde **Editar**, y la ficha marca cada dato corregido con el
+valor que traía la Ciudad. **Actualizar desde la Ciudad** vuelve a consultar y
+pisa las correcciones. Lo que la Ciudad no da se carga a mano: valor del
+terreno, tipo de desarrollo a evaluar, LFI y LIB, patios, usos permitidos.
+Los servicios de la Ciudad se caen seguido; si algo no vino, la ficha lo
+avisa y alcanza con actualizar más tarde.
+
 ## Levantarlo en otra computadora
 
 Los datos (base y archivos) están en la nube, así que no hay nada que migrar.

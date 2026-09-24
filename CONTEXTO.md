@@ -1159,6 +1159,102 @@ Las solapas de una obra están en dos grupos: **Economía** (Balance, Gastos,
 Ingresos, Flujo, Lote, Dólares, Beneficio) y **Obra** (Estado, Presupuestos,
 Avances, Fotos, Documentos, Rubros, Materiales).
 
+### Prefactibilidades (estudios de terrenos en CABA)
+Solapa nueva en la barra general y botón **Estudio prefactibilidad** al lado
+de "Nueva obra" en la portada. Los estudios **no tienen nada que ver con las
+obras**: son lotes que se evalúan antes de comprar, y la mayoría no llega a
+obra. Tabla `prefactibilidades`, sin FK a `obras` ni a `empresas`; **sólo el
+administrador** la ve y la toca (los usuarios de empresa ven las obras donde
+participan, y un lote en estudio no es de nadie). Si un lote se compra, la
+obra se crea aparte, como siempre.
+
+**Se carga sólo la dirección** (24/09/2026). El alta pide calle y altura y
+el resto lo contesta la Ciudad: `lib/ciudad.ts` (SÓLO SERVIDOR) normaliza
+con USIG, ubica el centroide de la parcela y le pide a la API de Ciudad 3D
+la ficha catastral (SMP, frente, fondo, superficie, lo construido según
+AGIP) y la normativa (altura máxima y plano límite, superficie edificable en
+planta, FOT, mixtura de usos, distritos especiales y APH, catalogación,
+afectaciones, plusvalía, parcelas linderas, links al croquis de parcela).
+`valoresDesdeCiudad` lo vuelca en las columnas del estudio. La unidad de
+edificabilidad sale de la altura con la misma tabla que usa Ciudad 3D (9 →
+U.S.A.B 0, 12 → U.S.A.B 1, 14,6 → U.S.A.B 2, 17,2 → U.S.A.M, 22,8 →
+U.S.A.A, 31,2 → Corredor Medio, 38 → Corredor Alto; está en
+`lib/prefactibilidad.ts`) y **las plantas son las del Código por unidad**:
+PB + 2, 3, 4, 5, 7, 10 y 12 respectivamente. No es una división por altura
+de piso —a 3 m por planta 14,6 m daban PB + 3, y el estudio a mano de
+Andonaegui 1229 dice PB + 4—. Para una altura que no es la de una unidad
+(enrase, área especial) se estima con PB de 3,4 m y pisos de 2,8 m, que
+reproduce la tabla entera. Las respuestas crudas quedan en `ciudad` (jsonb)
+con la fecha y los avisos de lo que no contestó.
+
+**Todo se corrige a mano desde Editar**, y la ficha marca cada dato
+corregido con el valor que traía la Ciudad: compara la columna contra
+`valoresDesdeCiudad(ciudad)`, no hay una tabla de fuentes. *Actualizar
+desde la Ciudad* vuelve a consultar —por SMP si lo hay, que es exacto; si no,
+por dirección— y pisa las correcciones. Lo que la Ciudad no da se carga a
+mano: valor del terreno, tipo de desarrollo, LFI y LIB numéricas (sí da la
+huella, `sup_edificable_planta_m2`, que manda sobre frente × LFI en el
+cálculo), patios, usos permitidos. La ficha es de sólo lectura con Editar
+como acción, como la del gasto. Estado del estudio: En estudio · Interesa ·
+Descartado.
+
+Las cuentas viven en `lib/prefactibilidad.ts`, **puro** como `lib/reparto.ts`,
+para probarlas contra lotes de prefactibilidad conocida sin levantar nada.
+Primera aproximación con las simplificaciones del alcance inicial: lote
+regular entre medianeras, un solo cuerpo a todo el ancho, hasta la LFI (o el
+fondo si el lote es más corto) menos el retiro de frente, por PB más las
+plantas cargadas. Da superficie del lote (la cargada, o frente × fondo), área
+edificable en planta, superficie construible e **incidencia por m²
+construible** —el número que compara lotes— y por m² de lote. Lo que no se
+puede calcular da `null`, no cero: cero se leería como "no se construye".
+
+La idea completa (spec del 24/09/2026, guardada en la memoria de Claude) tiene
+cuatro etapas: 1 normativa; 2 recomendación programática (deptos, oficinas,
+locales, cocheras, puntuadas por normativa, geometría, ubicación y
+eficiencia, siempre explicando el porqué); 3 económica (vendible, eficiencia
+= vendible / construida, plusvalía, tres alternativas A/B/C); 4 diseño
+generativo de plantas. Sin IA: reglas y geometría, con los parámetros
+editables desde un panel interno.
+
+**Las fuentes, y sus mañas.** USIG (documentado): `normalizar` da la
+dirección oficial, `cod_calle` y el punto de la puerta; el geocodificador
+2.2 con `metodo=centroide` da el centro de la parcela de una puerta oficial
+en Gauss-Krüger, y `rest/convertir_coordenadas` lo pasa a lon/lat. El
+centroide hace falta porque el punto de la puerta cae en la vereda y la
+consulta de parcela se la lleva un vecino, o nadie. `datos_utiles` da barrio
+y comuna (la zonificación que trae es la del código viejo, no sirve). La API
+de Ciudad 3D (`epok.buenosaires.gob.ar`) no está documentada: los endpoints
+salen del código abierto del frontend (github.com/gcba/Ciudad-3D,
+`source/src/utils/apiConfig.js`). Se usan `catastro/parcela` (por `lng/lat`
+o por `smp`), `cur3d/seccion_edificabilidad`, `mixtura_usos`,
+`fichadecatalogacion`, `monumento_historico_nacional` y
+`parcela_en_microcentro`. Quedan sin usar `cuadrosdeuso/rubros` (los usos
+permitidos por categoría y mixtura), `parcelas_plausibles_a_enrase` y
+`calcular_plusvalia?area_edificar=`. BA Data (GeoJSON del Código Urbanístico
+y de Superficie Edificable en Planta) quedó como plan B si la API de Ciudad
+3D desaparece; no se usa, y evitó tener que habilitar PostGIS.
+
+- USIG pierde entre un cuarto y un tercio de las conexiones al azar (una
+  sola IP, el SYN no vuelve): `pedir` hace pedidos escalonados —otro cada
+  1,5 s si el anterior no contestó— y gana el primero.
+- Ciudad 3D corta la conexión (ECONNRESET) si se mandan cabeceras propias
+  (User-Agent, Accept): se llama con el fetch pelado. Bajo carga tarda
+  varios segundos o corta; la parcela y la edificabilidad van con tres
+  intentos y las demás con uno solo, y lo que falte se recupera con
+  *Actualizar desde la Ciudad*.
+- Fuera de toda parcela `catastro/parcela` contesta `{}` con 200, no un
+  error.
+- La catalogación con `proteccion: "DESESTIMADO"` es un pedido rechazado: no
+  cuenta como catalogado, pero se lista como aviso. `ley_3056: "SI"`
+  (edificio anterior a 1941) se lista como afectación: demoler pasa por el
+  CAAP.
+- El paquete oficial `@usig-gcba/autocompleter` usa además
+  `datosabiertos-catastro-apis.buenosaires.gob.ar/catastro/parcela/?codigo_calle=&altura=&geocodificar=true&srid=4326`,
+  que daría el SMP directo desde la dirección; en la prueba del 24/09 no
+  contestó. Vale reintentarlo: ahorraría dos llamadas a USIG.
+- Las páginas cuyas acciones consultan llevan `maxDuration = 60`, por el
+  límite de 10 s que Vercel pone por defecto.
+
 ## Flujo de trabajo entre dos máquinas
 
 Al empezar: `git pull`. Al terminar: `git add -A && git commit && git push`.
@@ -1303,6 +1399,24 @@ acción de borrar el pago del lote viaja como prop.
 
 ## Pendientes / decisiones abiertas
 
+- **Validar `lib/prefactibilidad.ts` contra estudios a mano.** Primer caso,
+  Andonaegui 1229 (061-056-021): el estudio del usuario da PB + 4; la Ciudad
+  da 14,6 m (U.S.A.B 2) y huella de 129,75 m². Faltan comparar superficie
+  construible y vendible cuando el usuario pase sus números.
+- **Prefactibilidades, lo que sigue** (decisiones pendientes al 24/09/2026):
+  (a) una tabla editable de parámetros del Código por unidad de edificabilidad
+  —alturas, planos límite, retiros, patios— cargada por el usuario, no de
+  memoria; con eso `plantas_sobre_pb` deja de cargarse a mano; (b) tres a
+  cinco lotes reales con prefactibilidad conocida para validar
+  `lib/prefactibilidad.ts`; (c) usos permitidos desde `cuadrosdeuso/rubros`
+  de Ciudad 3D, por categoría y mixtura; (d) enrase y plusvalía calculada
+  desde `parcelas_plausibles_a_enrase` y `calcular_plusvalia`; (e) etapa 2:
+  las tres alternativas (vivienda + local, vivienda + cocheras, oficinas +
+  local) con vendible, eficiencia y explicación.
+- **Borrar un estudio está en la ficha y pregunta antes** (`BotonConfirmar`,
+  el primer confirm de la app). Estuvo al pie de Editar y no se encontraba:
+  "no se puede eliminar" quería decir "no veo cómo". Los demás borrados de la
+  app siguen sin preguntar; si alguno molesta, el botón ya existe.
 - **Probar un acopio con retiros de punta a punta** con datos reales: marcar
   el gasto, cargar dos retiros, mirar la ficha y Materiales. La carga de gasto
   con dos facturas y la de pesos con dólares ya se probaron y se borraron.

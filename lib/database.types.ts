@@ -1347,6 +1347,132 @@ export type Database = {
           },
         ]
       }
+      prefactibilidades: {
+        Row: {
+          actualizado_en: string
+          afectaciones: string | null
+          altura_maxima_m: number | null
+          ancho_m: number | null
+          aph: boolean
+          aph_detalle: string | null
+          barrio: string | null
+          catalogado: boolean
+          ciudad: Json | null
+          cod_calle: number | null
+          comuna: string | null
+          construcciones_existentes: string | null
+          consultado_en: string | null
+          creado_en: string
+          direccion: string
+          direccion_normalizada: string | null
+          estado: string
+          fot: number | null
+          id: string
+          lat: number | null
+          lfi_m: number | null
+          lib_m: number | null
+          lng: number | null
+          mixtura_usos: string | null
+          moneda_valor: string
+          observaciones: string | null
+          patios: string | null
+          plano_limite_m: number | null
+          plantas_sobre_pb: number | null
+          plusvalia: string | null
+          profundidad_m: number | null
+          retiro_frente_m: number | null
+          smp: string | null
+          sup_edificable_planta_m2: number | null
+          superficie_m2: number | null
+          tipo_desarrollo: string | null
+          unidad_edificabilidad: string | null
+          usos_permitidos: string | null
+          valor_terreno: number | null
+        }
+        Insert: {
+          actualizado_en?: string
+          afectaciones?: string | null
+          altura_maxima_m?: number | null
+          ancho_m?: number | null
+          aph?: boolean
+          aph_detalle?: string | null
+          barrio?: string | null
+          catalogado?: boolean
+          ciudad?: Json | null
+          cod_calle?: number | null
+          comuna?: string | null
+          construcciones_existentes?: string | null
+          consultado_en?: string | null
+          creado_en?: string
+          direccion: string
+          direccion_normalizada?: string | null
+          estado?: string
+          fot?: number | null
+          id?: string
+          lat?: number | null
+          lfi_m?: number | null
+          lib_m?: number | null
+          lng?: number | null
+          mixtura_usos?: string | null
+          moneda_valor?: string
+          observaciones?: string | null
+          patios?: string | null
+          plano_limite_m?: number | null
+          plantas_sobre_pb?: number | null
+          plusvalia?: string | null
+          profundidad_m?: number | null
+          retiro_frente_m?: number | null
+          smp?: string | null
+          sup_edificable_planta_m2?: number | null
+          superficie_m2?: number | null
+          tipo_desarrollo?: string | null
+          unidad_edificabilidad?: string | null
+          usos_permitidos?: string | null
+          valor_terreno?: number | null
+        }
+        Update: {
+          actualizado_en?: string
+          afectaciones?: string | null
+          altura_maxima_m?: number | null
+          ancho_m?: number | null
+          aph?: boolean
+          aph_detalle?: string | null
+          barrio?: string | null
+          catalogado?: boolean
+          ciudad?: Json | null
+          cod_calle?: number | null
+          comuna?: string | null
+          construcciones_existentes?: string | null
+          consultado_en?: string | null
+          creado_en?: string
+          direccion?: string
+          direccion_normalizada?: string | null
+          estado?: string
+          fot?: number | null
+          id?: string
+          lat?: number | null
+          lfi_m?: number | null
+          lib_m?: number | null
+          lng?: number | null
+          mixtura_usos?: string | null
+          moneda_valor?: string
+          observaciones?: string | null
+          patios?: string | null
+          plano_limite_m?: number | null
+          plantas_sobre_pb?: number | null
+          plusvalia?: string | null
+          profundidad_m?: number | null
+          retiro_frente_m?: number | null
+          smp?: string | null
+          sup_edificable_planta_m2?: number | null
+          superficie_m2?: number | null
+          tipo_desarrollo?: string | null
+          unidad_edificabilidad?: string | null
+          usos_permitidos?: string | null
+          valor_terreno?: number | null
+        }
+        Relationships: []
+      }
       presupuesto_materiales: {
         Row: {
           cantidad: number
