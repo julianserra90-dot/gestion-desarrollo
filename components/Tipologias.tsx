@@ -1,7 +1,9 @@
+import PlantaTipo from "@/components/PlantaTipo";
 import * as ui from "@/components/ui";
 import { formatM2 } from "@/lib/format";
 import { PARAMETROS } from "@/lib/parametros-edificacion";
-import { leerLote, type Alternativa, type Terreno } from "@/lib/tipologias";
+import { dibujarPlantaTipo, type Dibujo } from "@/lib/plantas-tipo";
+import { leerLote, tipoPorDormitorios, type Alternativa, type Terreno } from "@/lib/tipologias";
 
 /**
  * Lo que el motor de tipologías lee del lote: núcleo, planta tipo, unidades,
@@ -12,6 +14,11 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
   const lectura = leerLote(terreno);
   const { nucleo, plantaElegida, plantas, alternativas, retiros } = lectura;
   const descartadas = plantas.filter((pl) => !pl.viable);
+  const dibujo = plantaElegida.viable ? dibujarPlantaTipo(terreno, plantaElegida, nucleo) : null;
+  // Los dormitorios que dice el dibujo mandan sobre los que estimó la
+  // superficie: una unidad de 5 m de fondo no arma dos filas aunque los
+  // metros den para un dormitorio.
+  const dormitoriosDibujados = (nombre: string) => contarDormitorios(dibujo, nombre);
 
   return (
     <section style={ui.panelConMargen}>
@@ -27,11 +34,16 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
           {plantaElegida.nombre}
           <p style={nota}>{plantaElegida.motivo}</p>
           <ul style={lista}>
-            {plantaElegida.unidades.map((u) => (
-              <li key={u.nombre}>
-                {u.nombre} · {formatM2(u.m2)} · ventila {u.ventila}
-              </li>
-            ))}
+            {plantaElegida.unidades.map((u) => {
+              const dibujados = dormitoriosDibujados(u.nombre);
+              const nombre =
+                dibujados === null ? u.nombre : `${u.nombre.split(":")[0]}: ${tipoPorDormitorios(dibujados)}`;
+              return (
+                <li key={u.nombre}>
+                  {nombre} · {formatM2(u.m2)} · ventila {u.ventila}
+                </li>
+              );
+            })}
           </ul>
           {plantaElegida.patios.map((patio) => (
             <p key={patio} style={nota}>
@@ -60,6 +72,19 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
           </Dato>
         )}
       </div>
+
+      {dibujo && (
+        <>
+          <h4 style={subtitulo}>Planta tipo dibujada</h4>
+          <PlantaTipo dibujo={dibujo} />
+          <p style={nota}>
+            Esquema a escala: la calle abajo, el núcleo con su patio, y cada
+            ambiente con su medida. El trazo grueso es la ventana. Es la
+            distribución que sale de las reglas, para ver si la tipología cierra;
+            no reemplaza a un anteproyecto.
+          </p>
+        </>
+      )}
 
       <h4 style={subtitulo}>Alternativas de programa</h4>
       <div style={{ overflowX: "auto" }}>
@@ -163,6 +188,17 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
       </details>
     </section>
   );
+}
+
+/** Cuántos dormitorios quedaron adentro del recinto de una unidad en el dibujo, o null si no se dibujó. */
+function contarDormitorios(dibujo: Dibujo | null, nombre: string): number | null {
+  const u = dibujo?.unidades.find((r) => r.nombre === nombre);
+  if (!dibujo || !u) return null;
+  const dentro = (x: number, y: number) =>
+    x >= u.x - 0.01 && x <= u.x + u.ancho + 0.01 && y >= u.y - 0.01 && y <= u.y + u.alto + 0.01;
+  return dibujo.ambientes.filter(
+    (a) => a.tipo === "dormitorio" && dentro(a.x, a.y) && dentro(a.x + a.ancho, a.y + a.alto)
+  ).length;
 }
 
 function FilaAlternativa({ a }: { a: Alternativa }) {

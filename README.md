@@ -301,8 +301,9 @@ Con eso, un motor de reglas —sin inteligencia artificial— propone núcleo
 (escalera y ascensor), planta tipo, unidades con sus dormitorios, patio,
 retiros y cuatro alternativas de programa (vivienda, con local, con
 cocheras, oficinas) comparadas por vendible, eficiencia y un puntaje, cada
-una con sus razones. Los números del Código de Edificación que usa están en
-un archivo de parámetros y se pueden corregir sin tocar el motor.
+una con sus razones. La planta tipo se dibuja a escala, con el núcleo, el
+patio y cada ambiente acotado. Los números del Código de Edificación que usa
+están en un archivo de parámetros y se pueden corregir sin tocar el motor.
 
 Todo se corrige desde **Editar**, y la ficha marca cada dato corregido con el
 valor que traía la Ciudad. **Actualizar desde la Ciudad** vuelve a consultar y

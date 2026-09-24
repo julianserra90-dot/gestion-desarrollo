@@ -116,7 +116,7 @@ export function calcularNucleo(t: Terreno): Nucleo {
 // ------------------------------ Plantas -----------------------------------
 
 /** Cómo se reparte la profundidad: banda del frente, banda del núcleo y banda del contrafrente. */
-function bandas(t: Terreno) {
+export function bandas(t: Terreno) {
   const anchoUtil = t.frente - p("murosMedianeros");
   const medio = p("nucleoBanda");
   if (t.profundidad < p("profundidadDosBandasMin")) {

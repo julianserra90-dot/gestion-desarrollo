@@ -1265,6 +1265,23 @@ cocheras van en PB a nivel, en filas de 2,5 × 5 m con calle de 3 m, y el
 subsuelo se descarta si la rampa al 20 % no entra. "Avenida" se lee de la
 dirección normalizada de USIG (`AV.`).
 
+**La planta tipo se dibuja** (`lib/plantas-tipo.ts` + `components/PlantaTipo.tsx`,
+SVG a escala con la calle abajo), porque la arquitectura en texto no se
+lee. El núcleo va en su banda —escalera de 2,6 × 5, ascensor de 1,9 × 2,1,
+palier— con el patio auxiliar a la derecha si da el lado mínimo; cada
+unidad se parte en una fila que mira a la ventana (estar y dormitorios
+principales) y una fila de servicios contra el núcleo (paso de 1,2 m, cocina
+que se queda con lo que sobra, baño, y el dormitorio que ventila al patio
+cuando la unidad da al patio). Cada ambiente se chequea contra los mínimos
+del Código y, si no dan, la unidad baja un dormitorio y lo dice en las
+notas; **los dormitorios que dice el dibujo mandan sobre los que estimó la
+superficie** (una unidad de 5 m de fondo no arma dos filas aunque los metros
+den para un dormitorio), y la lista de unidades los lee del dibujo. Los
+programas por dormitorios son datos (`PROGRAMAS`): es el catálogo gráfico
+que el usuario quiere ir cargando; el paso siguiente es una tabla
+`plantas_tipo` con programas y mínimos editables, y de ahí plantas guardadas
+por estudio.
+
 Todos los números están en `lib/parametros-edificacion.ts`, cada uno con su
 fuente: Código de Edificación, Código Urbanístico o criterio propio. **Los
 del Código se escribieron de memoria y llevan `verificar: true`** hasta que
