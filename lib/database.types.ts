@@ -604,7 +604,6 @@ export type Database = {
       gastos: {
         Row: {
           alicuota_iva: number | null
-          precios_con_iva: boolean
           caja_ars: number
           caja_usd: number
           cargado_por: string | null
@@ -627,12 +626,13 @@ export type Database = {
           id: string
           iva: number | null
           moneda: string
-          numero_factura: string | null
           monto: number
           monto_caja: number | null
           monto_usd: number | null
+          numero_factura: string | null
           obra_id: string
           observaciones: string | null
+          precios_con_iva: boolean
           presupuesto_id: string | null
           proveedor_id: string | null
           rubro_id: string | null
@@ -642,7 +642,6 @@ export type Database = {
         }
         Insert: {
           alicuota_iva?: number | null
-          precios_con_iva?: boolean
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
@@ -665,12 +664,13 @@ export type Database = {
           id?: string
           iva?: number | null
           moneda?: string
-          numero_factura?: string | null
           monto: number
           monto_caja?: number | null
           monto_usd?: number | null
+          numero_factura?: string | null
           obra_id: string
           observaciones?: string | null
+          precios_con_iva?: boolean
           presupuesto_id?: string | null
           proveedor_id?: string | null
           rubro_id?: string | null
@@ -680,7 +680,6 @@ export type Database = {
         }
         Update: {
           alicuota_iva?: number | null
-          precios_con_iva?: boolean
           caja_ars?: number
           caja_usd?: number
           cargado_por?: string | null
@@ -703,12 +702,13 @@ export type Database = {
           id?: string
           iva?: number | null
           moneda?: string
-          numero_factura?: string | null
           monto?: number
           monto_caja?: number | null
           monto_usd?: number | null
+          numero_factura?: string | null
           obra_id?: string
           observaciones?: string | null
+          precios_con_iva?: boolean
           presupuesto_id?: string | null
           proveedor_id?: string | null
           rubro_id?: string | null

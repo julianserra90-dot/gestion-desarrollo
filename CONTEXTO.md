@@ -1303,11 +1303,6 @@ acción de borrar el pago del lote viaja como prop.
 
 ## Pendientes / decisiones abiertas
 
-- **Regenerar los tipos.** Varias migraciones del 13/09 (catálogo de detalles,
-  agenda de ingresos, facturas múltiples, acopios, `precios_con_iva`,
-  `numero_factura`, `es_acopio`) tienen los tipos editados a mano. Correr
-  `npx supabase gen types typescript --linked > lib/database.types.ts` y
-  commitear lo que cambie.
 - **Probar un acopio con retiros de punta a punta** con datos reales: marcar
   el gasto, cargar dos retiros, mirar la ficha y Materiales. La carga de gasto
   con dos facturas y la de pesos con dólares ya se probaron y se borraron.
