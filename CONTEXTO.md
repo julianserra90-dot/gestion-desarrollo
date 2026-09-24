@@ -1246,6 +1246,33 @@ En la consulta se le pide además a Ciudad 3D el monto para la superficie
 estimada (`ciudad.plusvaliaCiudad`) y, si difiere de la fórmula en más de
 una UVA, la tarjeta lo dice: es el chequeo de que la fórmula sigue vigente.
 
+**Tipologías** (`lib/tipologias.ts`, puro; el panel es
+`components/Tipologias.tsx`). De frente, profundidad edificable (la de la
+huella, no el fondo), huella, plantas y mixtura, el motor deduce: el
+**núcleo** (ascensor obligatorio desde PB + 4, escalera de dos tramos, m²
+por planta y dónde va), la **planta tipo** entre cuatro candidatas —pasante,
+frente y contrafrente, dos al frente, cuatro por planta— con el motivo de
+cada descarte, las **unidades** con sus m² y dormitorios (por superficie:
+hasta 38 monoambiente, 55 un dormitorio, 75 dos, más tres), el **patio
+auxiliar** junto al núcleo, los **retiros** (frente, LFI, lo que queda entre
+altura máxima y plano límite), y cuatro **alternativas de programa**
+—vivienda, vivienda con local, vivienda con cocheras a nivel, oficinas con
+local— con PB, unidades, vendible, eficiencia, a favor, en contra, alertas y
+un puntaje 0-10 promedio de normativa, geometría, ubicación y eficiencia; la
+mejor queda como recomendada. El modelo es una banda del frente, una banda
+del medio de 5 m con núcleo y patio, y una banda del contrafrente; las
+cocheras van en PB a nivel, en filas de 2,5 × 5 m con calle de 3 m, y el
+subsuelo se descarta si la rampa al 20 % no entra. "Avenida" se lee de la
+dirección normalizada de USIG (`AV.`).
+
+Todos los números están en `lib/parametros-edificacion.ts`, cada uno con su
+fuente: Código de Edificación, Código Urbanístico o criterio propio. **Los
+del Código se escribieron de memoria y llevan `verificar: true`** hasta que
+el usuario los contraste con el texto vigente; el panel los lista con esa
+marca. Es el "panel interno" de la idea original, por ahora como archivo.
+Sin mixtura conocida (la Ciudad a veces no la contesta) no se descarta nada:
+se avisa.
+
 **Las fuentes, y sus mañas.** USIG (documentado): `normalizar` da la
 dirección oficial, `cod_calle` y el punto de la puerta; el geocodificador
 2.2 con `metodo=centroide` da el centro de la parcela de una puerta oficial
@@ -1433,6 +1460,11 @@ acción de borrar el pago del lote viaja como prop.
   Andonaegui 1229 (061-056-021): el estudio del usuario da PB + 4; la Ciudad
   da 14,6 m (U.S.A.B 2) y huella de 129,75 m². Faltan comparar superficie
   construible y vendible cuando el usuario pase sus números.
+- **Verificar los parámetros del Código de Edificación** en
+  `lib/parametros-edificacion.ts` (ascensor desde PB + 4, escalera 1,20 m,
+  dormitorio 9 y 6,5 m², patio auxiliar 3 m y 12 m², cocheras 2,5 × 5 m con
+  calle de 3 m, rampa 20 %) contra el texto vigente, y sacarles la marca. Y
+  cuando molesten como archivo, pasarlos a una tabla con pantalla de edición.
 - **Prefactibilidades, lo que sigue** (decisiones pendientes al 24/09/2026):
   (a) una tabla editable de parámetros del Código por unidad de edificabilidad
   —alturas, planos límite, retiros, patios— cargada por el usuario, no de

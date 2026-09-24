@@ -297,6 +297,13 @@ forma real de la parcela, girable con el mouse. Es el techo que da la
 normativa, no el proyecto, y es una lectura automática: hay que verificarla
 contra la mensura antes de decidir.
 
+Con eso, un motor de reglas —sin inteligencia artificial— propone núcleo
+(escalera y ascensor), planta tipo, unidades con sus dormitorios, patio,
+retiros y cuatro alternativas de programa (vivienda, con local, con
+cocheras, oficinas) comparadas por vendible, eficiencia y un puntaje, cada
+una con sus razones. Los números del Código de Edificación que usa están en
+un archivo de parámetros y se pueden corregir sin tocar el motor.
+
 Todo se corrige desde **Editar**, y la ficha marca cada dato corregido con el
 valor que traía la Ciudad. **Actualizar desde la Ciudad** vuelve a consultar y
 pisa las correcciones. Lo que la Ciudad no da se carga a mano: valor del

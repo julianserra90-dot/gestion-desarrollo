@@ -4,6 +4,7 @@ import AppSidebar from "@/components/AppSidebar";
 import EstadoPrefactibilidad from "@/components/EstadoPrefactibilidad";
 import Volver from "@/components/Volver";
 import * as ui from "@/components/ui";
+import Tipologias from "@/components/Tipologias";
 import VolumenLote from "@/components/VolumenLote";
 import { valoresDesdeCiudad, type ConsultaCiudad, type ValoresCiudad } from "@/lib/ciudad";
 import { formatDate, formatM2, formatMoney, formatUSD } from "@/lib/format";
@@ -143,6 +144,25 @@ export default async function FichaPrefactibilidadPage({
   const huella =
     lote && frente && cuentas.areaEdificablePlanta !== null
       ? huellaPorSuperficie(lote, frente, cuentas.areaEdificablePlanta)
+      : null;
+
+  // El motor de tipologías lee la huella (profundidad edificable real, no
+  // el fondo), las plantas y la mixtura. Sin frente o sin plantas no hay
+  // qué leer.
+  const profundidadEdificable = huella?.profundidad ?? cuentas.profundidadEdificable;
+  const datosTipologia =
+    estudio.ancho_m && profundidadEdificable && cuentas.areaEdificablePlanta && estudio.plantas_sobre_pb !== null
+      ? {
+          frente: estudio.ancho_m,
+          profundidad: profundidadEdificable,
+          huellaM2: cuentas.areaEdificablePlanta,
+          plantasSobrePb: estudio.plantas_sobre_pb,
+          alturaMax: estudio.altura_maxima_m,
+          planoLimite: estudio.plano_limite_m,
+          mixtura: Number(estudio.mixtura_usos?.match(/\d/)?.[0] ?? NaN) || null,
+          enAvenida: /\bAV\.?(\s|$)/i.test(estudio.direccion_normalizada ?? estudio.direccion),
+          retiroFrente: estudio.retiro_frente_m ?? 0,
+        }
       : null;
 
   // La plusvalía se calcula acá y no en la consulta, para que siga a las
@@ -437,6 +457,8 @@ export default async function FichaPrefactibilidadPage({
           </p>
         </section>
       )}
+
+      {datosTipologia && <Tipologias terreno={datosTipologia} />}
 
       <section style={ui.panelConMargen}>
         <h3 style={ui.sectionTitle}>El terreno</h3>
