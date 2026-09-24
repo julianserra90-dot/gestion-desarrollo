@@ -358,6 +358,87 @@ export type Database = {
           },
         ]
       }
+      edificios_referencia: {
+        Row: {
+          analizado_en: string | null
+          ascensor: boolean | null
+          barrio: string | null
+          cocheras: number | null
+          creado_en: string
+          direccion: string
+          esquina: boolean
+          estudio: string
+          etiqueta: string | null
+          fondo_m: number | null
+          frente_a_parque: boolean
+          frente_m: number | null
+          id: string
+          ingreso: string | null
+          link: string | null
+          local_pb: boolean | null
+          notas: string | null
+          nucleo: string | null
+          patios: string | null
+          plantas_sobre_pb: number | null
+          superficie_lote_m2: number | null
+          tipologias: string | null
+          unidades_funcionales: number | null
+          unidades_por_planta: number | null
+        }
+        Insert: {
+          analizado_en?: string | null
+          ascensor?: boolean | null
+          barrio?: string | null
+          cocheras?: number | null
+          creado_en?: string
+          direccion: string
+          esquina?: boolean
+          estudio: string
+          etiqueta?: string | null
+          fondo_m?: number | null
+          frente_a_parque?: boolean
+          frente_m?: number | null
+          id?: string
+          ingreso?: string | null
+          link?: string | null
+          local_pb?: boolean | null
+          notas?: string | null
+          nucleo?: string | null
+          patios?: string | null
+          plantas_sobre_pb?: number | null
+          superficie_lote_m2?: number | null
+          tipologias?: string | null
+          unidades_funcionales?: number | null
+          unidades_por_planta?: number | null
+        }
+        Update: {
+          analizado_en?: string | null
+          ascensor?: boolean | null
+          barrio?: string | null
+          cocheras?: number | null
+          creado_en?: string
+          direccion?: string
+          esquina?: boolean
+          estudio?: string
+          etiqueta?: string | null
+          fondo_m?: number | null
+          frente_a_parque?: boolean
+          frente_m?: number | null
+          id?: string
+          ingreso?: string | null
+          link?: string | null
+          local_pb?: boolean | null
+          notas?: string | null
+          nucleo?: string | null
+          patios?: string | null
+          plantas_sobre_pb?: number | null
+          superficie_lote_m2?: number | null
+          tipologias?: string | null
+          unidades_funcionales?: number | null
+          unidades_por_planta?: number | null
+        }
+        Relationships: []
+      }
       empresas: {
         Row: {
           creado_en: string

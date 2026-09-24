@@ -1282,6 +1282,36 @@ que el usuario quiere ir cargando; el paso siguiente es una tabla
 `plantas_tipo` con programas y mínimos editables, y de ahí plantas guardadas
 por estudio.
 
+**La base de edificios de referencia** (`edificios_referencia`, pantalla
+`prefactibilidades/referencias` con alta y ficha de edición por edificio).
+El usuario pasó una planilla con 58 edificios construidos en CABA (estudio,
+barrio, dirección, lote, superficie, unidades funcionales y el enlace a las
+plantas publicadas, casi todos en ArchDaily) y dijo que el motor tenía
+"muchos errores de interpretación de espacios, por ejemplo ingreso a
+unidades": esta tabla es la base gráfica que se va cargando para
+corregirlo. Cada edificio tiene campos de **resolución** (plantas, unidades
+por planta, núcleo, ingreso, patios, tipologías, cocheras, local, notas) que
+se completan mirando las plantas; `analizado_en` marca los cargados. La
+ficha de un estudio muestra los **comparables** (`components/Comparables.tsx`):
+frente a un metro, fondo a un tercio, sin esquinas, con las unidades que
+sacaron y qué daría esa densidad en este lote (mediana y rango), y la
+resolución si está cargada.
+
+Lo que enseñaron las tres primeras plantas leídas (Donado 4432, Zabala 3259,
+Jorge Newbery 3136), ya aplicado al dibujo: **el ingreso es un pasillo
+lateral de 1,2 m pegado a la medianera del núcleo, de la calle al palier**,
+que en PB achica la unidad del frente; **el núcleo va contra la medianera en
+la banda del medio, siempre pegado a un patio central** de 4 a 5 m que
+ocupa casi todo el ancho restante e ilumina cocinas y baños de las dos
+unidades, y el palier abre directo a las puertas; **dos monoambientes al
+frente entran desde 8,5 m** (Donado lo hace en 8,67, con unidades de 4,1
+m); en 8,5 m entran **seis cocheras en PB en dos columnas** con calle
+central (Zabala). Por eso la planta baja también se dibuja (pasillo,
+puertas desde el palier, y el frente como local, cocheras o unidad achicada
+según la alternativa recomendada). Faltan leer 55 plantas más: cada una que
+se cargue en la ficha del edificio mejora los comparables, y las que
+contradigan una regla van a `parametros-edificacion.ts`.
+
 Todos los números están en `lib/parametros-edificacion.ts`, cada uno con su
 fuente: Código de Edificación, Código Urbanístico o criterio propio. **Los
 del Código se escribieron de memoria y llevan `verificar: true`** hasta que

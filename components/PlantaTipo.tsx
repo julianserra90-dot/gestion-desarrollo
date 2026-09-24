@@ -65,6 +65,18 @@ export default function PlantaTipo({ dibujo }: { dibujo: Dibujo }) {
                 {a.nombre}
               </text>
             )}
+            {/* Un pasillo: angosto y largo, el nombre va parado. */}
+            {a.ancho * escala <= 30 && a.alto * escala > 60 && (
+              <text
+                x={X(a.x + a.ancho / 2) + 3}
+                y={Y(a.y + a.alto / 2)}
+                textAnchor="middle"
+                transform={`rotate(-90 ${X(a.x + a.ancho / 2) + 3} ${Y(a.y + a.alto / 2)})`}
+                style={textoNombre}
+              >
+                {a.nombre}
+              </text>
+            )}
             {a.ancho * escala > 70 && a.alto * escala > 30 && (
               <text x={X(a.x + a.ancho / 2)} y={Y(a.y + a.alto / 2) + 10} textAnchor="middle" style={textoMedida}>
                 {formatear(a.ancho)} × {formatear(a.alto)} · {formatear(a.ancho * a.alto)} m²
@@ -72,6 +84,25 @@ export default function PlantaTipo({ dibujo }: { dibujo: Dibujo }) {
             )}
           </g>
         ))}
+
+        {/* Las puertas desde el palier: el hueco y el arco de apertura. */}
+        {dibujo.puertas.map((pu, i) => {
+          const r = 0.9 * escala;
+          const x1 = X(pu.x);
+          const y = Y(pu.y);
+          const dir = pu.hacia === "arriba" ? -1 : 1;
+          return (
+            <g key={i}>
+              <line x1={x1} y1={y} x2={x1 + r} y2={y} stroke="#ffffff" strokeWidth={3} />
+              <path
+                d={`M${x1} ${y} L${x1} ${y + dir * r} A${r} ${r} 0 0 ${dir > 0 ? 0 : 1} ${x1 + r} ${y}`}
+                fill="none"
+                stroke="#555555"
+                strokeWidth={0.7}
+              />
+            </g>
+          );
+        })}
 
         {/* Las unidades, con borde grueso para verlas como conjunto. */}
         {dibujo.unidades.map((u) => (
@@ -172,6 +203,10 @@ function relleno(tipo: TipoAmbiente) {
       return "#e2e2e2";
     case "patio":
       return "url(#patio)";
+    case "local":
+      return "#fbfbf3";
+    case "cochera":
+      return "#ededed";
     case "libre":
       return "#fdf0dd";
   }

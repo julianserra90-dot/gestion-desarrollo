@@ -4,6 +4,7 @@ import AppSidebar from "@/components/AppSidebar";
 import EstadoPrefactibilidad from "@/components/EstadoPrefactibilidad";
 import Volver from "@/components/Volver";
 import * as ui from "@/components/ui";
+import Comparables from "@/components/Comparables";
 import Tipologias from "@/components/Tipologias";
 import VolumenLote from "@/components/VolumenLote";
 import { valoresDesdeCiudad, type ConsultaCiudad, type ValoresCiudad } from "@/lib/ciudad";
@@ -459,6 +460,14 @@ export default async function FichaPrefactibilidadPage({
       )}
 
       {datosTipologia && <Tipologias terreno={datosTipologia} />}
+
+      {estudio.ancho_m && estudio.profundidad_m && cuentas.superficieLote && (
+        <Comparables
+          frente={estudio.ancho_m}
+          fondo={estudio.profundidad_m}
+          superficie={cuentas.superficieLote}
+        />
+      )}
 
       <section style={ui.panelConMargen}>
         <h3 style={ui.sectionTitle}>El terreno</h3>

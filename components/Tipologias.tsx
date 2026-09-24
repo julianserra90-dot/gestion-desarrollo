@@ -2,7 +2,7 @@ import PlantaTipo from "@/components/PlantaTipo";
 import * as ui from "@/components/ui";
 import { formatM2 } from "@/lib/format";
 import { PARAMETROS } from "@/lib/parametros-edificacion";
-import { dibujarPlantaTipo, type Dibujo } from "@/lib/plantas-tipo";
+import { dibujarPlantaBaja, dibujarPlantaTipo, type Dibujo, type UsoPlantaBaja } from "@/lib/plantas-tipo";
 import { leerLote, tipoPorDormitorios, type Alternativa, type Terreno } from "@/lib/tipologias";
 
 /**
@@ -15,6 +15,15 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
   const { nucleo, plantaElegida, plantas, alternativas, retiros } = lectura;
   const descartadas = plantas.filter((pl) => !pl.viable);
   const dibujo = plantaElegida.viable ? dibujarPlantaTipo(terreno, plantaElegida, nucleo) : null;
+  // La PB se dibuja como la resuelve la alternativa recomendada.
+  const recomendada = alternativas.find((a) => a.recomendada) ?? null;
+  const usoPb: UsoPlantaBaja =
+    recomendada?.clave === "vivienda-local" || recomendada?.clave === "oficinas-local"
+      ? "local"
+      : recomendada?.clave === "vivienda-cocheras"
+        ? "cocheras"
+        : "vivienda";
+  const dibujoPb = plantaElegida.viable ? dibujarPlantaBaja(terreno, plantaElegida, nucleo, usoPb) : null;
   // Los dormitorios que dice el dibujo mandan sobre los que estimó la
   // superficie: una unidad de 5 m de fondo no arma dos filas aunque los
   // metros den para un dormitorio.
@@ -79,9 +88,23 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
           <PlantaTipo dibujo={dibujo} />
           <p style={nota}>
             Esquema a escala: la calle abajo, el núcleo con su patio, y cada
-            ambiente con su medida. El trazo grueso es la ventana. Es la
-            distribución que sale de las reglas, para ver si la tipología cierra;
-            no reemplaza a un anteproyecto.
+            ambiente con su medida. El trazo grueso es la ventana; los arcos, las
+            puertas desde el palier. Es la distribución que sale de las reglas,
+            para ver si la tipología cierra; no reemplaza a un anteproyecto.
+          </p>
+        </>
+      )}
+
+      {dibujoPb && (
+        <>
+          <h4 style={subtitulo}>
+            Planta baja{recomendada ? ` · ${recomendada.nombre.toLowerCase()}` : ""}
+          </h4>
+          <PlantaTipo dibujo={dibujoPb} />
+          <p style={nota}>
+            El pasillo de ingreso va pegado a la medianera del núcleo, de la calle al
+            palier, como en los edificios de referencia; lo que hay al frente es lo que
+            decide la alternativa recomendada.
           </p>
         </>
       )}

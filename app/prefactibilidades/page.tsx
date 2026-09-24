@@ -36,9 +36,14 @@ export default async function PrefactibilidadesPage({
           <h2 style={ui.pageTitle}>Prefactibilidades</h2>
         </div>
 
-        <Link href="/prefactibilidades/nueva" style={ui.button}>
-          Nuevo estudio
-        </Link>
+        <div style={acciones}>
+          <Link href="/prefactibilidades/referencias" style={ui.secondaryButton}>
+            Edificios de referencia
+          </Link>
+          <Link href="/prefactibilidades/nueva" style={ui.button}>
+            Nuevo estudio
+          </Link>
+        </div>
       </header>
 
       {error && <p style={errorBox}>{error}</p>}
@@ -161,6 +166,12 @@ const header = {
   borderBottom: "1px solid #eeeeee",
   paddingBottom: "24px",
   marginBottom: "32px",
+};
+
+const acciones = {
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
 };
 
 const errorBox = {

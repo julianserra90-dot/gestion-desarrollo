@@ -27,6 +27,8 @@ export type TipoAmbiente =
   | "ascensor"
   | "palier"
   | "patio"
+  | "local"
+  | "cochera"
   | "libre";
 
 export type Ventana = "abajo" | "arriba" | "izquierda" | "derecha";
@@ -44,13 +46,19 @@ export type Ambiente = {
 export type Recinto = { nombre: string; x: number; y: number; ancho: number; alto: number };
 type Caja = Omit<Recinto, "nombre">;
 
+/** Una puerta: dónde está y hacia dónde abre. */
+export type Puerta = { x: number; y: number; hacia: "arriba" | "abajo" };
+
 export type Dibujo = {
   ancho: number;
   profundidad: number;
   ambientes: Ambiente[];
   unidades: Recinto[];
+  puertas: Puerta[];
   notas: string[];
 };
+
+export type UsoPlantaBaja = "vivienda" | "local" | "cocheras";
 
 /**
  * El catálogo: qué ambientes lleva una unidad según sus dormitorios. La
@@ -76,83 +84,151 @@ export const PROGRAMAS: Record<
 };
 
 export function dibujarPlantaTipo(t: Terreno, planta: Planta, nucleo: Nucleo): Dibujo {
+  return dibujar(t, planta, nucleo, null);
+}
+
+/**
+ * La planta baja: la misma estructura que la tipo, más el pasillo lateral
+ * de ingreso pegado a la medianera del núcleo —de la calle al palier, como
+ * en Donado 4432 y Jorge Newbery 3136— y el frente resuelto según la
+ * alternativa: unidad achicada por el pasillo, local, o cocheras.
+ */
+export function dibujarPlantaBaja(
+  t: Terreno,
+  planta: Planta,
+  nucleo: Nucleo,
+  uso: UsoPlantaBaja
+): Dibujo {
+  return dibujar(t, planta, nucleo, uso);
+}
+
+function dibujar(t: Terreno, planta: Planta, nucleo: Nucleo, pb: UsoPlantaBaja | null): Dibujo {
   const b = bandas(t);
   const W = redondear(b.anchoUtil);
   const D = redondear(t.profundidad);
   const ambientes: Ambiente[] = [];
   const unidades: Recinto[] = [];
+  const puertas: Puerta[] = [];
   const notas: string[] = [];
 
   const anchoNucleo = p("nucleoEscaleraAncho") + (nucleo.ascensor ? p("nucleoAscensorAncho") : 1.6);
+  const pasillo = pb ? p("pasilloIngreso") : 0;
+  // Las puertas abren desde el palier, que está pegado a la escalera.
+  const xPuerta = p("nucleoEscaleraAncho") + 0.6;
 
   if (planta.clave === "pasante") {
-    const u = { x: 0, y: 0, ancho: W, alto: D };
-    unidades.push({ nombre: planta.unidades[0]?.nombre ?? "Unidad", ...u });
-    // El núcleo contra una medianera, al fondo; la unidad pasa por al lado.
+    // El núcleo contra una medianera, al fondo; la unidad pasa por al lado,
+    // y en PB el pasillo corre todo el largo hasta el núcleo.
     const nucleoY = D - p("nucleoBanda");
     ambientes.push(...nucleoEn(0, nucleoY, anchoNucleo, nucleo, W, false));
+    if (pasillo > 0) {
+      ambientes.push(local("paso", "Pasillo de ingreso", 0, 0, pasillo, nucleoY));
+      notas.push(`En PB el pasillo de ingreso corre ${formatear(nucleoY)} m hasta el núcleo del fondo: es lo que cuesta un núcleo al fondo.`);
+    }
+    const u: Recinto = { nombre: planta.unidades[0]?.nombre ?? "Unidad", x: pasillo, y: 0, ancho: W - pasillo, alto: nucleoY };
+    unidades.push(u);
+    puertas.push({ x: xPuerta, y: nucleoY, hacia: "abajo" });
     ambientes.push(
       ...distribuirPasante(
         { x: anchoNucleo, y: nucleoY, ancho: W - anchoNucleo, alto: p("nucleoBanda") },
-        { x: 0, y: 0, ancho: W, alto: nucleoY },
+        u,
         planta.unidades[0]?.dormitorios ?? 0,
         notas
       )
     );
-    return { ancho: W, profundidad: D, ambientes, unidades, notas };
+    return { ancho: W, profundidad: D, ambientes, unidades, puertas, notas };
   }
 
   if (planta.clave === "dos-al-frente") {
     const alto = Math.min(p("profundidadUnidadMax"), D - p("nucleoBanda"));
-    const anchoU = (W - 0.15) / 2;
     const nucleoY = D - p("nucleoBanda");
     ambientes.push(...nucleoEn(0, nucleoY, anchoNucleo, nucleo, W, true));
+    if (pasillo > 0) ambientes.push(local("paso", "Pasillo de ingreso", 0, 0, pasillo, nucleoY));
+    const anchoU = (W - pasillo - 0.15) / 2;
     [0, 1].forEach((i) => {
       const u: Recinto = {
         nombre: planta.unidades[i]?.nombre ?? "Unidad",
-        x: i * (anchoU + 0.15),
+        x: pasillo + i * (anchoU + 0.15),
         y: 0,
         ancho: anchoU,
         alto,
       };
       unidades.push(u);
+      puertas.push({ x: i === 0 ? xPuerta : u.x + 0.6, y: alto, hacia: "abajo" });
       ambientes.push(...distribuirUnidad(u, "abajo", planta.unidades[i]?.dormitorios ?? 0, i === 1, notas));
     });
-    return { ancho: W, profundidad: D, ambientes, unidades, notas };
+    return { ancho: W, profundidad: D, ambientes, unidades, puertas, notas };
   }
 
   // Frente y contrafrente, o cuatro por planta: tres bandas.
   const nucleoY = b.frente;
   ambientes.push(...nucleoEn(0, nucleoY, anchoNucleo, nucleo, W, true));
   const partes = planta.clave === "cuatro-por-planta" ? 2 : 1;
-  const anchoU = partes === 2 ? (W - 0.15) / 2 : W;
 
+  // ---- La banda del frente ----
+  if (pasillo > 0) ambientes.push(local("paso", "Pasillo de ingreso", 0, 0, pasillo, b.frente));
+  const anchoFrente = W - pasillo;
+  if (pb === "local") {
+    ambientes.push(local("local", "Local", pasillo, 0, anchoFrente, b.frente, "abajo"));
+    unidades.push({ nombre: "Local", x: pasillo, y: 0, ancho: anchoFrente, alto: b.frente });
+  } else if (pb === "cocheras") {
+    ambientes.push(...cocherasEn(pasillo, 0, anchoFrente, b.frente, notas));
+  } else {
+    const anchoU = partes === 2 ? (anchoFrente - 0.15) / 2 : anchoFrente;
+    for (let i = 0; i < partes; i++) {
+      const uf = planta.unidades[i];
+      const u: Recinto = { nombre: uf?.nombre ?? "Unidad al frente", x: pasillo + i * (anchoU + 0.15), y: 0, ancho: anchoU, alto: b.frente };
+      unidades.push(u);
+      puertas.push({ x: i === 0 ? xPuerta : u.x + 0.6, y: b.frente, hacia: "abajo" });
+      ambientes.push(...distribuirUnidad(u, "abajo", uf?.dormitorios ?? 0, partes === 1 || i === 1, notas));
+    }
+    if (pasillo > 0) notas.push(`En PB la unidad del frente cede ${formatear(pasillo)} m de ancho al pasillo de ingreso.`);
+  }
+
+  // ---- La banda del contrafrente ----
+  const anchoU = partes === 2 ? (W - 0.15) / 2 : W;
   for (let i = 0; i < partes; i++) {
-    const x = i * (anchoU + 0.15);
-    const uf = planta.unidades[i];
     const uc = planta.unidades[partes + i];
-    const frente: Recinto = { nombre: uf?.nombre ?? "Unidad al frente", x, y: 0, ancho: anchoU, alto: b.frente };
-    const contra: Recinto = {
-      nombre: uc?.nombre ?? "Unidad al contrafrente",
-      x,
-      y: nucleoY + b.medio,
-      ancho: anchoU,
-      alto: b.contrafrente,
-    };
-    unidades.push(frente);
-    unidades.push(contra);
-    // El patio está a la derecha del núcleo: la unidad de la derecha (o la
-    // única) tiene con qué ventilar el dormitorio de la fila de servicio.
-    const conPatio = partes === 1 || i === 1;
-    ambientes.push(...distribuirUnidad(frente, "abajo", uf?.dormitorios ?? 0, conPatio, notas));
-    ambientes.push(...distribuirUnidad(contra, "arriba", uc?.dormitorios ?? 0, conPatio, notas));
+    const u: Recinto = { nombre: uc?.nombre ?? "Unidad al contrafrente", x: i * (anchoU + 0.15), y: nucleoY + b.medio, ancho: anchoU, alto: b.contrafrente };
+    unidades.push(u);
+    puertas.push({ x: i === 0 ? xPuerta : u.x + 0.6, y: u.y, hacia: "arriba" });
+    ambientes.push(...distribuirUnidad(u, "arriba", uc?.dormitorios ?? 0, partes === 1 || i === 1, notas));
   }
 
   if (b.sobrante > 0.5) {
+    ambientes.push(local("patio", pb ? "Jardín del fondo" : "Fondo libre", 0, nucleoY + b.medio + b.contrafrente, W, b.sobrante));
     notas.push(`Detrás del contrafrente quedan ${formatear(b.sobrante)} m hasta la LFI, libres hacia el pulmón de manzana.`);
   }
 
-  return { ancho: W, profundidad: D, ambientes, unidades, notas };
+  return { ancho: W, profundidad: D, ambientes, unidades, puertas, notas };
+}
+
+/**
+ * Cocheras a nivel en la banda del frente: módulos de 2,5 × 5 en columnas
+ * contra las medianeras, con la calle de circulación en el medio si el
+ * ancho da para dos columnas (Zabala 3259 pone seis en 8,5 m).
+ */
+function cocherasEn(x0: number, y0: number, ancho: number, alto: number, notas: string[]): Ambiente[] {
+  const modAncho = p("cocheraAncho");
+  const modLargo = p("cocheraLargo");
+  const columnas = ancho >= 2 * modAncho + p("cocheraCalleCirculacion") ? 2 : ancho >= modAncho + p("cocheraCalleCirculacion") ? 1 : 0;
+  const salida: Ambiente[] = [];
+  if (columnas === 0) {
+    salida.push(local("libre", "No entran cocheras con calle de circulación", x0, y0, ancho, alto));
+    return salida;
+  }
+  const xs = columnas === 2 ? [x0, x0 + ancho - modAncho] : [x0 + ancho - modAncho];
+  let n = 0;
+  for (const x of xs) {
+    for (let y = y0 + 0.5; y + modLargo <= y0 + alto; y += modLargo) {
+      n++;
+      salida.push(local("cochera", `Cochera ${n}`, x, y, modAncho, modLargo));
+    }
+  }
+  const calleX = columnas === 2 ? x0 + modAncho : x0;
+  salida.push(local("paso", "Calle de circulación", calleX, y0, ancho - columnas * modAncho, alto));
+  notas.push(`${n} cocheras a nivel en la banda del frente, en ${columnas} columna${columnas > 1 ? "s" : ""}; el resto de la PB sigue como en la planta tipo.`);
+  return salida;
 }
 
 // ------------------------------ Núcleo ------------------------------------
