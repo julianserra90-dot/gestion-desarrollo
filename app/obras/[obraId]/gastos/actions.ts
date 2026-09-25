@@ -228,9 +228,11 @@ function leerComprobante(formData: FormData, esAjuste: boolean) {
     // Cómo se leen los precios del detalle. Sólo la A discrimina IVA, así que
     // sólo ahí pueden ser netos; en el resto el precio es el final.
     precios_con_iva: esA ? formData.get("precios_con_iva") === "on" : true,
-    // El número impreso en la factura. Sin factura no hay número.
+    // El número impreso en el papel: el de la factura, o el del presupuesto o
+    // remito con que se pagó en efectivo. Con varias facturas, cada una lleva
+    // el suyo; un ajuste no tiene papel.
     numero_factura:
-      tipoFactura && !varias
+      !esAjuste && !varias
         ? String(formData.get("numero_factura") ?? "").trim() || null
         : null,
     varias,
@@ -629,6 +631,7 @@ export async function crearGasto(formData: FormData) {
       caja_ars: reparto?.ars ?? 0,
       caja_usd: reparto?.usd ?? 0,
       cotizacion_manual: caja.cotizacionManual !== null,
+      pesos_con_dolares: caja.pesosEnDolares > 0,
       monto: montos.ars,
       monto_usd: montos.usd,
       cotizacion: montos.cotizacion,
@@ -831,6 +834,7 @@ export async function actualizarGasto(formData: FormData) {
     caja_ars: reparto?.ars ?? 0,
     caja_usd: reparto?.usd ?? 0,
     cotizacion_manual: caja.cotizacionManual !== null,
+    pesos_con_dolares: caja.pesosEnDolares > 0,
     monto: montos.ars,
     monto_usd: montos.usd,
     cotizacion: montos.cotizacion,

@@ -346,7 +346,7 @@ export default async function FichaGastoPage({
               <tfoot>
                 <tr>
                   <td style={tdTotal} colSpan={4}>
-                    Suma del detalle{preciosNetos ? " (sin IVA)" : ""}
+                    Total del detalle{preciosNetos ? " (sin IVA)" : ""}
                   </td>
                   <td style={tdTotalRight}>{formatMoney(sumaDetalle)}</td>
                 </tr>
@@ -354,7 +354,7 @@ export default async function FichaGastoPage({
                   <>
                     <tr>
                       <td style={ui.td} colSpan={4}>
-                        Descuento {formatPorcentaje((descuento / sumaDetalle) * 100)}
+                        Descuento aplicado {formatPorcentaje((descuento / sumaDetalle) * 100)}
                       </td>
                       <td style={ui.tdRight}>− {formatMoney(descuento)}</td>
                     </tr>

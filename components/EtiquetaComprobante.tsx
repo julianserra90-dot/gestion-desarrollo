@@ -17,15 +17,15 @@ export default function EtiquetaComprobante({
   volver,
 }: {
   tipoFactura: string | null;
-  /** El número impreso en la factura, si se cargó: va después del tipo. */
+  /** El número impreso en el papel, si se cargó: va después del tipo. */
   numero?: string | null;
   driveId: string | null;
   /** Adónde vuelve el visor al cerrar: la pantalla desde la que se abrió. */
   volver: string;
 }) {
-  const texto = tipoFactura
-    ? `Factura ${tipoFactura}${numero ? ` · ${numero}` : ""}`
-    : "Efectivo";
+  // El efectivo también puede traer un papel numerado (un presupuesto, un
+  // remito): el número va igual, sin cambiar el color.
+  const texto = `${tipoFactura ? `Factura ${tipoFactura}` : "Efectivo"}${numero ? ` · ${numero}` : ""}`;
   const estilo = tipoFactura ? tagFactura : tagEfectivo;
 
   if (!driveId) {

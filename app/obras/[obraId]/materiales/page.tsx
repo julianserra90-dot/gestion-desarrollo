@@ -111,9 +111,9 @@ export default async function MaterialesPage({
         : (gasto?.gasto_facturas?.length ?? 0) > 1
           ? `${gasto?.gasto_facturas?.length} facturas`
           : gasto?.numero_factura;
-    const comprobante = gasto?.tipo_factura
-      ? `Factura ${gasto.tipo_factura}${numero ? ` · ${numero}` : ""}`
-      : "Efectivo";
+    const comprobante = `${gasto?.tipo_factura ? `Factura ${gasto.tipo_factura}` : "Efectivo"}${
+      numero ? ` · ${numero}` : ""
+    }`;
 
     const delRubro = porRubro.get(rubro) ?? new Map<string, Consumo>();
     const actual = delRubro.get(material) ?? {

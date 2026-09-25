@@ -94,8 +94,8 @@ export type GastoExistente = {
   numero_factura: string | null;
   alicuota_iva: number | null;
   precios_con_iva: boolean;
-  /** Lo que la factura descuenta sobre la suma del detalle, en su misma base. */
-  descuento_detalle: number;
+  /** Se cargó en pesos y los dólares de la cuenta salieron al cambio. */
+  pesos_con_dolares: boolean;
   empresa_factura_id: string | null;
   monto: number;
   caja_ars: number;
@@ -283,17 +283,6 @@ export default function GastoForm({
   );
   // Lo que suma el detalle, para compararlo con la factura.
   const [sumaItems, setSumaItems] = useState(0);
-  // El descuento de la factura sobre el detalle. Se guarda el monto, que es
-  // el que cierra al centavo; el porcentaje se muestra al lado y también se
-  // puede escribir. Mientras el porcentaje sea lo último que se tocó
-  // (`descuentoPct` no nulo), el monto lo sigue: un 10 % sigue siendo 10 % si
-  // después se agrega un renglón.
-  const [descuento, setDescuento] = useState(
-    gasto?.descuento_detalle
-      ? String(gasto.descuento_detalle)
-      : (delBorrador("descuento_detalle") ?? "")
-  );
-  const [descuentoPct, setDescuentoPct] = useState<string | null>(null);
   // El titular de la factura arranca vacío y sigue a la pagadora hasta que se
   // elija uno a mano. Así "arranca en la que pagó" sin quedar pegado si después
   // cambia quién pagó.
@@ -363,6 +352,9 @@ export default function GastoForm({
   // más lo que tuvo que poner una empresa, que siempre fue un faltante en pesos.
   const [cajaArs, setCajaArs] = useState(() => {
     if (!gasto) return delBorrador("caja_ars") ?? "";
+    // En pesos con dólares no se pidieron pesos de la cuenta: lo que no
+    // cubrieron los dólares lo puso una socia.
+    if (gasto.pesos_con_dolares) return "";
     const deCuenta =
       Number(gasto.caja_ars) + Number(gasto.caja_usd) * Number(gasto.cotizacion ?? 0);
     if (deCuenta <= 0) return "";
@@ -379,19 +371,31 @@ export default function GastoForm({
   // El gasto es en pesos pero en la cuenta hay dólares: se carga el monto en
   // pesos y los dólares que salen se calculan al cambio, en vez de hacer la
   // división a mano.
-  // En el borrador el modo se reconoce porque vino su campo, aunque vacío.
+  // Al editar vuelve el modo guardado, con los pesos del papel (el monto): sin
+  // él, el gasto se rearmaba como dólares a mano, el cambio se redondeaba a dos
+  // decimales y aparecía un faltante de centavos. En el borrador el modo se
+  // reconoce porque vino su campo, aunque vacío.
   const [pesosConDolares, setPesosConDolares] = useState(
-    b !== null && "caja_pesos_en_dolares" in b
+    gasto ? gasto.pesos_con_dolares : b !== null && "caja_pesos_en_dolares" in b
   );
   const [pesosEnDolares, setPesosEnDolares] = useState(
-    delBorrador("caja_pesos_en_dolares") ?? ""
+    gasto
+      ? gasto.pesos_con_dolares
+        ? String(gasto.monto)
+        : ""
+      : (delBorrador("caja_pesos_en_dolares") ?? "")
   );
   const [cotizManual, setCotizManual] = useState(
     gasto?.cotizacion_manual ?? tildado(b, "cotizacion_manual")
   );
+  // A dos decimales, que es lo que el campo muestra y manda: en pesos con
+  // dólares la cotización guardada es la implícita (1.443,0005) y, sin
+  // redondear acá, la vista previa calculaba con un cambio y se guardaba otro.
   const [cotizValor, setCotizValor] = useState(
     gasto?.cotizacion_manual
-      ? String(gasto.cotizacion ?? "")
+      ? gasto.cotizacion
+        ? String(Math.round(Number(gasto.cotizacion) * 100) / 100)
+        : ""
       : (delBorrador("cotizacion_valor") ?? "")
   );
 
@@ -483,28 +487,23 @@ export default function GastoForm({
 
   // El detalle de materiales contra la factura, en la moneda en que se cargó
   // la factura (los precios de los items se escriben en esa misma moneda).
-  // El descuento va antes del IVA, como en la factura. Con precios netos en
-  // una A, al detalle hay que sumarle el IVA para compararlo con el monto, que
-  // siempre lleva el IVA adentro.
-  const pctEscrito = descuentoPct === null ? null : Number(descuentoPct);
-  const montoDescuento =
-    pctEscrito !== null && Number.isFinite(pctEscrito)
-      ? Math.round(sumaItems * pctEscrito) / 100
-      : Number(descuento) || 0;
-  const porcentajeDescuento = sumaItems > 0 ? (montoDescuento / sumaItems) * 100 : 0;
+  // El descuento no se escribe: es lo que el detalle suma de más sobre lo
+  // abonado, llevado a la base de los precios (sin el IVA si son netos, porque
+  // la factura descuenta antes del IVA). Así siempre cierra, y el porcentaje
+  // sale solo: el corralón que descuenta 42 % y redondea el total da 42,01 %.
+  // Un porcentaje que no está en la factura es la señal de un precio mal
+  // escrito. Si el detalle suma menos que lo abonado no hay descuento posible:
+  // falta un material, o hay un flete que no es item, y eso sí se avisa.
   const factorIvaDetalle = esFacturaA && !preciosConIva ? 1 + alic / 100 : 1;
-  const detalleConIva = (sumaItems - montoDescuento) * factorIvaDetalle;
   const montoFactura = pagaCaja ? total : ingresado;
-  const diferenciaDetalle = montoFactura - detalleConIva;
-  const cierra = Math.abs(diferenciaDetalle) < 0.01;
-  // El descuento que hace cerrar el detalle con la factura: lo que sobra del
-  // detalle, llevado a la base de los precios (sin el IVA si son netos). Es el
-  // caso del corralón que descuenta un 42 % y redondea el total: el
-  // porcentaje exacto sale solo.
-  const descuentoQueCierra =
+  const montoDescuento =
     montoFactura > 0
-      ? Math.round((sumaItems - montoFactura / factorIvaDetalle) * 100) / 100
+      ? Math.max(0, Math.round((sumaItems - montoFactura / factorIvaDetalle) * 100) / 100)
       : 0;
+  const porcentajeDescuento = sumaItems > 0 ? (montoDescuento / sumaItems) * 100 : 0;
+  const detalleConIva = (sumaItems - montoDescuento) * factorIvaDetalle;
+  const faltaEnDetalle = montoFactura > 0 ? montoFactura - detalleConIva : 0;
+  const detalleCorto = faltaEnDetalle > 0.01;
   const formatoFactura = !pagaCaja && moneda === "USD" ? formatUSD : formatMoney;
 
   // Varias facturas: sólo entre las socias y con factura. La casilla puede
@@ -1230,19 +1229,24 @@ export default function GastoForm({
               </div>
             )}
 
-            {/* El número impreso en el papel: para buscarla después y para
-                saber de qué factura salió cada material. Texto, no número: el
-                formato lleva punto de venta y guion. */}
-            {!facturasActivas && comprobante !== "sin" && !esAjuste && (
+            {/* El número impreso en el papel: para buscarlo después y para
+                saber de qué comprobante salió cada material. Texto, no número:
+                el formato lleva punto de venta y guion. También sin factura:
+                lo pagado en efectivo puede venir con un presupuesto o un
+                remito numerado, y es el papel que identifica la compra. */}
+            {!facturasActivas && !esAjuste && (
               <label style={field}>
                 <span style={labelCampo}>
-                  Nº de factura <span style={opcional}>opcional</span>
+                  {comprobante === "sin" ? "Nº de comprobante" : "Nº de factura"}{" "}
+                  <span style={opcional}>opcional</span>
                 </span>
                 <input
                   type="text"
                   name="numero_factura"
                   defaultValue={gasto?.numero_factura ?? delBorrador("numero_factura") ?? ""}
-                  placeholder="Ej: 0001-00001234"
+                  placeholder={
+                    comprobante === "sin" ? "Ej: presupuesto 0452" : "Ej: 0001-00001234"
+                  }
                   style={ui.input}
                 />
               </label>
@@ -1516,54 +1520,29 @@ export default function GastoForm({
                   onTotal={setSumaItems}
                 />
 
-                {/* El detalle contra la factura. Si no cierra se avisa pero se
-                    deja guardar: puede haber un descuento o un flete que no
-                    son items, y justamente para verificar eso está la
-                    diferencia a la vista. */}
+                {/* El detalle contra lo pagado, en el orden en que se lee la
+                    factura: lo que suman los renglones, el descuento, y lo
+                    que se abonó —el monto de arriba, que no se vuelve a
+                    escribir—. El descuento se calcula solo, así que no hay
+                    diferencia que mostrar salvo que el detalle sume menos. */}
                 {sumaItems > 0 && (
                   <div style={cierreDetalle}>
                     <div style={filaCierre}>
-                      <span>Suma del detalle</span>
+                      <span>Total del detalle</span>
                       <span>{formatoFactura(sumaItems)}</span>
                     </div>
-                    {/* Se escribe el monto o el porcentaje, y el otro sale
-                        solo. Viaja el monto, que es el que cierra al centavo. */}
                     <div style={filaCierre}>
-                      <span>Descuento</span>
-                      <span style={camposDescuento}>
-                        <span style={conPorcentaje}>
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            placeholder="0"
-                            value={
-                              descuentoPct ??
-                              (montoDescuento > 0
-                                ? String(Math.round(porcentajeDescuento * 100) / 100)
-                                : "")
-                            }
-                            onChange={(e) => setDescuentoPct(e.target.value)}
-                            style={campoPorcentaje}
-                            aria-label="Descuento en porcentaje"
-                          />
-                          %
-                        </span>
-                        <InputMonto
+                      <span>Descuento aplicado</span>
+                      <span>
+                        {montoDescuento > 0
+                          ? `${formatPorcentaje(porcentajeDescuento)} · − ${formatoFactura(montoDescuento)}`
+                          : "Sin descuento"}
+                        {/* Viaja el monto: con él cada material cuesta lo que
+                            se pagó, y el porcentaje sale de ahí. */}
+                        <input
+                          type="hidden"
                           name="descuento_detalle"
-                          value={
-                            descuentoPct === null
-                              ? descuento
-                              : montoDescuento > 0
-                                ? String(montoDescuento)
-                                : ""
-                          }
-                          onChange={(limpio) => {
-                            setDescuento(limpio);
-                            setDescuentoPct(null);
-                          }}
-                          style={campoDescuento}
+                          value={montoDescuento > 0 ? String(montoDescuento) : ""}
                         />
                       </span>
                     </div>
@@ -1576,57 +1555,37 @@ export default function GastoForm({
                       </div>
                     )}
                     <div style={filaCierre}>
-                      <span>Total del detalle</span>
-                      <strong>{formatoFactura(detalleConIva)}</strong>
+                      <span>Total abonado</span>
+                      <strong>{montoFactura > 0 ? formatoFactura(montoFactura) : "—"}</strong>
                     </div>
-                    <div style={filaCierre}>
-                      <span>Monto de la factura</span>
-                      <span>{formatoFactura(montoFactura)}</span>
-                    </div>
-                    <div style={filaCierre}>
-                      <span>Diferencia</span>
-                      <strong style={{ color: cierra ? ui.VERDE : ui.ROJO }}>
-                        {cierra ? "Cierra" : formatoFactura(diferenciaDetalle)}
-                      </strong>
-                    </div>
+                    {detalleCorto && (
+                      <div style={filaCierre}>
+                        <span>Falta en el detalle</span>
+                        <strong style={{ color: esAcopio ? undefined : ui.ROJO }}>
+                          {formatoFactura(faltaEnDetalle)}
+                        </strong>
+                      </div>
+                    )}
                     {/* En un acopio no tiene por qué cerrar: lo detallado es lo
                         que se sabe que quedó acopiado, no toda la factura. */}
-                    {!cierra && esAcopio && (
+                    {detalleCorto && esAcopio && (
                       <span style={ayudaCampo}>
-                        Es un acopio: lo detallado no tiene que cerrar con la
-                        factura.
+                        Es un acopio: lo detallado puede ser sólo una parte de
+                        la factura.
                       </span>
                     )}
-                    {!cierra && !esAcopio && (
+                    {detalleCorto && !esAcopio && (
                       <span style={avisoDetalle}>
-                        El detalle no cierra con la factura. Revisá el precio de
-                        cada material, o si la factura tiene un descuento o un
-                        flete que no está en el detalle.
-                        {/* El detalle suma más que la factura: lo más común
-                            es un descuento, y el que cierra se sabe. */}
-                        {descuentoQueCierra > 0.005 && descuentoQueCierra < sumaItems && (
-                          <>
-                            {" "}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDescuento(String(descuentoQueCierra));
-                                setDescuentoPct(null);
-                              }}
-                              style={botonEnlace}
-                            >
-                              Tomar la diferencia como descuento (
-                              {formatPorcentaje((descuentoQueCierra / sumaItems) * 100)})
-                            </button>
-                          </>
-                        )}
+                        El detalle suma menos que lo abonado. Revisá si falta un
+                        material o un precio, o si la factura tiene un flete que
+                        no está en el detalle.
                         {!pagaCaja && (
                           <>
                             {" "}
                             <button
                               type="button"
                               onClick={() =>
-                                setMonto(String(Math.round(detalleConIva * 100) / 100))
+                                setMonto(String(Math.round(sumaItems * factorIvaDetalle * 100) / 100))
                               }
                               style={botonEnlace}
                             >
@@ -2083,36 +2042,6 @@ const filaCierre = {
   gap: "12px",
 };
 
-// Los dos campos del descuento, chicos y a la derecha: el monto cae en la
-// columna de los montos de la cuenta, y el porcentaje al lado.
-const camposDescuento = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-};
-
-const conPorcentaje = {
-  display: "flex",
-  alignItems: "center",
-  gap: "4px",
-};
-
-const campoChico = {
-  ...ui.input,
-  padding: "6px 8px",
-  fontSize: "13px",
-  textAlign: "right" as const,
-};
-
-const campoPorcentaje = {
-  ...campoChico,
-  width: "76px",
-};
-
-const campoDescuento = {
-  ...campoChico,
-  width: "150px",
-};
 
 const botonEnlace = {
   background: "none",

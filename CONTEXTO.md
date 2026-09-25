@@ -174,6 +174,17 @@ define a cuánto se vendieron (cotización personalizada si fue otro cambio).
   diezmilésimo por dólar además del centavo, y las pantallas que preguntan "¿la
   cuenta cubrió todo?" (listado de gastos, movimientos de Ingresos, ficha)
   comparan con **medio peso** de tolerancia, no al centavo.
+  **El modo se guarda** (`gastos.pesos_con_dolares`, 25/09/2026). Antes sólo
+  quedaba el resultado, y al editar el formulario rearmaba el gasto como
+  dólares cargados a mano: la casilla aparecía destildada, el cambio se
+  mostraba —y se volvía a mandar— redondeado a dos decimales (1.443,00 en vez
+  del implícito 1.443,0005), y aparecía "el dinero en cuenta no alcanza, falta
+  $ 0,11". Ahora se guarda la intención, igual que `cotizacion_manual`, y al
+  editar vuelve el modo con los pesos del papel (el monto). La migración marcó
+  los que ya estaban por cómo habían quedado: moneda ARS, dólares de la cuenta
+  y ningún peso de ella (un gasto en dólares queda con moneda USD). La
+  cotización manual se muestra siempre a dos decimales, que es lo que el campo
+  manda.
 
 **Aporte de todas las socias a la vez.** Cuando la obra pide plata la suelen
 poner todas el mismo día, así que el desplegable de empresa ofrece "Ambas
@@ -874,10 +885,14 @@ unitario es opcional (la cantidad no) y una fila a medio llenar no se guarda,
 en vez de rechazar el gasto entero.
 
 **Número de factura** (`gastos.numero_factura`, texto y opcional): el campo
-aparece en el formulario con cualquier comprobante que no sea "sin factura" y
-se guarda `null` en efectivo. Es texto porque el formato lleva punto de venta
-y guion (0001-00001234). Se ve en la etiqueta del comprobante del listado de
-gastos ("Factura A · 0001-00001234") y entra en la búsqueda. Y en el resumen
+aparece en el formulario con cualquier comprobante, **también sin factura**
+(25/09/2026): lo pagado en efectivo puede venir con un presupuesto o un remito
+numerado, y ese papel es el que identifica la compra. Con efectivo el rótulo
+dice *Nº de comprobante* en vez de *Nº de factura*; la columna es la misma,
+que a pesar del nombre guarda el número del papel, sea cual sea. Es texto
+porque el formato lleva punto de venta y guion (0001-00001234). Se ve en la
+etiqueta del comprobante del listado de gastos ("Factura A · 0001-00001234",
+"Efectivo · presupuesto 0452") y entra en la búsqueda. Y en el resumen
 de **Materiales** cada material lista debajo sus compras —fecha, comprobante
 con número, cantidad y costo— con enlace a la ficha del gasto: es lo que
 vincula el material con la factura de la que salió.
@@ -952,46 +967,58 @@ no por renglón: una factura lista todos sus precios igual) dice cómo leer el
 precio unitario: `true` = final; `false` = neto, sólo posible en factura A. En
 el formulario la casilla *Los precios incluyen IVA* aparece sólo con factura A
 y arranca destildada; para B, C o sin factura no se pregunta y se guarda
-`true`. Debajo del detalle va la cuenta: suma del detalle, el IVA de la
-alícuota si son netos, total, monto de la factura y **diferencia**, en verde
-"Cierra" o en rojo el número. **No frena el guardado**: la diferencia puede ser
-un descuento o un flete, y justamente está a la vista para verificar el precio
-de cada material. Un botón copia el total del detalle al monto (no cuando se
-paga con la cuenta, donde el monto sale de lo que se saca de cada lado). El
-resumen de Materiales le suma la alícuota a los precios netos para que el costo
-no mezcle netos con finales. Los gastos anteriores quedaron como finales, que es
-lo que se venía escribiendo.
+`true`. Debajo del detalle va la cuenta, en el orden en que se lee la factura
+(así la pidió el usuario el 25/09/2026): **Total del detalle** (lo que suman
+los renglones), **Descuento aplicado** (porcentaje y monto), el IVA de la
+alícuota si son netos, y **Total abonado** —el monto de arriba del gasto, que
+no se vuelve a escribir—. El resumen de Materiales le suma la alícuota a los
+precios netos para que el costo no mezcle netos con finales. Los gastos
+anteriores quedaron como finales, que es lo que se venía escribiendo.
 
-**El descuento de la factura** (`gastos.descuento_detalle`, 25/09/2026). El
+**El descuento se calcula solo** (`gastos.descuento_detalle`, 25/09/2026). El
 corralón lista a precio de lista y abajo descuenta —un 42 %, y redondea el
 total—: el detalle sumaba $ 4,9 M contra una factura de $ 2,85 M y la cuenta
-quedaba en rojo sin forma de decir por qué. Ahora la cuenta de abajo del
-detalle tiene un renglón **Descuento** con dos campos que se siguen: el monto
-(`InputMonto`) y el porcentaje. Se escribe cualquiera de los dos; si el
-último tocado es el porcentaje, el monto lo sigue cuando cambia la suma. Y
-cuando el detalle suma más que la factura, el aviso ofrece **"Tomar la
-diferencia como descuento (42,01 %)"**, que pone el descuento que hace cerrar
-al centavo: es el caso del porcentaje redondeado, donde escribir 42 % deja
-unos pesos de diferencia.
+quedaba en rojo sin forma de decir por qué. El descuento es **lo que el
+detalle suma de más sobre lo abonado**, llevado a la base de los precios (sin
+IVA si son netos: la factura descuenta antes del IVA), y el renglón lo muestra
+como "42,01 % · − $ 2.064.406,94", o "Sin descuento". **No hay campo para
+escribirlo y siempre cierra.** Se probó antes con campos —monto y porcentaje,
+después sólo el porcentaje de la factura con una *Diferencia* que mostraba el
+redondeo— y el usuario lo simplificó: el total abonado ya está cargado arriba,
+así que escribir el descuento era cargar dos veces lo mismo y abría una
+diferencia que no existe. Un porcentaje que no figura en la factura es ahora
+la señal de un precio mal escrito. Lo único que se avisa es lo contrario: si
+el detalle suma **menos** que lo abonado no hay descuento posible, aparece
+**Falta en el detalle** en rojo (falta un material o un precio, o hay un flete
+que no es item) con el botón *Usar el total del detalle como monto* (no
+cuando se paga con la cuenta, donde el monto sale de lo que se saca de cada
+lado). En un acopio eso no es error —lo detallado puede ser una parte— y se
+dice sin rojo. **No frena el guardado.**
 
-Se guarda **el monto, no el porcentaje**: lo que manda es el total de la
-factura y un porcentaje redondo no lo reproduce. Va en la **base de los
-precios** (neto si se cargaron netos) y **antes del IVA**, como en la factura.
-El server action lo recorta a la suma del detalle y lo pone en cero si no hay
-detalle. Los precios de los items **quedan a precio de lista**, como en el
-papel —la ficha del gasto muestra al pie el descuento con su porcentaje y el
-total con descuento—, pero **el costo en Materiales sale descontado**: el
-descuento se reparte entre los materiales en proporción a su subtotal
-(`factorDescuento` en `lib/items-material.ts`). En un acopio, el precio que un
-retiro toma del acopio también sale descontado; el que se escribe en el
-retiro, no.
+Se guarda **el monto, no el porcentaje** (viaja en un campo oculto; el server
+action lo recorta a la suma del detalle y lo pone en cero sin detalle): lo que
+manda es el total de la factura, y el porcentaje se deriva. Al editar un gasto
+se recalcula con lo que haya en pantalla, no se lee de la base. Los precios de
+los items **quedan a precio de lista**, como en el papel —la ficha del gasto
+muestra al pie el descuento aplicado con su porcentaje y el total con
+descuento—, pero **el costo en Materiales sale descontado**: el descuento se
+reparte entre los materiales en proporción a su subtotal (`factorDescuento` en
+`lib/items-material.ts`). En un acopio, el precio que un retiro toma del
+acopio también sale descontado; el que se escribe en el retiro, no. Los
+gastos guardados antes del 25/09 tienen descuento cero hasta que se los abra y
+se los vuelva a guardar.
 
 En el formulario el bloque se llama **"Detallar materiales de compra"** y no
 "Detalle": el campo de arriba ya se llama Detalle —el texto libre del gasto— y
 dos cosas con el mismo nombre en la misma pantalla se confunden. Los items se
-agregan con el **"+" verde de cada fila**, que inserta la siguiente **abajo de
-ella** (así se lee una factura, renglón por renglón), y se sacan con la "✕"
-roja. Sin filas, el "+" va suelto: no hay dónde ponerlo.
+agregan con el **"+" de cada fila**, que inserta la siguiente **abajo de
+ella** (así se lee una factura, renglón por renglón), y se sacan con el
+**tacho** rojo. Sin filas no hay renglón donde poner el "+", y el primero se
+agrega con un botón **+ Agregar material**. Hasta el 25/09/2026 eran un "+"
+verde y una "✕" roja sueltos, y un guion en el subtotal y en la unidad vacíos
+que se leía como un control más: ahora son botones cuadrados con el borde de
+`ui.secondaryButton` y dos íconos nuevos del juego de la barra lateral
+(`mas` y `tacho` en `IconoObra`), y lo vacío queda vacío.
 
 La solapa **Materiales vive en Obra**, no en Economía: la plata de esas compras
 ya está en Gastos; acá interesan las cantidades.

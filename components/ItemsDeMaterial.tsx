@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import IconoObra from "@/components/IconoObra";
 import InputMonto from "@/components/InputMonto";
 import { crearMaterialDesdeGasto } from "@/app/obras/[obraId]/materiales/actions";
 import SelectorMaterial, { type MaterialOpcion } from "@/components/SelectorMaterial";
@@ -263,8 +264,8 @@ export default function ItemsDeMaterial({
           <div style={encabezado}>
             <span>Material</span>
             <span>Cantidad</span>
-            <span style={derecha}>Precio unitario</span>
-            <span style={derecha}>Subtotal</span>
+            <span>Precio unitario</span>
+            <span>Subtotal</span>
             <span />
           </div>
 
@@ -293,8 +294,9 @@ export default function ItemsDeMaterial({
                   style={ui.input}
                 />
                 {/* La unidad la pone el catálogo, no se elige acá: el ladrillo
-                    se cuenta por unidad siempre. */}
-                <span style={unidad}>{unidadDe(fila.materialId) || "—"}</span>
+                    se cuenta por unidad siempre. Sin material no hay unidad, y
+                    un guion en su lugar se leía como un botón más. */}
+                <span style={unidad}>{unidadDe(fila.materialId)}</span>
               </span>
 
               <InputMonto
@@ -304,33 +306,37 @@ export default function ItemsDeMaterial({
                 style={{ ...ui.input, textAlign: "right" }}
               />
 
+              {/* Vacío hasta que haya cantidad y precio: el guion que iba
+                  acá quedaba pegado al "+" y parecía otro control. */}
               <span style={subtotalTexto}>
-                {subtotal(fila) > 0 ? formatMoney(subtotal(fila)) : "—"}
+                {subtotal(fila) > 0 ? formatMoney(subtotal(fila)) : ""}
               </span>
 
-              {/* El "+" y la "✕" al final de cada fila: verde suma, rojo saca.
-                  Es el mismo par que se ve en cualquier planilla, y evita el
-                  botón suelto al pie que obligaba a bajar para seguir
-                  cargando. */}
+              {/* Sumar y tirar al final de cada fila, como en una planilla:
+                  evita el botón suelto al pie que obligaba a bajar para seguir
+                  cargando. Botones cuadrados con el borde de los de la app y
+                  un ícono del mismo juego que la barra lateral: eran un "+" y
+                  una "✕" sueltos que se perdían. El tacho en rojo, porque
+                  saca. */}
               <span style={botones}>
                 <button
                   type="button"
                   onClick={() => agregar(fila.clave)}
-                  style={botonSumar}
+                  style={botonIcono}
                   aria-label="Agregar otro item"
-                  title="Agregar otro item"
+                  title="Agregar otro item abajo de éste"
                 >
-                  +
+                  <IconoObra nombre="mas" size={18} />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => quitar(fila.clave)}
-                  style={botonQuitar}
+                  style={botonTacho}
                   aria-label="Quitar item"
                   title="Quitar este item"
                 >
-                  ✕
+                  <IconoObra nombre="tacho" size={18} />
                 </button>
               </span>
             </div>
@@ -346,17 +352,17 @@ export default function ItemsDeMaterial({
       )}
 
       <div style={acciones}>
-        {/* Sin filas no hay dónde poner el "+" de una fila, así que va suelto:
-            es la única manera de empezar. */}
+        {/* Sin filas no hay dónde poner el "+" de una fila, así que va un
+            botón: es la única manera de empezar. Con el estilo de los botones
+            de la app y con palabras, no un "+" verde suelto, que se perdía al
+            lado del enlace y no se sabía que era por donde se arranca. */}
         {filas.length === 0 && (
           <button
             type="button"
             onClick={() => agregar(null)}
-            style={botonSumar}
-            aria-label="Agregar el primer item"
-            title="Agregar el primer item"
+            style={ui.secondaryButton}
           >
-            +
+            + Agregar material
           </button>
         )}
 
@@ -390,12 +396,15 @@ const tabla = {
 
 // Las mismas columnas en el encabezado y en cada renglón, para que los títulos
 // caigan sobre su campo.
-const columnas = "minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr) 120px 64px";
+const columnas = "minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr) 120px 88px";
 
+// Cada título centrado sobre su campo, como lo pidió el usuario: alineados a
+// los costados quedaban corridos respecto del recuadro que nombran.
 const encabezado = {
   display: "grid",
   gridTemplateColumns: columnas,
   gap: "10px",
+  textAlign: "center" as const,
   fontSize: "12px",
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
@@ -419,10 +428,6 @@ const unidad = {
   fontSize: "13px",
   color: "#777777",
   whiteSpace: "nowrap" as const,
-};
-
-const derecha = {
-  textAlign: "right" as const,
 };
 
 const subtotalTexto = {
@@ -449,29 +454,25 @@ const acciones = {
 const botones = {
   display: "flex",
   alignItems: "center",
-  gap: "4px",
+  justifyContent: "flex-end",
+  gap: "6px",
 };
 
-// Verde suma, rojo saca: los mismos colores que los saldos en el resto de la
-// app, que es lo que el ojo ya sabe leer.
-const botonBase = {
-  background: "none",
-  border: "none",
-  fontSize: "18px",
-  cursor: "pointer",
-  padding: "4px 6px",
-  lineHeight: 1,
+// El borde y las esquinas de `ui.secondaryButton`, en cuadrado.
+const botonIcono = {
+  ...ui.secondaryButton,
+  width: "40px",
+  height: "40px",
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#111111",
 };
 
-const botonSumar = {
-  ...botonBase,
-  color: "#15803d",
-};
-
-const botonQuitar = {
-  ...botonBase,
-  color: "#b91c1c",
-  fontSize: "15px",
+const botonTacho = {
+  ...botonIcono,
+  color: ui.ROJO,
 };
 
 // Un botón que se ve como el enlace que había antes: hace lo mismo que

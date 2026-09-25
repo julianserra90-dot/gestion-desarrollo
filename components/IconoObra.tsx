@@ -1,5 +1,6 @@
 /**
- * Los íconos de la barra lateral. La app no usa ninguna librería de íconos —
+ * Los íconos de la app: los de la barra lateral y los de algún botón (sumar un
+ * renglón, tirarlo). La app no usa ninguna librería de íconos —
  * son SVG a mano, todos con el mismo trazo (viewBox 24×24, stroke 1.7,
  * currentColor) para que se sientan de un mismo juego aunque cada uno se
  * dibujó por separado.
@@ -28,7 +29,9 @@ export type NombreIcono =
   | "materiales"
   | "usuarios"
   | "perfil"
-  | "salir";
+  | "salir"
+  | "mas"
+  | "tacho";
 
 export default function IconoObra({
   nombre,
@@ -192,6 +195,21 @@ const TRAZOS: Record<NombreIcono, React.ReactNode> = {
       <path d="M9.5 4H6.2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.3" />
       <path d="M13 8l4 4-4 4" />
       <path d="M17 12H8.5" />
+    </>
+  ),
+  mas: (
+    <>
+      <path d="M12 5.5v13" />
+      <path d="M5.5 12h13" />
+    </>
+  ),
+  tacho: (
+    <>
+      <path d="M4.5 7h15" />
+      <path d="M9 7V5.2A1.2 1.2 0 0 1 10.2 4h3.6A1.2 1.2 0 0 1 15 5.2V7" />
+      <path d="M6.5 7l.8 11.6A1.6 1.6 0 0 0 8.9 20h6.2a1.6 1.6 0 0 0 1.6-1.4L17.5 7" />
+      <path d="M10.2 11v5.5" />
+      <path d="M13.8 11v5.5" />
     </>
   ),
 };

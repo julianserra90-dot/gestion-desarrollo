@@ -714,6 +714,7 @@ export type Database = {
           numero_factura: string | null
           obra_id: string
           observaciones: string | null
+          pesos_con_dolares: boolean
           precios_con_iva: boolean
           presupuesto_id: string | null
           proveedor_id: string | null
@@ -753,6 +754,7 @@ export type Database = {
           numero_factura?: string | null
           obra_id: string
           observaciones?: string | null
+          pesos_con_dolares?: boolean
           precios_con_iva?: boolean
           presupuesto_id?: string | null
           proveedor_id?: string | null
@@ -792,6 +794,7 @@ export type Database = {
           numero_factura?: string | null
           obra_id?: string
           observaciones?: string | null
+          pesos_con_dolares?: boolean
           precios_con_iva?: boolean
           presupuesto_id?: string | null
           proveedor_id?: string | null
