@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import EtiquetaComprobante from "@/components/EtiquetaComprobante";
 import * as ui from "@/components/ui";
 import { repartirComprobantes } from "@/lib/comprobantes";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatUSD } from "@/lib/format";
 import { semanaDeObra } from "@/lib/semanas";
 
 export type GastoFila = {
@@ -95,6 +95,20 @@ function valorDe(g: GastoFila, col: ColumnaFiltrable): string {
  * de valores porque los valores reales dependen de los datos de cada obra —una
  * puede no tener ninguna factura C—: acá se resuelven contra los que existen.
  */
+/**
+ * Un gasto que se empezó a cargar y no se terminó. No es un gasto: no suma, no
+ * se filtra ni se busca, y va arriba de todo para que no se olvide.
+ */
+export type BorradorFila = {
+  id: string;
+  fecha: string | null;
+  rubro: string | null;
+  tipoGasto: string | null;
+  destino: string | null;
+  concepto: string | null;
+  montos: { valor: number; moneda: "ARS" | "USD" }[];
+};
+
 export type VistaGastos = "todos" | "efectivo" | "facturado" | "credito-fiscal";
 
 function filtroDe(ver: VistaGastos | undefined, comprobantes: string[]) {
@@ -121,6 +135,7 @@ export default function GastosLista({
   inicioObra,
   ver,
   socias,
+  borradores = [],
 }: {
   gastos: GastoFila[];
   slug: string;
@@ -130,6 +145,8 @@ export default function GastosLista({
   ver?: VistaGastos;
   /** Las socias de la obra, para el desglose de comprobantes por empresa. */
   socias: { id: string; nombre: string }[];
+  /** Los gastos a medio cargar, del más reciente al más viejo. */
+  borradores?: BorradorFila[];
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [ocultarAnulados, setOcultarAnulados] = useState(false);
@@ -363,7 +380,7 @@ export default function GastosLista({
         </div>
       )}
 
-      {gastos.length === 0 ? (
+      {gastos.length === 0 && borradores.length === 0 ? (
         <p style={ui.vacio}>Todavía no hay gastos cargados en esta obra.</p>
       ) : (
         <>
@@ -459,7 +476,42 @@ export default function GastosLista({
               </tr>
             </thead>
             <tbody>
-              {filtrados.length === 0 && (
+              {/* Los borradores van primero y fuera de los filtros: no son
+                  gastos todavía, y lo que importa de ellos es que se vean
+                  para terminarlos. Llevan a seguir cargando, no a una ficha. */}
+              {borradores.map((b) => (
+                <tr key={b.id} style={filaBorrador}>
+                  <td style={{ ...tdBorrador, ...compacta }}>
+                    {b.fecha ? formatDate(b.fecha) : "—"}
+                  </td>
+                  <td style={{ ...tdBorrador, ...compacta }}>{b.rubro ?? "—"}</td>
+                  <td style={{ ...tdBorrador, ...compacta }}>{b.tipoGasto ?? "—"}</td>
+                  <td style={{ ...tdBorrador, ...compacta }}>{b.destino ?? "—"}</td>
+                  <td style={tdBorrador}>
+                    {b.concepto}
+                    <span style={tagBorrador}>Borrador</span>
+                  </td>
+                  <td style={{ ...tdBorrador, ...compacta }}>—</td>
+                  <td style={{ ...tdBorrador, ...compacta }}>—</td>
+                  <td style={{ ...tdBorrador, textAlign: "right" }}>
+                    {b.montos.length === 0
+                      ? "—"
+                      : b.montos
+                          .map((m) => (m.moneda === "USD" ? formatUSD(m.valor) : formatMoney(m.valor)))
+                          .join(" + ")}
+                  </td>
+                  <td style={tdBorrador}>
+                    <Link
+                      href={`/obras/${slug}/gastos/nuevo?borrador=${b.id}`}
+                      style={editarLink}
+                    >
+                      Seguir
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+
+              {filtrados.length === 0 && gastos.length > 0 && (
                 <tr>
                   <td colSpan={9} style={celdaVacia}>
                     Ningún gasto coincide con la búsqueda o los filtros.
@@ -714,6 +766,24 @@ const opcionFiltro = {
 };
 
 const filaAjuste = { background: "#fafafa" };
+
+// Violeta, un color que no usa nada más en la pantalla: el gris es del ajuste
+// y del anulado, el ámbar del acopio y el celeste de los comprobantes. Un
+// borrador es otra cosa que todos ellos.
+const filaBorrador = { background: "#f5f3ff" };
+
+const tdBorrador = { ...ui.td, borderBottom: "1px solid #e4defc", color: "#4b5563" };
+
+const tagBorrador = {
+  display: "inline-block",
+  marginLeft: "8px",
+  borderRadius: "6px",
+  padding: "2px 7px",
+  fontSize: "11px",
+  background: "#ede9fe",
+  color: "#5b21b6",
+  whiteSpace: "nowrap" as const,
+};
 
 const tdAjuste = { ...ui.td, borderBottom: "1px solid #e0e0e0" };
 

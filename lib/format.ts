@@ -56,6 +56,11 @@ export function formatM2(valor: number | null | undefined) {
   return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor)} m²`;
 }
 
+/** Un porcentaje: "42,01 %". Hasta dos decimales, y ninguno si es redondo. */
+export function formatPorcentaje(valor: number) {
+  return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor)} %`;
+}
+
 /**
  * Pasa una fecha de Postgres ("2026-06-01") a formato local ("01/06/2026").
  *

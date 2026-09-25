@@ -1,9 +1,14 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import GastoForm from "@/components/GastoForm";
+import GastoForm, { type BorradorGasto } from "@/components/GastoForm";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
+import {
+  facturasDelBorrador,
+  itemsDelBorrador,
+  type CamposBorrador,
+} from "@/lib/borradores";
 import { getCaja } from "@/lib/caja";
 import { getDetalles } from "@/lib/detalles";
 import { getCotizacionActual } from "@/lib/dolar";
@@ -15,17 +20,17 @@ import {
 } from "@/lib/presupuestos";
 import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
-import { crearGasto } from "../actions";
+import { crearGasto, descartarBorrador, guardarBorrador } from "../actions";
 
 export default async function NuevoGastoPage({
   params,
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; borrador?: string }>;
 }) {
   const { obraId } = await params;
-  const { error } = await searchParams;
+  const { error, borrador: borradorId } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -72,6 +77,25 @@ export default async function NuevoGastoPage({
   const cotizacion = await getCotizacionActual();
   const caja = await getCaja(obra.id);
 
+  // Se retoma un borrador: el formulario arranca con lo que tenía. Si ya no
+  // existe (se terminó en otra pestaña, se descartó), arranca vacío.
+  const { data: filaBorrador } = borradorId
+    ? await supabase
+        .from("gastos_borradores")
+        .select("id, campos, comprobante_drive_id, comprobante_nombre")
+        .eq("id", borradorId)
+        .eq("obra_id", obra.id)
+        .maybeSingle()
+    : { data: null };
+  const borrador: BorradorGasto | undefined = filaBorrador
+    ? {
+        id: filaBorrador.id,
+        campos: filaBorrador.campos as CamposBorrador,
+        comprobanteDriveId: filaBorrador.comprobante_drive_id,
+        comprobanteNombre: filaBorrador.comprobante_nombre,
+      }
+    : undefined;
+
   const listaSocios = (socios ?? [])
     .map((s) => ({
       empresa_id: s.empresa_id,
@@ -88,7 +112,7 @@ export default async function NuevoGastoPage({
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
-        <h2 style={ui.pageTitle}>Nuevo gasto</h2>
+        <h2 style={ui.pageTitle}>{borrador ? "Borrador de gasto" : "Nuevo gasto"}</h2>
       </section>
 
       {rubros.length === 0 && (
@@ -110,7 +134,11 @@ export default async function NuevoGastoPage({
           </p>
         </section>
       ) : (
+        // La `key` rearma el formulario al pasar de un borrador a otro (o a
+        // uno nuevo): es la misma página, y sin ella el estado quedaría del
+        // anterior.
         <GastoForm
+          key={borrador?.id ?? "nuevo"}
           action={crearGasto}
           obraId={obra.id}
           slug={obra.slug}
@@ -126,6 +154,19 @@ export default async function NuevoGastoPage({
           inicioObra={obra.fecha_inicio}
           detallesPredefinidos={detallesPredefinidos}
           materiales={materiales}
+          borrador={borrador}
+          itemsIniciales={borrador ? itemsDelBorrador(borrador.campos) : undefined}
+          facturasIniciales={
+            borrador
+              ? facturasDelBorrador(borrador.campos).map((f) => ({
+                  ...f,
+                  comprobanteDriveId: null,
+                  comprobanteNombre: null,
+                }))
+              : undefined
+          }
+          accionBorrador={guardarBorrador}
+          accionDescartar={descartarBorrador}
         />
       )}
     </AppShell>

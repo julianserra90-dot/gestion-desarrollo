@@ -9,6 +9,7 @@
  * retiros y no los items del acopio.
  */
 
+import { factorDescuento } from "@/lib/items-material";
 import { createClient } from "@/lib/supabase/server";
 
 export type RetiroItem = {
@@ -77,18 +78,41 @@ function armar(
 const SELECT_RETIRO =
   "id, fecha, observaciones, acopio_retiro_items(material_id, cantidad, precio_unitario, orden, materiales(nombre, unidad))";
 
+/**
+ * Lo que se pagó por cada material acopiado: el precio de lista con el
+ * descuento de la factura, si hizo uno. El precio que se escribe en un retiro
+ * no pasa por acá: es el que se cargó para ese retiro.
+ */
+function preciosAcopiados(
+  items: { material_id: string; cantidad: number; precio_unitario: number | null }[],
+  descuento: number
+) {
+  const suma = items.reduce(
+    (acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario ?? 0),
+    0
+  );
+  const conDescuento = factorDescuento(descuento, suma);
+  const precios = new Map<string, number>();
+  for (const i of items) {
+    if (i.precio_unitario !== null) {
+      precios.set(i.material_id, Number(i.precio_unitario) * conDescuento);
+    }
+  }
+  return precios;
+}
+
 /** Los precios con que se acopió cada material, y el factor de IVA del acopio. */
 async function preciosDelAcopio(gastoId: string) {
   const supabase = await createClient();
   const [{ data: gasto }, { data: items }] = await Promise.all([
     supabase
       .from("gastos")
-      .select("precios_con_iva, alicuota_iva, tipo_factura")
+      .select("precios_con_iva, alicuota_iva, tipo_factura, descuento_detalle")
       .eq("id", gastoId)
       .maybeSingle(),
     supabase
       .from("gasto_materiales")
-      .select("material_id, precio_unitario")
+      .select("material_id, cantidad, precio_unitario")
       .eq("gasto_id", gastoId),
   ]);
 
@@ -96,10 +120,7 @@ async function preciosDelAcopio(gastoId: string) {
     gasto?.tipo_factura === "A" && gasto.precios_con_iva === false
       ? 1 + Number(gasto.alicuota_iva ?? 21) / 100
       : 1;
-  const precios = new Map<string, number>();
-  for (const i of items ?? []) {
-    if (i.precio_unitario !== null) precios.set(i.material_id, Number(i.precio_unitario));
-  }
+  const precios = preciosAcopiados(items ?? [], Number(gasto?.descuento_detalle ?? 0));
   return { precios, factor };
 }
 
@@ -156,7 +177,7 @@ export async function getAcopiosDeObra(obraId: string): Promise<AcopioDeObra[]> 
     // Literal y no armado con `+`: el cliente tipado sólo entiende el select
     // si puede leerlo como texto fijo.
     .select(
-      "id, fecha, concepto, monto, precios_con_iva, alicuota_iva, tipo_factura, proveedores(nombre), rubros(nombre), gasto_materiales(material_id, precio_unitario), acopio_retiros(id, fecha, observaciones, acopio_retiro_items(material_id, cantidad, precio_unitario, orden, materiales(nombre, unidad)))"
+      "id, fecha, concepto, monto, precios_con_iva, alicuota_iva, tipo_factura, descuento_detalle, proveedores(nombre), rubros(nombre), gasto_materiales(material_id, cantidad, precio_unitario), acopio_retiros(id, fecha, observaciones, acopio_retiro_items(material_id, cantidad, precio_unitario, orden, materiales(nombre, unidad)))"
     )
     .eq("obra_id", obraId)
     .eq("es_acopio", true)
@@ -168,10 +189,7 @@ export async function getAcopiosDeObra(obraId: string): Promise<AcopioDeObra[]> 
       a.tipo_factura === "A" && a.precios_con_iva === false
         ? 1 + Number(a.alicuota_iva ?? 21) / 100
         : 1;
-    const precios = new Map<string, number>();
-    for (const i of a.gasto_materiales) {
-      if (i.precio_unitario !== null) precios.set(i.material_id, Number(i.precio_unitario));
-    }
+    const precios = preciosAcopiados(a.gasto_materiales, Number(a.descuento_detalle ?? 0));
     const retiros = (a.acopio_retiros as FilaRetiro[])
       .map((r) => armar(r, precios, factor))
       .sort((x, y) => y.fecha.localeCompare(x.fecha));

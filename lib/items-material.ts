@@ -46,6 +46,19 @@ export function leerItems(formData: FormData): ItemMaterial[] {
 }
 
 /**
+ * Por cuánto multiplicar un precio del detalle para que el material cueste lo
+ * que se pagó y no el precio de lista.
+ *
+ * El descuento de la factura (`gastos.descuento_detalle`) es uno solo para toda
+ * la compra, así que se reparte entre los materiales en proporción a su
+ * subtotal: con un 42 % de descuento, cada uno sale 58 % de su lista. Sin
+ * descuento, o sin suma sobre la cual repartirlo, no cambia nada.
+ */
+export function factorDescuento(descuento: number, sumaDetalle: number) {
+  return descuento > 0 && sumaDetalle > 0 ? Math.max(0, 1 - descuento / sumaDetalle) : 1;
+}
+
+/**
  * El total de lo cotizado, sumando cada renglón.
  *
  * Sirve para el presupuesto, donde el monto **sí** puede salir del detalle: el

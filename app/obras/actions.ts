@@ -301,6 +301,7 @@ export async function eliminarObraConTodo(formData: FormData) {
     { data: gastos },
     { data: ingresos },
     { data: presupuestos },
+    { data: borradores },
   ] = await Promise.all([
     registroIds.length > 0
       ? supabase.from("fotos").select("drive_file_id").in("registro_id", registroIds)
@@ -317,6 +318,12 @@ export async function eliminarObraConTodo(formData: FormData) {
       .from("presupuestos")
       .select("comprobante_drive_id")
       .eq("obra_id", obraId),
+    // Los borradores se van solos con la obra (cascada), pero su comprobante
+    // queda en Drive si no se lo borra acá.
+    supabase
+      .from("gastos_borradores")
+      .select("comprobante_drive_id")
+      .eq("obra_id", obraId),
   ]);
 
   const enDrive = [
@@ -326,6 +333,7 @@ export async function eliminarObraConTodo(formData: FormData) {
     ...(gastos ?? []).map((g) => g.comprobante_drive_id),
     ...(ingresos ?? []).map((i) => i.comprobante_drive_id),
     ...(presupuestos ?? []).map((p) => p.comprobante_drive_id),
+    ...(borradores ?? []).map((b) => b.comprobante_drive_id),
   ].filter((id): id is string => Boolean(id));
 
   // ---- Las filas ------------------------------------------------------------

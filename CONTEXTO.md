@@ -809,6 +809,52 @@ arman en el render lo obligan a saltear el componente entero
 Quedaron como funciones sueltas —de memoizar se encarga el compilador— y el
 efecto del teclado depende sólo de cuántas fotos hay, que es un número.
 
+### Borradores de gasto (25/09/2026)
+Un gasto se carga con la factura en la mano, y a veces falta un dato —el
+cambio, a nombre de quién salió, un precio— y había que elegir entre
+inventarlo o perder todo lo escrito. Ahora el alta tiene **Guardar borrador**
+(sin validar nada, `formNoValidate`) y el borrador aparece **arriba de todo en
+el listado de Gastos, con fondo violeta** y la etiqueta *Borrador*; su enlace
+dice **Seguir** y abre el alta con todo como estaba
+(`/gastos/nuevo?borrador=<id>`, título "Borrador de gasto"). Desde ahí se
+vuelve a guardar como borrador, se **descarta** (botón rojo a la izquierda,
+pregunta antes) o se guarda como gasto con las validaciones de siempre, y
+entonces el borrador se borra.
+
+**No es un gasto con otro estado: es otra tabla** (`gastos_borradores`). Se
+pensó `gastos.estado = 'Borrador'`, que reusaba la edición entera, y se
+descartó: un gasto a medio cargar no cumple los checks de `gastos` (quién lo
+pone, que la cuenta alcance, factura y titular coherentes) y las cuatro vistas
+de saldos, el control de la cuenta y una veintena de consultas de la app
+tendrían que saltearlo igual que a los anulados. Un olvido y un borrador
+descuadra el balance. En tabla aparte no lo puede sumar nadie.
+
+**Se guarda el formulario tal cual** (`campos` jsonb: nombre del campo →
+valores, como los manda el navegador; `lib/borradores.ts`), no columnas
+interpretadas: interpretar es lo que un gasto incompleto no permite (sin fecha
+no hay cotización, sin monto no hay reparto). Así vuelve también lo que no es
+columna de ningún lado, como el modo *el gasto es en pesos: descontar dólares
+al cambio*. `GastoForm` recibe `borrador` y cada estado arranca de `gasto`
+(editar), del borrador o vacío; `gasto` sigue vacío porque el gasto todavía no
+existe. Un campo nuevo del formulario que no se lea del borrador no rompe
+nada: sólo arranca vacío al retomarlo.
+
+**El comprobante sí se guarda**: sube a Drive al guardar el borrador (columnas
+`comprobante_*` de la tabla), se ve con *Ver* en `/ver/<id>` (`lib/archivos.ts`
+lo busca también en los borradores) y al terminar **pasa al gasto** sin volver
+a subirse. Si se reemplaza o se quita, el viejo se borra de Drive; al
+descartar, también. Los archivos de *varias facturas, una por socia* **no** se
+guardan en el borrador (sí sus montos y números): se adjuntan al terminar.
+Borrar la obra se lleva los borradores por cascada y su comprobante de Drive.
+
+**Los ve y los toca quien ve la obra** (RLS con `puede_ver_obra`), no sólo
+quien lo empezó: está en el listado de todos, y si sólo lo pudiera borrar
+quien lo cargó, el que lo termina crearía el gasto y el borrador quedaría en
+la lista para cargarse dos veces. El gasto que sale de él pasa por las reglas
+de siempre (una empresa carga a su nombre). Un error al guardar el gasto
+vuelve al borrador (`?borrador=<id>&error=`), no a un alta vacía. Los
+borradores no entran en filtros, búsqueda, contador ni totales del listado.
+
 ### Materiales: qué se compró, no sólo cuánto salió
 Un gasto de materiales dice "Corralón Chivilcoy, $ 5.218.446": sirve para la
 plata, no para la obra. El **detalle** lo completa: 2.500 ladrillos, 40 bolsas
@@ -915,6 +961,30 @@ paga con la cuenta, donde el monto sale de lo que se saca de cada lado). El
 resumen de Materiales le suma la alícuota a los precios netos para que el costo
 no mezcle netos con finales. Los gastos anteriores quedaron como finales, que es
 lo que se venía escribiendo.
+
+**El descuento de la factura** (`gastos.descuento_detalle`, 25/09/2026). El
+corralón lista a precio de lista y abajo descuenta —un 42 %, y redondea el
+total—: el detalle sumaba $ 4,9 M contra una factura de $ 2,85 M y la cuenta
+quedaba en rojo sin forma de decir por qué. Ahora la cuenta de abajo del
+detalle tiene un renglón **Descuento** con dos campos que se siguen: el monto
+(`InputMonto`) y el porcentaje. Se escribe cualquiera de los dos; si el
+último tocado es el porcentaje, el monto lo sigue cuando cambia la suma. Y
+cuando el detalle suma más que la factura, el aviso ofrece **"Tomar la
+diferencia como descuento (42,01 %)"**, que pone el descuento que hace cerrar
+al centavo: es el caso del porcentaje redondeado, donde escribir 42 % deja
+unos pesos de diferencia.
+
+Se guarda **el monto, no el porcentaje**: lo que manda es el total de la
+factura y un porcentaje redondo no lo reproduce. Va en la **base de los
+precios** (neto si se cargaron netos) y **antes del IVA**, como en la factura.
+El server action lo recorta a la suma del detalle y lo pone en cero si no hay
+detalle. Los precios de los items **quedan a precio de lista**, como en el
+papel —la ficha del gasto muestra al pie el descuento con su porcentaje y el
+total con descuento—, pero **el costo en Materiales sale descontado**: el
+descuento se reparte entre los materiales en proporción a su subtotal
+(`factorDescuento` en `lib/items-material.ts`). En un acopio, el precio que un
+retiro toma del acopio también sale descontado; el que se escribe en el
+retiro, no.
 
 En el formulario el bloque se llama **"Detallar materiales de compra"** y no
 "Detalle": el campo de arriba ya se llama Detalle —el texto libre del gasto— y

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import GastosLista, {
+  type BorradorFila,
   type GastoFila,
   type VistaGastos,
 } from "@/components/GastosLista";
@@ -8,6 +9,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import Volver from "@/components/Volver";
+import { resumenDelBorrador, type CamposBorrador } from "@/lib/borradores";
 import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -47,7 +49,11 @@ export default async function GastosPage({
   const vista = VISTAS.find((v) => v === ver);
 
   const supabase = await createClient();
-  const [{ data: gastos, error: errorGastos }, { data: socias }] = await Promise.all([
+  const [
+    { data: gastos, error: errorGastos },
+    { data: socias },
+    { data: filasBorrador },
+  ] = await Promise.all([
     supabase
       .from("gastos")
       .select(
@@ -61,7 +67,42 @@ export default async function GastosPage({
       .from("obra_socios")
       .select("empresa_id, empresas(nombre)")
       .eq("obra_id", obra.id),
+    supabase
+      .from("gastos_borradores")
+      .select("id, campos")
+      .eq("obra_id", obra.id)
+      .order("actualizado_en", { ascending: false }),
   ]);
+
+  // Los borradores guardan ids, como el formulario: los nombres de rubro y
+  // proveedor se buscan acá, para que la fila se lea como la de un gasto.
+  const resumenes = (filasBorrador ?? []).map((b) => ({
+    id: b.id,
+    ...resumenDelBorrador(b.campos as CamposBorrador),
+  }));
+  const rubroIds = [...new Set(resumenes.map((r) => r.rubroId).filter((x): x is string => !!x))];
+  const proveedorIds = [
+    ...new Set(resumenes.map((r) => r.proveedorId).filter((x): x is string => !!x)),
+  ];
+  const [{ data: rubrosBorrador }, { data: proveedoresBorrador }] = await Promise.all([
+    rubroIds.length > 0
+      ? supabase.from("rubros").select("id, nombre").in("id", rubroIds)
+      : Promise.resolve({ data: [] as { id: string; nombre: string }[] }),
+    proveedorIds.length > 0
+      ? supabase.from("proveedores").select("id, nombre").in("id", proveedorIds)
+      : Promise.resolve({ data: [] as { id: string; nombre: string }[] }),
+  ]);
+  const nombreDe = (lista: { id: string; nombre: string }[] | null, id: string | null) =>
+    lista?.find((x) => x.id === id)?.nombre ?? null;
+  const borradores: BorradorFila[] = resumenes.map((r) => ({
+    id: r.id,
+    fecha: r.fecha,
+    rubro: nombreDe(rubrosBorrador, r.rubroId),
+    tipoGasto: r.tipoGasto,
+    destino: nombreDe(proveedoresBorrador, r.proveedorId) ?? r.proveedorNuevo,
+    concepto: r.concepto,
+    montos: r.montos,
+  }));
 
   const lista = gastos ?? [];
 
@@ -166,6 +207,7 @@ export default async function GastosPage({
         slug={obra.slug}
         inicioObra={obra.fecha_inicio}
         ver={vista}
+        borradores={borradores}
         socias={(socias ?? [])
           .filter((s) => s.empresa_id)
           .map((s) => ({

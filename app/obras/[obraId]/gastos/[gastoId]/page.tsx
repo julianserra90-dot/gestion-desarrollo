@@ -5,7 +5,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getRetirosDeAcopio } from "@/lib/acopios";
-import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { formatDate, formatMoney, formatPorcentaje, formatUSD } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -35,7 +35,7 @@ export default async function FichaGastoPage({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, tipo_gasto, es_acopio, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, numero, comprobante_drive_id, orden, empresas(nombre))"
+        "id, fecha, concepto, tipo_gasto, es_acopio, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, descuento_detalle, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, numero, comprobante_drive_id, orden, empresas(nombre))"
       )
       .eq("id", gastoId)
       .eq("obra_id", obra.id)
@@ -86,6 +86,9 @@ export default async function FichaGastoPage({
     (acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario ?? 0),
     0
   );
+  // Los precios quedan como en la factura, a precio de lista; el descuento va
+  // al pie, con el porcentaje, que es lo que se pregunta al mirarla.
+  const descuento = Number(gasto.descuento_detalle ?? 0);
 
   return (
     <AppShell
@@ -347,6 +350,22 @@ export default async function FichaGastoPage({
                   </td>
                   <td style={tdTotalRight}>{formatMoney(sumaDetalle)}</td>
                 </tr>
+                {descuento > 0 && (
+                  <>
+                    <tr>
+                      <td style={ui.td} colSpan={4}>
+                        Descuento {formatPorcentaje((descuento / sumaDetalle) * 100)}
+                      </td>
+                      <td style={ui.tdRight}>− {formatMoney(descuento)}</td>
+                    </tr>
+                    <tr>
+                      <td style={tdTotal} colSpan={4}>
+                        Total con descuento{preciosNetos ? " (sin IVA)" : ""}
+                      </td>
+                      <td style={tdTotalRight}>{formatMoney(sumaDetalle - descuento)}</td>
+                    </tr>
+                  </>
+                )}
               </tfoot>
             )}
           </table>

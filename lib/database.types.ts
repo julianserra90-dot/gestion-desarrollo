@@ -698,6 +698,7 @@ export type Database = {
           cotizacion: number | null
           cotizacion_manual: boolean
           creado_en: string
+          descuento_detalle: number
           empresa_factura_id: string | null
           empresa_pagadora_id: string | null
           empresa_receptora_id: string | null
@@ -736,6 +737,7 @@ export type Database = {
           cotizacion?: number | null
           cotizacion_manual?: boolean
           creado_en?: string
+          descuento_detalle?: number
           empresa_factura_id?: string | null
           empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
@@ -774,6 +776,7 @@ export type Database = {
           cotizacion?: number | null
           cotizacion_manual?: boolean
           creado_en?: string
+          descuento_detalle?: number
           empresa_factura_id?: string | null
           empresa_pagadora_id?: string | null
           empresa_receptora_id?: string | null
@@ -873,6 +876,60 @@ export type Database = {
             columns: ["rubro_id"]
             isOneToOne: false
             referencedRelation: "rubros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gastos_borradores: {
+        Row: {
+          actualizado_en: string
+          campos: Json
+          cargado_por: string | null
+          comprobante_drive_id: string | null
+          comprobante_mime: string | null
+          comprobante_nombre: string | null
+          comprobante_tamano: number | null
+          creado_en: string
+          id: string
+          obra_id: string
+        }
+        Insert: {
+          actualizado_en?: string
+          campos?: Json
+          cargado_por?: string | null
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          creado_en?: string
+          id?: string
+          obra_id: string
+        }
+        Update: {
+          actualizado_en?: string
+          campos?: Json
+          cargado_por?: string | null
+          comprobante_drive_id?: string | null
+          comprobante_mime?: string | null
+          comprobante_nombre?: string | null
+          comprobante_tamano?: number | null
+          creado_en?: string
+          id?: string
+          obra_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gastos_borradores_cargado_por_fkey"
+            columns: ["cargado_por"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gastos_borradores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
             referencedColumns: ["id"]
           },
         ]

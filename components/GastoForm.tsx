@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import BotonConfirmar from "@/components/BotonConfirmar";
 import DetallePredefinido from "@/components/DetallePredefinido";
 import InputMonto, { formatearMonto } from "@/components/InputMonto";
 import ItemsDeMaterial, {
@@ -9,7 +10,8 @@ import ItemsDeMaterial, {
   type MaterialOpcion,
 } from "@/components/ItemsDeMaterial";
 import * as ui from "@/components/ui";
-import { formatDate, formatMoney, formatUSD } from "@/lib/format";
+import { tildado, valorDe, type CamposBorrador } from "@/lib/borradores";
+import { formatDate, formatMoney, formatPorcentaje, formatUSD } from "@/lib/format";
 import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
 import { semanaDeObra } from "@/lib/semanas";
 
@@ -92,6 +94,8 @@ export type GastoExistente = {
   numero_factura: string | null;
   alicuota_iva: number | null;
   precios_con_iva: boolean;
+  /** Lo que la factura descuenta sobre la suma del detalle, en su misma base. */
+  descuento_detalle: number;
   empresa_factura_id: string | null;
   monto: number;
   caja_ars: number;
@@ -106,6 +110,17 @@ export type GastoExistente = {
   estado: string;
   comprobante_drive_id: string | null;
   comprobante_nombre: string | null;
+};
+
+/**
+ * Un borrador que se retoma. No es editar —el gasto todavía no existe—, así
+ * que `gasto` sigue vacío y el formulario crea; sólo arranca con lo que tenía.
+ */
+export type BorradorGasto = {
+  id: string;
+  campos: CamposBorrador;
+  comprobanteDriveId: string | null;
+  comprobanteNombre: string | null;
 };
 
 /** Una de las facturas de un gasto facturado en varias, al editar. */
@@ -191,6 +206,9 @@ export default function GastoForm({
   detallesPredefinidos = [],
   facturasIniciales = [],
   textoBoton = "Guardar gasto",
+  borrador,
+  accionBorrador,
+  accionDescartar,
 }: {
   action: (formData: FormData) => void;
   obraId: string;
@@ -222,14 +240,27 @@ export default function GastoForm({
   /** Al editar: las facturas del gasto, si se facturó en más de una. */
   facturasIniciales?: FacturaCargada[];
   textoBoton?: string;
+  /** El borrador que se retoma, si se entró por uno. */
+  borrador?: BorradorGasto;
+  /** Guarda el formulario como está, sin validar nada, para terminarlo después. */
+  accionBorrador?: (formData: FormData) => void;
+  /** Tira el borrador que se retoma. */
+  accionDescartar?: (formData: FormData) => void;
 }) {
+  // Lo que tenía el borrador, campo por campo. Al editar un gasto no hay
+  // borrador: los valores salen de `gasto`.
+  const b = gasto ? null : (borrador?.campos ?? null);
+  const delBorrador = (clave: string) => valorDe(b, clave);
+
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
   // dólares, se ve en dólares, no su equivalente en pesos.
   const [monto, setMonto] = useState(
-    gasto ? String(gasto.moneda === "USD" ? (gasto.monto_usd ?? "") : gasto.monto) : ""
+    gasto
+      ? String(gasto.moneda === "USD" ? (gasto.monto_usd ?? "") : gasto.monto)
+      : (delBorrador("monto") ?? "")
   );
-  const [moneda, setMoneda] = useState(gasto?.moneda ?? "ARS");
-  const [fecha, setFecha] = useState(gasto?.fecha ?? "");
+  const [moneda, setMoneda] = useState(gasto?.moneda ?? delBorrador("moneda") ?? "ARS");
+  const [fecha, setFecha] = useState(gasto?.fecha ?? delBorrador("fecha") ?? "");
   // Al editar: efectivo -> "sin"; facturado sin tipo cargado (gastos viejos)
   // arranca en A, el caso más común, pero no se guarda hasta que se confirme.
   const [comprobante, setComprobante] = useState(
@@ -237,43 +268,65 @@ export default function GastoForm({
       ? gasto.tipo_pago === "Efectivo"
         ? "sin"
         : (gasto.tipo_factura ?? "A")
-      : "A"
+      : b
+        ? (delBorrador("tipo_factura") ?? "sin")
+        : "A"
   );
   const [alicuota, setAlicuota] = useState(
-    gasto?.alicuota_iva ? String(gasto.alicuota_iva) : "21"
+    gasto?.alicuota_iva ? String(gasto.alicuota_iva) : (delBorrador("alicuota_iva") ?? "21")
   );
   // Cómo vienen los precios del detalle de materiales. En una factura A lo
   // normal es que vengan netos, así que arranca destildado; guardado, se
   // respeta lo que se marcó.
   const [preciosConIva, setPreciosConIva] = useState(
-    gasto ? gasto.precios_con_iva : false
+    gasto ? gasto.precios_con_iva : tildado(b, "precios_con_iva")
   );
   // Lo que suma el detalle, para compararlo con la factura.
   const [sumaItems, setSumaItems] = useState(0);
+  // El descuento de la factura sobre el detalle. Se guarda el monto, que es
+  // el que cierra al centavo; el porcentaje se muestra al lado y también se
+  // puede escribir. Mientras el porcentaje sea lo último que se tocó
+  // (`descuentoPct` no nulo), el monto lo sigue: un 10 % sigue siendo 10 % si
+  // después se agrega un renglón.
+  const [descuento, setDescuento] = useState(
+    gasto?.descuento_detalle
+      ? String(gasto.descuento_detalle)
+      : (delBorrador("descuento_detalle") ?? "")
+  );
+  const [descuentoPct, setDescuentoPct] = useState<string | null>(null);
   // El titular de la factura arranca vacío y sigue a la pagadora hasta que se
   // elija uno a mano. Así "arranca en la que pagó" sin quedar pegado si después
   // cambia quién pagó.
   const [empresaFactura, setEmpresaFactura] = useState(
-    gasto?.empresa_factura_id ?? ""
+    gasto?.empresa_factura_id ?? delBorrador("empresa_factura_id") ?? ""
   );
   // "Entre las socias" ocupa el lugar de una empresa en el desplegable: es otra
   // respuesta a la misma pregunta de quién puso la plata.
   const [pagadora, setPagadora] = useState(
     gasto?.compartido
       ? GASTO_COMPARTIDO
-      : (gasto?.empresa_pagadora_id ?? empresaFija ?? "")
+      : (gasto?.empresa_pagadora_id ?? delBorrador("empresa_pagadora_id") ?? empresaFija ?? "")
   );
   const [reemplazar, setReemplazar] = useState(false);
-  const [tipoGasto, setTipoGasto] = useState(gasto?.tipo_gasto ?? "Materiales");
+  // El comprobante que ya está en Drive: el del gasto que se edita, o el que
+  // se adjuntó al guardar el borrador. Al terminar el borrador pasa al gasto.
+  const comprobanteGuardado = gasto?.comprobante_drive_id
+    ? { driveId: gasto.comprobante_drive_id, nombre: gasto.comprobante_nombre }
+    : !gasto && borrador?.comprobanteDriveId
+      ? { driveId: borrador.comprobanteDriveId, nombre: borrador.comprobanteNombre }
+      : null;
+  const [tipoGasto, setTipoGasto] = useState(
+    gasto?.tipo_gasto ?? delBorrador("tipo_gasto") ?? "Materiales"
+  );
   // Un acopio se paga hoy y el material entra a la obra después, en retiros
   // con fecha: el detalle de acá es lo que quedó acopiado, no tiene que cerrar
   // con la factura.
-  const [esAcopio, setEsAcopio] = useState(gasto?.es_acopio ?? false);
+  const [esAcopio, setEsAcopio] = useState(gasto?.es_acopio ?? tildado(b, "es_acopio"));
 
   // Facturado en más de una factura: una a nombre de cada socia, por el monto
   // que diga cada papel. El gasto sigue siendo uno; se parte el comprobante.
   const [facturasMultiples, setFacturasMultiples] = useState(
-    facturasIniciales.length > 0
+    facturasIniciales.length > 0 || tildado(b, "facturas_multiples")
   );
   const [montoPorFactura, setMontoPorFactura] = useState<Record<string, string>>(
     () =>
@@ -281,13 +334,15 @@ export default function GastoForm({
         facturasIniciales.map((f) => [f.empresaId, String(f.monto)])
       )
   );
-  const [proveedorId, setProveedorId] = useState(gasto?.proveedor_id ?? "");
+  const [proveedorId, setProveedorId] = useState(
+    gasto?.proveedor_id ?? delBorrador("proveedor_id") ?? ""
+  );
 
   // De qué presupuesto se trajeron los items. Al editar arranca en el que
   // quedó guardado, pero **no** se vuelven a traer: los items del gasto son
   // copia propia y ya llegan en `itemsIniciales`.
   const [presupuestoElegido, setPresupuestoElegido] = useState(
-    gasto?.presupuesto_id ?? ""
+    gasto?.presupuesto_id ?? delBorrador("presupuesto_id") ?? ""
   );
   const [itemsTraidos, setItemsTraidos] = useState<ItemCargado[] | null>(null);
 
@@ -295,15 +350,19 @@ export default function GastoForm({
   // suyo, y cambiarle las `iniciales` sola no lo movería.
   const [vuelta, setVuelta] = useState(0);
 
-  const [receptora, setReceptora] = useState(gasto?.empresa_receptora_id ?? "");
-  const [rubroId, setRubroId] = useState(gasto?.rubro_id ?? "");
+  const [receptora, setReceptora] = useState(
+    gasto?.empresa_receptora_id ?? delBorrador("empresa_receptora_id") ?? ""
+  );
+  const [rubroId, setRubroId] = useState(gasto?.rubro_id ?? delBorrador("rubro_id") ?? "");
   const [usarCaja, setUsarCaja] = useState(
-    Number(gasto?.caja_ars ?? 0) > 0 || Number(gasto?.caja_usd ?? 0) > 0
+    gasto
+      ? Number(gasto.caja_ars) > 0 || Number(gasto.caja_usd) > 0
+      : tildado(b, "usar_caja")
   );
   // Al editar se reconstruye lo que se había pedido: lo que salió de la cuenta
   // más lo que tuvo que poner una empresa, que siempre fue un faltante en pesos.
   const [cajaArs, setCajaArs] = useState(() => {
-    if (!gasto) return "";
+    if (!gasto) return delBorrador("caja_ars") ?? "";
     const deCuenta =
       Number(gasto.caja_ars) + Number(gasto.caja_usd) * Number(gasto.cotizacion ?? 0);
     if (deCuenta <= 0) return "";
@@ -311,16 +370,29 @@ export default function GastoForm({
     return pedido > 0 ? String(Math.round(pedido * 100) / 100) : "";
   });
   const [cajaUsd, setCajaUsd] = useState(
-    gasto && Number(gasto.caja_usd) > 0 ? String(gasto.caja_usd) : ""
+    gasto
+      ? Number(gasto.caja_usd) > 0
+        ? String(gasto.caja_usd)
+        : ""
+      : (delBorrador("caja_usd") ?? "")
   );
   // El gasto es en pesos pero en la cuenta hay dólares: se carga el monto en
   // pesos y los dólares que salen se calculan al cambio, en vez de hacer la
   // división a mano.
-  const [pesosConDolares, setPesosConDolares] = useState(false);
-  const [pesosEnDolares, setPesosEnDolares] = useState("");
-  const [cotizManual, setCotizManual] = useState(gasto?.cotizacion_manual ?? false);
+  // En el borrador el modo se reconoce porque vino su campo, aunque vacío.
+  const [pesosConDolares, setPesosConDolares] = useState(
+    b !== null && "caja_pesos_en_dolares" in b
+  );
+  const [pesosEnDolares, setPesosEnDolares] = useState(
+    delBorrador("caja_pesos_en_dolares") ?? ""
+  );
+  const [cotizManual, setCotizManual] = useState(
+    gasto?.cotizacion_manual ?? tildado(b, "cotizacion_manual")
+  );
   const [cotizValor, setCotizValor] = useState(
-    gasto?.cotizacion_manual ? String(gasto.cotizacion ?? "") : ""
+    gasto?.cotizacion_manual
+      ? String(gasto.cotizacion ?? "")
+      : (delBorrador("cotizacion_valor") ?? "")
   );
 
   // La semana sale de la fecha y no se carga: todos los gastos quedan
@@ -411,13 +483,28 @@ export default function GastoForm({
 
   // El detalle de materiales contra la factura, en la moneda en que se cargó
   // la factura (los precios de los items se escriben en esa misma moneda).
-  // Con precios netos en una A, al detalle hay que sumarle el IVA para
-  // compararlo con el monto, que siempre lleva el IVA adentro.
-  const detalleConIva =
-    esFacturaA && !preciosConIva ? sumaItems * (1 + alic / 100) : sumaItems;
+  // El descuento va antes del IVA, como en la factura. Con precios netos en
+  // una A, al detalle hay que sumarle el IVA para compararlo con el monto, que
+  // siempre lleva el IVA adentro.
+  const pctEscrito = descuentoPct === null ? null : Number(descuentoPct);
+  const montoDescuento =
+    pctEscrito !== null && Number.isFinite(pctEscrito)
+      ? Math.round(sumaItems * pctEscrito) / 100
+      : Number(descuento) || 0;
+  const porcentajeDescuento = sumaItems > 0 ? (montoDescuento / sumaItems) * 100 : 0;
+  const factorIvaDetalle = esFacturaA && !preciosConIva ? 1 + alic / 100 : 1;
+  const detalleConIva = (sumaItems - montoDescuento) * factorIvaDetalle;
   const montoFactura = pagaCaja ? total : ingresado;
   const diferenciaDetalle = montoFactura - detalleConIva;
   const cierra = Math.abs(diferenciaDetalle) < 0.01;
+  // El descuento que hace cerrar el detalle con la factura: lo que sobra del
+  // detalle, llevado a la base de los precios (sin el IVA si son netos). Es el
+  // caso del corralón que descuenta un 42 % y redondea el total: el
+  // porcentaje exacto sale solo.
+  const descuentoQueCierra =
+    montoFactura > 0
+      ? Math.round((sumaItems - montoFactura / factorIvaDetalle) * 100) / 100
+      : 0;
   const formatoFactura = !pagaCaja && moneda === "USD" ? formatUSD : formatMoney;
 
   // Varias facturas: sólo entre las socias y con factura. La casilla puede
@@ -596,6 +683,9 @@ export default function GastoForm({
       <input type="hidden" name="obra_id" value={obraId} />
       <input type="hidden" name="slug" value={slug} />
       {gasto && <input type="hidden" name="gasto_id" value={gasto.id} />}
+      {!gasto && borrador && (
+        <input type="hidden" name="borrador_id" value={borrador.id} />
+      )}
 
       <div>
         {error && <p style={errorBox}>{error}</p>}
@@ -962,6 +1052,7 @@ export default function GastoForm({
                 <input
                   type="text"
                   name="proveedor_nuevo"
+                  defaultValue={delBorrador("proveedor_nuevo") ?? ""}
                   placeholder={rotuloProveedor.placeholder}
                   required
                   autoFocus
@@ -985,7 +1076,7 @@ export default function GastoForm({
                 // falta aclarar, o se elige del catálogo para escribirlo igual.
                 <DetallePredefinido
                   catalogo={detallesPredefinidos}
-                  defaultValue={gasto?.concepto ?? ""}
+                  defaultValue={gasto?.concepto ?? delBorrador("concepto") ?? ""}
                   placeholder="Opcional: qué se compró o para qué"
                 />
               )}
@@ -1150,7 +1241,7 @@ export default function GastoForm({
                 <input
                   type="text"
                   name="numero_factura"
-                  defaultValue={gasto?.numero_factura ?? ""}
+                  defaultValue={gasto?.numero_factura ?? delBorrador("numero_factura") ?? ""}
                   placeholder="Ej: 0001-00001234"
                   style={ui.input}
                 />
@@ -1435,10 +1526,53 @@ export default function GastoForm({
                       <span>Suma del detalle</span>
                       <span>{formatoFactura(sumaItems)}</span>
                     </div>
+                    {/* Se escribe el monto o el porcentaje, y el otro sale
+                        solo. Viaja el monto, que es el que cierra al centavo. */}
+                    <div style={filaCierre}>
+                      <span>Descuento</span>
+                      <span style={camposDescuento}>
+                        <span style={conPorcentaje}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            placeholder="0"
+                            value={
+                              descuentoPct ??
+                              (montoDescuento > 0
+                                ? String(Math.round(porcentajeDescuento * 100) / 100)
+                                : "")
+                            }
+                            onChange={(e) => setDescuentoPct(e.target.value)}
+                            style={campoPorcentaje}
+                            aria-label="Descuento en porcentaje"
+                          />
+                          %
+                        </span>
+                        <InputMonto
+                          name="descuento_detalle"
+                          value={
+                            descuentoPct === null
+                              ? descuento
+                              : montoDescuento > 0
+                                ? String(montoDescuento)
+                                : ""
+                          }
+                          onChange={(limpio) => {
+                            setDescuento(limpio);
+                            setDescuentoPct(null);
+                          }}
+                          style={campoDescuento}
+                        />
+                      </span>
+                    </div>
                     {esFacturaA && !preciosConIva && (
                       <div style={filaCierre}>
                         <span>IVA {alicuota.replace(".", ",")}%</span>
-                        <span>{formatoFactura(detalleConIva - sumaItems)}</span>
+                        <span>
+                          {formatoFactura(detalleConIva - (sumaItems - montoDescuento))}
+                        </span>
                       </div>
                     )}
                     <div style={filaCierre}>
@@ -1468,6 +1602,24 @@ export default function GastoForm({
                         El detalle no cierra con la factura. Revisá el precio de
                         cada material, o si la factura tiene un descuento o un
                         flete que no está en el detalle.
+                        {/* El detalle suma más que la factura: lo más común
+                            es un descuento, y el que cierra se sabe. */}
+                        {descuentoQueCierra > 0.005 && descuentoQueCierra < sumaItems && (
+                          <>
+                            {" "}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDescuento(String(descuentoQueCierra));
+                                setDescuentoPct(null);
+                              }}
+                              style={botonEnlace}
+                            >
+                              Tomar la diferencia como descuento (
+                              {formatPorcentaje((descuentoQueCierra / sumaItems) * 100)})
+                            </button>
+                          </>
+                        )}
                         {!pagaCaja && (
                           <>
                             {" "}
@@ -1494,14 +1646,14 @@ export default function GastoForm({
             <div style={fieldAncho}>
               <span style={labelCampo}>Comprobante / factura</span>
 
-              {gasto?.comprobante_drive_id && !reemplazar ? (
+              {comprobanteGuardado && !reemplazar ? (
                 <div style={comprobanteActual}>
                   <span style={{ flex: 1 }}>
-                    {gasto.comprobante_nombre ?? "Comprobante cargado"}
+                    {comprobanteGuardado.nombre ?? "Comprobante cargado"}
                   </span>
 
                   <a
-                    href={`/ver/${gasto.comprobante_drive_id}`}
+                    href={`/ver/${comprobanteGuardado.driveId}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={enlaceChico}
@@ -1527,7 +1679,7 @@ export default function GastoForm({
                   <input type="file" name="comprobante" style={ui.input} />
                   {/* Sólo el aviso: que se pueda adjuntar un archivo lo dice el
                       campo, pero que pise al que ya estaba, no. */}
-                  {gasto?.comprobante_drive_id && (
+                  {comprobanteGuardado && (
                     <span style={ayudaCampo}>
                       Al guardar reemplaza el comprobante anterior.
                     </span>
@@ -1541,7 +1693,7 @@ export default function GastoForm({
               <span style={labelCampo}>Observaciones</span>
               <textarea
                 name="observaciones"
-                defaultValue={gasto?.observaciones ?? ""}
+                defaultValue={gasto?.observaciones ?? delBorrador("observaciones") ?? ""}
                 placeholder="Opcional"
                 style={textarea}
               />
@@ -1550,9 +1702,37 @@ export default function GastoForm({
         </div>
 
         <div style={acciones}>
+          {/* Tirar el borrador que se retoma. A la izquierda y en rojo, lejos
+              de Guardar: es lo único de la fila que no se puede deshacer. */}
+          {!gasto && borrador && accionDescartar && (
+            <span style={{ marginRight: "auto" }}>
+              <BotonConfirmar
+                mensaje="¿Descartar este borrador? Se pierde lo cargado y el comprobante adjunto."
+                formAction={accionDescartar}
+                style={botonDescartar}
+              >
+                Descartar borrador
+              </BotonConfirmar>
+            </span>
+          )}
+
           <Link href={`/obras/${slug}/gastos`} style={ui.secondaryButton}>
             Cancelar
           </Link>
+
+          {/* Sin validar: la idea es guardar algo que todavía no está
+              completo. Sólo al crear; un gasto que ya existe no vuelve a ser
+              borrador. */}
+          {!gasto && accionBorrador && (
+            <button
+              type="submit"
+              formAction={accionBorrador}
+              formNoValidate
+              style={ui.secondaryButton}
+            >
+              Guardar borrador
+            </button>
+          )}
 
           <button type="submit" style={ui.button}>
             {textoBoton}
@@ -1899,7 +2079,39 @@ const cierreDetalle = {
 const filaCierre = {
   display: "flex",
   justifyContent: "space-between",
+  alignItems: "center",
   gap: "12px",
+};
+
+// Los dos campos del descuento, chicos y a la derecha: el monto cae en la
+// columna de los montos de la cuenta, y el porcentaje al lado.
+const camposDescuento = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+};
+
+const conPorcentaje = {
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+};
+
+const campoChico = {
+  ...ui.input,
+  padding: "6px 8px",
+  fontSize: "13px",
+  textAlign: "right" as const,
+};
+
+const campoPorcentaje = {
+  ...campoChico,
+  width: "76px",
+};
+
+const campoDescuento = {
+  ...campoChico,
+  width: "150px",
 };
 
 const botonEnlace = {
@@ -1932,8 +2144,14 @@ const textarea = {
 const acciones = {
   display: "flex",
   justifyContent: "flex-end",
+  alignItems: "center",
   gap: "12px",
   marginTop: "24px",
+};
+
+const botonDescartar = {
+  ...ui.secondaryButton,
+  color: ui.ROJO,
 };
 
 const resumen = {

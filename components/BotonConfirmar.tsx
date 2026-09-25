@@ -11,14 +11,23 @@ export default function BotonConfirmar({
   mensaje,
   style,
   children,
+  formAction,
 }: {
   mensaje: string;
   style?: React.CSSProperties;
   children: React.ReactNode;
+  /**
+   * Otra acción que la del formulario, para un botón que vive adentro de uno
+   * ajeno (descartar un borrador desde su formulario). Con ella no se valida
+   * el formulario: para tirarlo no hace falta que esté completo.
+   */
+  formAction?: (formData: FormData) => void;
 }) {
   return (
     <button
       type="submit"
+      formAction={formAction}
+      formNoValidate={formAction !== undefined}
       style={style}
       onClick={(e) => {
         if (!window.confirm(mensaje)) e.preventDefault();

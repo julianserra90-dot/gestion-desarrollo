@@ -7,6 +7,7 @@ import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getAcopiosDeObra } from "@/lib/acopios";
 import { formatDate, formatMoney } from "@/lib/format";
+import { factorDescuento } from "@/lib/items-material";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -62,7 +63,7 @@ export default async function MaterialesPage({
   const { data: items } = await supabase
     .from("gasto_materiales")
     .select(
-      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, es_acopio, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, rubros(nombre), gasto_facturas(numero))"
+      "cantidad, precio_unitario, materiales(nombre, unidad), gastos!inner(id, obra_id, fecha, estado, es_acopio, tipo_factura, numero_factura, precios_con_iva, alicuota_iva, descuento_detalle, rubros(nombre), gasto_facturas(numero))"
     )
     .eq("gastos.obra_id", obra.id)
     .neq("gastos.estado", "Anulado")
@@ -72,6 +73,15 @@ export default async function MaterialesPage({
   // cantidades se suman entre compras: tres compras de ladrillo son un solo
   // renglón con el total, y debajo cada compra con su factura.
   const porRubro = new Map<string, Map<string, Consumo>>();
+
+  // Lo que suma el detalle de cada gasto, a precio de lista: el descuento de
+  // la factura se reparte entre sus materiales en proporción a eso.
+  const sumaPorGasto = new Map<string, number>();
+  for (const item of items ?? []) {
+    const id = item.gastos?.id ?? "";
+    const subtotal = Number(item.cantidad) * Number(item.precio_unitario ?? 0);
+    sumaPorGasto.set(id, (sumaPorGasto.get(id) ?? 0) + subtotal);
+  }
 
   for (const item of items ?? []) {
     const gasto = item.gastos;
@@ -85,9 +95,11 @@ export default async function MaterialesPage({
     // El costo va siempre con el IVA adentro, como el monto del gasto: si el
     // precio se cargó neto (factura A), se le suma la alícuota. Si no, netos y
     // finales se sumarían como si fueran lo mismo.
-    const factor = gasto?.precios_con_iva === false
-      ? 1 + Number(gasto?.alicuota_iva ?? 21) / 100
-      : 1;
+    // Y con el descuento de la factura, si hizo uno: el material costó lo que
+    // se pagó, no el precio de lista.
+    const factor =
+      (gasto?.precios_con_iva === false ? 1 + Number(gasto?.alicuota_iva ?? 21) / 100 : 1) *
+      factorDescuento(Number(gasto?.descuento_detalle ?? 0), sumaPorGasto.get(gasto?.id ?? "") ?? 0);
     const precio =
       item.precio_unitario === null ? null : Number(item.precio_unitario) * factor;
 

@@ -7,7 +7,8 @@ import { convertirMonto, getCotizacionDeFecha } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { getCaja } from "@/lib/caja";
 import { guardarDetalleSiCorresponde } from "@/lib/detalles";
-import { leerItems } from "@/lib/items-material";
+import { camposDelFormulario } from "@/lib/borradores";
+import { leerItems, sumaDeItems } from "@/lib/items-material";
 import type { ItemMaterial } from "@/lib/items-material";
 import { GASTO_COMPARTIDO, centavos, repartirPago } from "@/lib/reparto";
 import type { Reparto } from "@/lib/reparto";
@@ -407,6 +408,19 @@ function itemsDelGasto(formData: FormData, tipoGasto: string): ItemMaterial[] {
 }
 
 /**
+ * El descuento que la factura hace sobre el detalle, en la base de los precios.
+ *
+ * Nunca más que lo que suma el detalle: dejaría materiales a precio negativo.
+ * Sin detalle con precio no hay sobre qué descontar, y queda en cero.
+ */
+function descuentoDelGasto(formData: FormData, tipoGasto: string): number {
+  const escrito = Number(formData.get("descuento_detalle") ?? 0);
+  if (!Number.isFinite(escrito) || escrito <= 0) return 0;
+  const suma = sumaDeItems(itemsDelGasto(formData, tipoGasto));
+  return Math.min(Math.round(escrito * 100) / 100, suma);
+}
+
+/**
  * De qué presupuesto salió esta compra.
  *
  * Lo manda el formulario cuando se trajeron los items de un presupuesto, y es
@@ -471,10 +485,13 @@ export async function crearGasto(formData: FormData) {
   const comprobante = formData.get("comprobante");
   const caja = leerCaja(formData, esAjuste);
   const usarCaja = caja.usarCaja;
+  // Si se terminó un borrador: se vuelve a él ante un error, y al guardar se
+  // borra y su comprobante pasa al gasto.
+  const borradorId = String(formData.get("borrador_id") ?? "").trim() || null;
 
   const volver = (mensaje: string): never =>
     redirect(
-      `/obras/${slug}/gastos/nuevo?error=${encodeURIComponent(mensaje)}`
+      `/obras/${slug}/gastos/nuevo?${borradorId ? `borrador=${borradorId}&` : ""}error=${encodeURIComponent(mensaje)}`
     );
 
   // Con dinero en cuenta puede no hacer falta ninguna: se pide más abajo, sólo
@@ -509,6 +526,28 @@ export async function crearGasto(formData: FormData) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // El comprobante que se adjuntó al guardar el borrador, si no se subió otro
+  // ni se lo quitó. No va en `archivoComprobante` a propósito: ése se borra de
+  // Drive si el gasto no se guarda, y éste sigue siendo del borrador.
+  const quitarComprobante = formData.get("quitar_comprobante") === "on";
+  const { data: borrador } = borradorId
+    ? await supabase
+        .from("gastos_borradores")
+        .select("comprobante_drive_id, comprobante_nombre, comprobante_mime, comprobante_tamano")
+        .eq("id", borradorId)
+        .maybeSingle()
+    : { data: null };
+  const comprobanteDelBorrador =
+    !archivoComprobante && !quitarComprobante && borrador?.comprobante_drive_id
+      ? {
+          id: borrador.comprobante_drive_id,
+          nombre: borrador.comprobante_nombre,
+          mimeType: borrador.comprobante_mime,
+          tamano: borrador.comprobante_tamano,
+        }
+      : null;
+  const comprobanteFinal = archivoComprobante ?? comprobanteDelBorrador;
 
   const proveedor = await resolverProveedor(supabase, formData, tipoGasto);
   if (proveedor.error) {
@@ -598,6 +637,7 @@ export async function crearGasto(formData: FormData) {
       alicuota_iva: factura.alicuota_iva,
       empresa_factura_id: factura.empresa_factura_id,
       precios_con_iva: factura.precios_con_iva,
+      descuento_detalle: descuentoDelGasto(formData, tipoGasto),
       numero_factura: factura.numero_factura,
       // Sólo una compra de materiales puede ser un acopio.
       es_acopio: tipoGasto === "Materiales" && formData.get("es_acopio") === "on",
@@ -606,10 +646,10 @@ export async function crearGasto(formData: FormData) {
       estado: "Pagado",
       observaciones: observaciones === "" ? null : observaciones,
       cargado_por: user?.id ?? null,
-      comprobante_drive_id: archivoComprobante?.id ?? null,
-      comprobante_nombre: archivoComprobante?.nombre ?? null,
-      comprobante_mime: archivoComprobante?.mimeType ?? null,
-      comprobante_tamano: archivoComprobante?.tamano ?? null,
+      comprobante_drive_id: comprobanteFinal?.id ?? null,
+      comprobante_nombre: comprobanteFinal?.nombre ?? null,
+      comprobante_mime: comprobanteFinal?.mimeType ?? null,
+      comprobante_tamano: comprobanteFinal?.tamano ?? null,
     })
     .select("id")
     .maybeSingle();
@@ -620,6 +660,15 @@ export async function crearGasto(formData: FormData) {
       await eliminarArchivo(archivoComprobante.id).catch(() => {});
     }
     volver(error.message);
+  }
+
+  // El borrador ya es un gasto. Su comprobante, si no pasó al gasto (se subió
+  // otro o se lo quitó), no lo usa nadie más.
+  if (borradorId) {
+    await supabase.from("gastos_borradores").delete().eq("id", borradorId);
+    if (borrador?.comprobante_drive_id && !comprobanteDelBorrador) {
+      await eliminarArchivo(borrador.comprobante_drive_id).catch(() => {});
+    }
   }
 
   // El gasto ya está guardado. Si el detalle falla, se avisa desde la pantalla
@@ -790,6 +839,7 @@ export async function actualizarGasto(formData: FormData) {
     alicuota_iva: factura.alicuota_iva,
     empresa_factura_id: factura.empresa_factura_id,
     precios_con_iva: factura.precios_con_iva,
+    descuento_detalle: descuentoDelGasto(formData, tipoGasto),
     numero_factura: factura.numero_factura,
     es_acopio: tipoGasto === "Materiales" && formData.get("es_acopio") === "on",
     moneda,
@@ -930,6 +980,124 @@ export async function eliminarGasto(formData: FormData) {
 
   if (gasto?.comprobante_drive_id) {
     await eliminarArchivo(gasto.comprobante_drive_id).catch(() => {});
+  }
+
+  revalidatePath("/", "layout");
+  redirect(`/obras/${slug}/gastos`);
+}
+
+// ------------------------------ Borradores ---------------------------------
+
+/**
+ * Guarda el formulario como está, para terminarlo después.
+ *
+ * No valida nada: es justamente lo que todavía no se puede (falta la fecha, el
+ * cambio, a nombre de quién salió). Los campos van tal cual los mandó el
+ * navegador y el gasto no existe hasta que se termine: nada de esto suma en
+ * ningún lado. El comprobante, si se adjuntó, sube a Drive ya, para no tener
+ * que volver a buscar la foto de la factura.
+ */
+export async function guardarBorrador(formData: FormData) {
+  const slug = String(formData.get("slug") ?? "");
+  const obraId = String(formData.get("obra_id") ?? "");
+  const borradorId = String(formData.get("borrador_id") ?? "").trim() || null;
+  const comprobante = formData.get("comprobante");
+  const quitar = formData.get("quitar_comprobante") === "on";
+
+  const volver = (mensaje: string): never =>
+    redirect(
+      `/obras/${slug}/gastos/nuevo?${borradorId ? `borrador=${borradorId}&` : ""}error=${encodeURIComponent(mensaje)}`
+    );
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: anterior } = borradorId
+    ? await supabase
+        .from("gastos_borradores")
+        .select("comprobante_drive_id")
+        .eq("id", borradorId)
+        .maybeSingle()
+    : { data: null };
+
+  let archivo: Awaited<ReturnType<typeof subirArchivo>> | null = null;
+  if (comprobante instanceof File && comprobante.size > 0) {
+    archivo = await subirArchivo({
+      archivo: comprobante,
+      nombre: comprobante.name,
+      obraSlug: slug,
+      tipo: "comprobantes",
+    }).catch((e) => {
+      volver(`No se pudo subir el comprobante: ${e instanceof Error ? e.message : "error"}`);
+      return null;
+    });
+  }
+
+  // Un archivo nuevo pisa al anterior; "Quitar" lo saca; si no, queda el que estaba.
+  const comprobanteCambia = archivo !== null || quitar;
+  const datos = {
+    obra_id: obraId,
+    campos: camposDelFormulario(formData),
+    actualizado_en: new Date().toISOString(),
+    ...(comprobanteCambia
+      ? {
+          comprobante_drive_id: archivo?.id ?? null,
+          comprobante_nombre: archivo?.nombre ?? null,
+          comprobante_mime: archivo?.mimeType ?? null,
+          comprobante_tamano: archivo?.tamano ?? null,
+        }
+      : {}),
+  };
+
+  const { data: guardado, error } = borradorId
+    ? await supabase
+        .from("gastos_borradores")
+        .update(datos)
+        .eq("id", borradorId)
+        .select("id")
+        .maybeSingle()
+    : await supabase
+        .from("gastos_borradores")
+        .insert({ ...datos, cargado_por: user?.id ?? null })
+        .select("id")
+        .maybeSingle();
+
+  if (error || !guardado) {
+    if (archivo) await eliminarArchivo(archivo.id).catch(() => {});
+    volver(error?.message ?? "El borrador ya no existe: puede que se haya terminado o descartado.");
+  }
+
+  if (comprobanteCambia && anterior?.comprobante_drive_id) {
+    await eliminarArchivo(anterior.comprobante_drive_id).catch(() => {});
+  }
+
+  revalidatePath("/", "layout");
+  redirect(`/obras/${slug}/gastos`);
+}
+
+/** Tira un borrador, con su comprobante si tenía uno. */
+export async function descartarBorrador(formData: FormData) {
+  const slug = String(formData.get("slug") ?? "");
+  const borradorId = String(formData.get("borrador_id") ?? "");
+
+  const supabase = await createClient();
+  const { data: borrado, error } = await supabase
+    .from("gastos_borradores")
+    .delete()
+    .eq("id", borradorId)
+    .select("comprobante_drive_id")
+    .maybeSingle();
+
+  if (error) {
+    redirect(
+      `/obras/${slug}/gastos/nuevo?borrador=${borradorId}&error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  if (borrado?.comprobante_drive_id) {
+    await eliminarArchivo(borrado.comprobante_drive_id).catch(() => {});
   }
 
   revalidatePath("/", "layout");
