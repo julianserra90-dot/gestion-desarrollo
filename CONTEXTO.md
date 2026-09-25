@@ -1291,11 +1291,15 @@ plantas publicadas, casi todos en ArchDaily) y dijo que el motor tenía
 unidades": esta tabla es la base gráfica que se va cargando para
 corregirlo. Cada edificio tiene campos de **resolución** (plantas, unidades
 por planta, núcleo, ingreso, patios, tipologías, cocheras, local, notas) que
-se completan mirando las plantas; `analizado_en` marca los cargados. La
-ficha de un estudio muestra los **comparables** (`components/Comparables.tsx`):
-frente a un metro, fondo a un tercio, sin esquinas, con las unidades que
-sacaron y qué daría esa densidad en este lote (mediana y rango), y la
-resolución si está cargada.
+se completan mirando las plantas; `analizado_en` marca los cargados.
+
+**La base no se muestra en el estudio** (25/09/2026). Hubo una sección de
+*Edificios comparables* en la ficha (lotes parecidos, cuántas unidades
+sacaron, qué daría esa densidad acá) y el usuario la sacó: la planilla la
+mandó como **base de información para resolver plantas**, no para mirar
+edificios ajenos en cada estudio. Lo que sale de la base entra al estudio
+convertido en reglas y en dibujo, no como lista. La pantalla de referencias
+sigue, desde el botón del listado.
 
 Lo que enseñaron las tres primeras plantas leídas (Donado 4432, Zabala 3259,
 Jorge Newbery 3136), ya aplicado al dibujo: **el ingreso es un pasillo
@@ -1308,8 +1312,7 @@ frente entran desde 8,5 m** (Donado lo hace en 8,67, con unidades de 4,1
 m); en 8,5 m entran **seis cocheras en PB en dos columnas** con calle
 central (Zabala). Por eso la planta baja también se dibuja (pasillo,
 puertas desde el palier, y el frente como local, cocheras o unidad achicada
-según la alternativa recomendada). Faltan leer 55 plantas más: cada una que
-se cargue en la ficha del edificio mejora los comparables, y las que
+según la alternativa recomendada). Faltan leer 55 plantas más; las que
 contradigan una regla van a `parametros-edificacion.ts`.
 
 Todos los números están en `lib/parametros-edificacion.ts`, cada uno con su
@@ -1524,6 +1527,16 @@ acción de borrar el pago del lote viaja como prop.
   (e) etapa 2:
   las tres alternativas (vivienda + local, vivienda + cocheras, oficinas +
   local) con vendible, eficiencia y explicación.
+- **Catálogo de núcleos** (propuesto el 25/09/2026, postergado por el
+  usuario). En vez de describir el núcleo con texto en cada edificio de
+  referencia, juntar núcleos con medidas: el usuario manda la planta tipo y
+  la PB de un edificio (captura, PDF o DWG/DXF), se pasa a una ficha
+  —caja, escalera, ascensor, palier y puertas, posición en el lote, patio,
+  ingreso en PB, en qué lote se usó—, se dibuja en un catálogo para que él
+  confirme la lectura, y el motor elige del catálogo en vez de inventar el
+  núcleo. Guardado como archivo (`lib/nucleos.ts`, como los parámetros)
+  mientras los cargue Claude. Empezar por Donado 4432, Zabala 3259 y Jorge
+  Newbery 3136.
 - **Borrar un estudio está en la ficha y pregunta antes** (`BotonConfirmar`,
   el primer confirm de la app). Estuvo al pie de Editar y no se encontraba:
   "no se puede eliminar" quería decir "no veo cómo". Los demás borrados de la

@@ -103,8 +103,7 @@ export default function Tipologias({ terreno }: { terreno: Terreno }) {
           <PlantaTipo dibujo={dibujoPb} />
           <p style={nota}>
             El pasillo de ingreso va pegado a la medianera del núcleo, de la calle al
-            palier, como en los edificios de referencia; lo que hay al frente es lo que
-            decide la alternativa recomendada.
+            palier; lo que hay al frente es lo que decide la alternativa recomendada.
           </p>
         </>
       )}
