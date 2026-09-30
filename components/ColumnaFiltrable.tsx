@@ -43,10 +43,10 @@ export default function ColumnaFiltrable({
         <button
           type="button"
           onClick={onAbrir}
-          style={{ ...botonFiltro, color: activo ? "#111111" : "#bbbbbb" }}
+          style={ui.botonFiltro}
           title={`Filtrar por ${rotulo.toLowerCase()}`}
         >
-          ▾
+          {activo ? ui.FILTRO_PUESTO : ui.FILTRO_SIN_PONER}
         </button>
       </span>
 
@@ -87,15 +87,6 @@ const contenidoTh = {
   display: "inline-flex",
   alignItems: "center",
   gap: "4px",
-};
-
-const botonFiltro = {
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  padding: "0 2px",
-  fontSize: "11px",
-  lineHeight: 1,
 };
 
 const fondoCerrar = {

@@ -737,7 +737,7 @@ const filaItems = {
 
 const encabezadoItems = {
   ...filaItems,
-  color: "#999999",
+  color: "#111111",
   fontSize: "11px",
   letterSpacing: "0.06em",
   textTransform: "uppercase" as const,

@@ -408,7 +408,7 @@ const encabezado = {
   fontSize: "12px",
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
-  color: "#777777",
+  color: "#111111",
 };
 
 const renglon = {

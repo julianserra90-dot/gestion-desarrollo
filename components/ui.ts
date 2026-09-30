@@ -120,10 +120,15 @@ export const table = {
   borderCollapse: "collapse" as const,
 };
 
+// Negro y no gris: el rótulo de una columna manda sobre lo que tiene debajo, y
+// en gris claro la fila de títulos se leía como un renglón más de datos —o se
+// perdía del todo—. Lo que separa el título del dato ahora es el color; el
+// tamaño chico y las mayúsculas siguen ordenando la jerarquía al revés que un
+// título grande, que le robaría la atención a los montos.
 export const th = {
   textAlign: "left" as const,
   fontSize: "11px",
-  color: "#8a8a8a",
+  color: "#111111",
   textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
   fontWeight: 600,
@@ -135,6 +140,28 @@ export const thRight = {
   ...th,
   textAlign: "right" as const,
 };
+
+/**
+ * El triángulo que abre el filtro de una columna, en el negro del rótulo: en
+ * gris claro no se veía que la columna se podía filtrar.
+ *
+ * Como el color ya no puede decir si la columna está filtrando, lo dice la
+ * forma: relleno cuando hay filtro puesto, contorno cuando no. Lo usan las dos
+ * tablas con filtro —`ColumnaFiltrable` y la de Gastos— para que el símbolo se
+ * lea igual en las dos.
+ */
+export const botonFiltro = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  padding: "0 2px",
+  fontSize: "11px",
+  lineHeight: 1,
+  color: "#111111",
+};
+
+export const FILTRO_PUESTO = "▾";
+export const FILTRO_SIN_PONER = "▿";
 
 export const td = {
   borderBottom: "1px solid #f2f2f2",

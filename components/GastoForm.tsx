@@ -2197,7 +2197,7 @@ const tituloCaja = {
 const thChico = {
   textAlign: "left" as const,
   fontSize: "11px",
-  color: "#777777",
+  color: "#111111",
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
   borderBottom: "1px solid #e5e5e5",

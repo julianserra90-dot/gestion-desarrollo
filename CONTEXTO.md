@@ -51,6 +51,15 @@ Convenciones de código:
   sorprende** (que el archivo pise al anterior, que el catálogo sea el mismo en
   todas las obras, que un ajuste de saldo no sume al total gastado). Si un texto
   no entra en ninguna, no va: al escribir una pantalla nueva, ese es el filtro.
+- **Los títulos de columna van en negro** (`ui.th`, 30/09/2026). En gris claro
+  la fila de encabezados se leía como un renglón más de datos: el rótulo manda
+  sobre lo que tiene debajo y el color es lo que lo dice. El tamaño chico y las
+  mayúsculas se mantienen —un título grande le robaría la atención a los
+  montos—. El triángulo del filtro también es negro (`ui.botonFiltro`), así que
+  el estado ya no lo puede dar el color: lo da la forma, `ui.FILTRO_PUESTO`
+  relleno cuando la columna filtra y `ui.FILTRO_SIN_PONER` de contorno cuando
+  no. Los rótulos de tarjeta (`ui.label`, "TOTAL GASTADO") siguen en gris: son
+  el nombre de un número, no el título de una columna.
 - Los comentarios explican el **porqué**, no el qué. Mantener ese estilo.
 - `formatMoney` y `formatUSD` muestran **dos decimales** (los gastos se cargan al
   centavo). En dólares importa igual o más: $ 1.200.000 al cambio de 1.433,90 son

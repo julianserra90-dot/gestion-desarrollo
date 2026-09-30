@@ -681,26 +681,9 @@ const enlaceNota = {
 };
 
 
-const table = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-};
-
-const th = {
-  textAlign: "left" as const,
-  fontSize: "11px",
-  color: "#8a8a8a",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.08em",
-  fontWeight: 600,
-  borderBottom: "1px solid #eeeeee",
-  padding: "12px",
-};
-
-const thRight = {
-  ...th,
-  textAlign: "right" as const,
-};
+// Las de `ui`, que esta pantalla tenía copiadas una por una. Así el rótulo
+// negro de las columnas llega también a las tablas del balance.
+const { table, th, thRight } = ui;
 
 // La línea vertical separa los bloques de columnas. Va en la primera columna de
 // cada bloque, y es lo que avisa que de un lado al otro los números no suman.
@@ -710,17 +693,7 @@ const thRight = {
 // abajo, que le corresponde a la fila de encabezados de verdad.
 
 
-const td = {
-  borderBottom: "1px solid #f2f2f2",
-  padding: "16px 12px",
-  color: "#333333",
-  fontSize: "14px",
-};
-
-const tdRight = {
-  ...td,
-  textAlign: "right" as const,
-};
+const { td, tdRight } = ui;
 
 
 // Verde: puso de más y le deben. Rojo: debe compensar. Negro: está en cero.

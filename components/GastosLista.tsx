@@ -309,10 +309,10 @@ export default function GastosLista({
           <button
             type="button"
             onClick={() => setAbierto(abierto === clave ? null : clave)}
-            style={{ ...botonFiltro, color: activo ? "#111111" : "#bbbbbb" }}
+            style={ui.botonFiltro}
             title={`Filtrar por ${col.rotulo.toLowerCase()}`}
           >
-            ▾
+            {activo ? ui.FILTRO_PUESTO : ui.FILTRO_SIN_PONER}
           </button>
         </span>
 
@@ -693,15 +693,6 @@ const contenidoTh = {
   display: "inline-flex",
   alignItems: "center",
   gap: "4px",
-};
-
-const botonFiltro = {
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  padding: "0 2px",
-  fontSize: "11px",
-  lineHeight: 1,
 };
 
 const fondoCerrar = {
