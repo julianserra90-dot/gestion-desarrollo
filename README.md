@@ -449,11 +449,26 @@ node --experimental-strip-types scripts/probar-subida.mjs
 
 El primero que se registra queda como administrador. Los demás se crean desde
 Supabase (Authentication → Users → Add user, con *Auto Confirm User*) y aparecen
-en la pantalla **Usuarios** de la app para asignarles nombre y empresa.
+en la pantalla **Usuarios** de la app para asignarles nombre, rol y empresa.
 
-Un usuario de empresa ve únicamente las obras donde su empresa es socia. Eso lo
+| Rol | Qué ve |
+| --- | --- |
+| 🔑 **Administrador** | Todas las obras, y es el único que entra a Usuarios |
+| 🏗️ **Desarrollador** | Todo de las obras donde su empresa es socia |
+| 💰 **Inversor** | Lo que puso y el avance de la obra |
+| 🏠 **Comprador** | Lo que lleva pagado y el avance de la obra |
+
+El emoji **sale del rol y no se elige**: lo que hay que reconocer de un vistazo
+es de qué lado está cada uno, no quién es.
+
+Un desarrollador ve únicamente las obras donde su empresa es socia. Eso lo
 garantizan las reglas de la base (RLS), no la interfaz: aunque alguien consulte
 la API directamente, no obtiene datos de otras obras.
+
+**Inversor y comprador todavía no tienen pantallas propias.** El rol ya se
+asigna, pero lo que van a ver —su parte y el avance, no la economía entera— es
+un trabajo aparte. Mientras tanto no pertenecen a ninguna empresa, así que
+entran y no ven ninguna obra: es la falta segura.
 
 ## Antes de subir cambios
 

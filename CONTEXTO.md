@@ -69,6 +69,40 @@ Convenciones de código:
 
 ## Modelo de dominio y decisiones (lo que no es obvio del código)
 
+### Los cuatro roles (30/09/2026)
+`admin`, `desarrollador`, `inversor` y `comprador`, en `lib/roles.ts` (módulo
+puro: nombre, emoji y alcance de cada uno) y en el `check` de `perfiles.rol`.
+
+**`empresa` pasó a llamarse `desarrollador`**: es el mismo usuario —el de una
+socia, que ve las obras donde su empresa es socia— con el nombre con el que se
+lo piensa. Por eso fue un rename y no un rol nuevo, y **ninguna policy se
+tocó**: todas se apoyan en `empresa_id`, no en el nombre del rol. El alcance no
+cambió: "ve todo" es todas las solapas de sus obras, no las obras de las demás.
+
+**Inversor y comprador existen como rol pero no ven nada todavía.** No
+pertenecen a ninguna empresa, así que `puede_ver_obra()` no les matchea
+ninguna: entran y no encuentran obras. Es la falta segura mientras sus
+pantallas no existan —la otra sería mostrarles la obra entera—. Lo que van a
+ver (su parte y el avance, no la economía) está en Pendientes.
+
+El `perfil_coherente` quedó en una línea: `rol = 'desarrollador' or empresa_id
+is null`. Sólo el desarrollador pertenece a una empresa; el administrador las
+ve todas y los otros dos no son de ninguna. Un desarrollador sin empresa sigue
+siendo el pendiente de asignación de siempre.
+
+**El emoji sale del rol y no se elige** (🔑 🏗️ 💰 🏠). Dos inversores se ven
+iguales a propósito: lo que hay que reconocer de un vistazo es de qué lado está
+cada uno, no quién es. Son objetos y no caras —la llave, la grúa, la plata, la
+casa— para que no le compitan a los íconos de trazo del resto de la app, que
+no usa ninguna librería de íconos.
+
+Organizar usuarios es del administrador: `/usuarios` redirige al resto y la
+barra lateral ni les ofrece el destino (`AppSidebar` pasó a ser server
+component para poder leer el rol; la franja en sí quedó en
+`AppSidebarRail`). La base ya lo garantizaba —la policy de `perfiles` sólo le
+deja ver el suyo a los demás—, pero sin eso un desarrollador entraba a una
+pantalla que se veía rota en vez de a una que no le corresponde.
+
 ### Reparto entre socias
 Cada obra tiene N empresas socias con un porcentaje (suman 100). Los gastos se
 cargan por el 100% indicando quién pagó; el reparto sale del porcentaje. El
@@ -1603,6 +1637,21 @@ acción de borrar el pago del lote viaja como prop.
 
 ## Pendientes / decisiones abiertas
 
+- **Las pantallas del inversor y del comprador** (el rol ya existe desde el
+  30/09/2026, la vista no). El inversor ve lo que puso y lo que le falta poner
+  —su ficha de la agenda de inversores— más el avance de obra, y nada de la
+  economía: ni el balance entre socias, ni los gastos, ni la caja. El comprador,
+  lo mismo con lo que lleva pagado de su unidad. Falta decidir tres cosas:
+  (a) cómo se ata un usuario a su ficha de `inversores` —hoy la agenda no tiene
+  usuario—; (b) si ven una obra sola o la lista de las obras donde pusieron
+  plata; (c) qué avance ven, porque el ponderado sale de las cotizaciones
+  aprobadas y eso es información de costos. El RLS es lo primero: hoy no ven
+  nada porque no tienen empresa, y abrirles la obra por `puede_ver_obra()` les
+  abriría todo.
+- **Si un desarrollador tiene que cargar más que gastos.** Hoy sólo tiene la
+  policy `gastos_insert_empresa`: lee todo de sus obras y escribe gastos. Si
+  "ve todo igual que el administrador" también tiene que significar cargar
+  avances, presupuestos o fotos, son policies nuevas, una por tabla.
 - **Validar `lib/prefactibilidad.ts` contra estudios a mano.** Primer caso,
   Andonaegui 1229 (061-056-021): el estudio del usuario da PB + 4; la Ciudad
   da 14,6 m (U.S.A.B 2) y huella de 129,75 m². Faltan comparar superficie
@@ -1712,7 +1761,16 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (14/09/2026)**: Flujo con selector de período (toda la obra, un
+**Lo último (30/09/2026)**: los cuatro roles de usuario (administrador,
+desarrollador, inversor, comprador) con su emoji, `empresa` renombrado a
+`desarrollador` y Usuarios cerrado al administrador. Inversor y comprador
+todavía no ven nada: sus pantallas son lo que sigue.
+
+**Antes (25/09/2026)**: gastos con descuento automático, comprobante en
+efectivo y pesos pagados con dólares; prefactibilidades con base de edificios
+de referencia y la planta tipo dibujada ambiente por ambiente.
+
+**Antes (14/09/2026)**: Flujo con selector de período (toda la obra, un
 año, año a año) y tarjetas que responden al período.
 
 **Antes (13/09/2026)**, para ubicarse rápido: obras centradas en la

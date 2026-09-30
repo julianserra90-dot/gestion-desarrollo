@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import AppSidebar from "@/components/AppSidebar";
 import * as ui from "@/components/ui";
+import { ROL, ROLES, ROL_CON_EMPRESA, leerRol } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarUsuario } from "./actions";
 
@@ -13,13 +15,33 @@ export default async function UsuariosPage({
   const { error, ok } = await searchParams;
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Organizar usuarios es del administrador. La base ya lo garantiza —la policy
+  // de perfiles sólo le deja ver el suyo a los demás—, pero sin esto un
+  // desarrollador entraría a una pantalla que se ve rota en vez de a una que no
+  // le corresponde.
+  const { data: yo } = await supabase
+    .from("perfiles")
+    .select("rol")
+    .eq("id", user?.id ?? "")
+    .maybeSingle();
+
+  if (yo?.rol !== "admin") {
+    redirect("/");
+  }
+
   const [{ data: perfiles }, { data: empresas }] = await Promise.all([
     supabase.from("perfiles").select("id, nombre, rol, empresa_id").order("nombre"),
     supabase.from("empresas").select("id, nombre").order("nombre"),
   ]);
 
   const lista = perfiles ?? [];
-  const pendientes = lista.filter((p) => p.rol === "empresa" && !p.empresa_id);
+  const pendientes = lista.filter(
+    (p) => p.rol === ROL_CON_EMPRESA && !p.empresa_id
+  );
 
   return (
     <AppShell sidebar={<AppSidebar activo="usuarios" />}>
@@ -40,8 +62,8 @@ export default async function UsuariosPage({
       {pendientes.length > 0 && (
         <p style={avisoBox}>
           Hay {pendientes.length}{" "}
-          {pendientes.length === 1 ? "usuario" : "usuarios"} sin empresa
-          asignada. Hasta que se la asignes, no ven ninguna obra.
+          {pendientes.length === 1 ? "desarrollador" : "desarrolladores"} sin
+          empresa asignada. Hasta que se la asignes, no ven ninguna obra.
         </p>
       )}
 
@@ -51,7 +73,7 @@ export default async function UsuariosPage({
           Los usuarios se crean desde el panel de Supabase, en{" "}
           <strong>Authentication → Users → Add user</strong> (marcá{" "}
           <em>Auto Confirm User</em>). Apenas se crean aparecen acá abajo, y
-          desde acá les asignás nombre y empresa.
+          desde acá les asignás nombre, rol y empresa.
         </p>
       </section>
 
@@ -65,7 +87,9 @@ export default async function UsuariosPage({
         ) : (
           <div style={listaUsuarios}>
             {lista.map((perfil) => {
-              const sinEmpresa = perfil.rol === "empresa" && !perfil.empresa_id;
+              const rol = leerRol(perfil.rol);
+              const sinEmpresa =
+                perfil.rol === ROL_CON_EMPRESA && !perfil.empresa_id;
 
               return (
                 <form
@@ -74,6 +98,10 @@ export default async function UsuariosPage({
                   style={sinEmpresa ? filaPendiente : fila}
                 >
                   <input type="hidden" name="usuario_id" value={perfil.id} />
+
+                  <div style={distintivo} title={rol ? ROL[rol].nombre : ""}>
+                    {rol ? ROL[rol].emoji : ""}
+                  </div>
 
                   <div style={campo}>
                     <span style={etiqueta}>Nombre y apellido</span>
@@ -93,8 +121,11 @@ export default async function UsuariosPage({
                       defaultValue={perfil.rol}
                       style={ui.input}
                     >
-                      <option value="empresa">Empresa</option>
-                      <option value="admin">Administrador</option>
+                      {ROLES.map((valor) => (
+                        <option key={valor} value={valor}>
+                          {ROL[valor].emoji} {ROL[valor].nombre}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -125,12 +156,22 @@ export default async function UsuariosPage({
           </div>
         )}
 
-        <p style={{ ...ui.note, marginTop: "24px", marginBottom: 0 }}>
-          Un <strong>administrador</strong> ve y edita todas las obras y no
-          pertenece a ninguna empresa. Un usuario de{" "}
-          <strong>empresa</strong> ve sólo las obras donde su empresa es socia,
-          y los gastos que carga quedan a nombre de esa empresa.
-        </p>
+        <div style={leyenda}>
+          {ROLES.map((valor) => (
+            <div key={valor} style={leyendaFila}>
+              <span style={leyendaRol}>
+                <span style={leyendaEmoji}>{ROL[valor].emoji}</span>
+                {ROL[valor].nombre}
+              </span>
+              <span style={ui.note}>{ROL[valor].alcance}</span>
+            </div>
+          ))}
+
+          <p style={{ ...ui.note, margin: 0 }}>
+            La empresa es sólo del desarrollador: en los otros tres roles se
+            guarda sin empresa, aunque el desplegable ofrezca una.
+          </p>
+        </div>
       </section>
     </AppShell>
   );
@@ -179,7 +220,7 @@ const listaUsuarios = {
 
 const fila = {
   display: "grid",
-  gridTemplateColumns: "1.4fr 1fr 1.2fr auto",
+  gridTemplateColumns: "auto 1.4fr 1fr 1.2fr auto",
   gap: "12px",
   alignItems: "end",
   borderTop: "1px solid #eeeeee",
@@ -189,6 +230,18 @@ const fila = {
 const filaPendiente = {
   ...fila,
   borderTop: "1px solid #111111",
+};
+
+// El emoji del rol, a la altura de los inputs de al lado.
+const distintivo = {
+  width: "43px",
+  height: "43px",
+  borderRadius: "999px",
+  border: "1px solid #eeeeee",
+  background: "#fafafa",
+  display: "grid",
+  placeItems: "center",
+  fontSize: "20px",
 };
 
 const campo = {
@@ -209,4 +262,31 @@ const etiqueta = {
 const contador = {
   color: "#999999",
   fontSize: "15px",
+};
+
+const leyenda = {
+  display: "grid",
+  gap: "10px",
+  marginTop: "28px",
+  borderTop: "1px solid #eeeeee",
+  paddingTop: "20px",
+};
+
+const leyendaFila = {
+  display: "grid",
+  gridTemplateColumns: "180px 1fr",
+  gap: "12px",
+  alignItems: "baseline",
+};
+
+const leyendaRol = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "14px",
+  color: "#111111",
+};
+
+const leyendaEmoji = {
+  fontSize: "16px",
 };

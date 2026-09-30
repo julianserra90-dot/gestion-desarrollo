@@ -2,6 +2,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import AppSidebar from "@/components/AppSidebar";
 import * as ui from "@/components/ui";
+import { ROL, ROL_CON_EMPRESA, leerRol } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarMiPerfil } from "./actions";
 
@@ -25,6 +26,8 @@ export default async function PerfilPage({
 
   // Cuando el perfil se creó solo, el nombre quedó siendo el email.
   const nombreEsElMail = perfil?.nombre === user?.email;
+
+  const rol = leerRol(perfil?.rol);
 
   return (
     <AppShell sidebar={<AppSidebar activo="perfil" />}>
@@ -72,9 +75,10 @@ export default async function PerfilPage({
           <div style={soloLectura}>
             <span style={labelCampo}>Rol</span>
             <strong>
-              {perfil?.rol === "admin"
-                ? "Administrador"
-                : (perfil?.empresas?.nombre ?? "Empresa")}
+              {rol ? `${ROL[rol].emoji} ${ROL[rol].nombre}` : "—"}
+              {rol === ROL_CON_EMPRESA && perfil?.empresas?.nombre
+                ? ` · ${perfil.empresas.nombre}`
+                : ""}
             </strong>
           </div>
 

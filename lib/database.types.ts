@@ -932,6 +932,20 @@ export type Database = {
             foreignKeyName: "gastos_borradores_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "gastos_borradores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "gastos_borradores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
             referencedRelation: "obras"
             referencedColumns: ["id"]
           },
