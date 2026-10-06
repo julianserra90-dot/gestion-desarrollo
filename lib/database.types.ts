@@ -195,6 +195,179 @@ export type Database = {
           },
         ]
       }
+      computo_item_desglose: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          descripcion: string
+          id: string
+          item_id: string
+          orden: number
+          precio_unitario: number
+          tipo: string
+          unidad: string
+        }
+        Insert: {
+          cantidad?: number
+          creado_en?: string
+          descripcion: string
+          id?: string
+          item_id: string
+          orden?: number
+          precio_unitario?: number
+          tipo: string
+          unidad?: string
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          descripcion?: string
+          id?: string
+          item_id?: string
+          orden?: number
+          precio_unitario?: number
+          tipo?: string
+          unidad?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "computo_item_desglose_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "computo_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      computo_items: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          id: string
+          nombre: string
+          obra_id: string
+          orden: number
+          precio_mano_obra: number
+          precio_integrado: number
+          precio_materiales: number
+          rubro_id: string
+          subrubro: string | null
+          tarea_id: string | null
+          unidad: string
+          usa_integrado: boolean
+          usa_mano_obra: boolean
+          usa_materiales: boolean
+        }
+        Insert: {
+          cantidad?: number
+          creado_en?: string
+          id?: string
+          nombre: string
+          obra_id: string
+          orden?: number
+          precio_mano_obra?: number
+          precio_integrado?: number
+          precio_materiales?: number
+          rubro_id: string
+          subrubro?: string | null
+          tarea_id?: string | null
+          unidad: string
+          usa_integrado?: boolean
+          usa_mano_obra?: boolean
+          usa_materiales?: boolean
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          id?: string
+          nombre?: string
+          obra_id?: string
+          orden?: number
+          precio_mano_obra?: number
+          precio_integrado?: number
+          precio_materiales?: number
+          rubro_id?: string
+          subrubro?: string | null
+          tarea_id?: string | null
+          unidad?: string
+          usa_integrado?: boolean
+          usa_mano_obra?: boolean
+          usa_materiales?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "computo_items_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "computos"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "computo_items_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "obra_presupuesto"
+            referencedColumns: ["rubro_id"]
+          },
+          {
+            foreignKeyName: "computo_items_rubro_id_fkey"
+            columns: ["rubro_id"]
+            isOneToOne: false
+            referencedRelation: "rubros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "computo_items_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      computos: {
+        Row: {
+          creado_en: string
+          mes_precios: string
+          obra_id: string
+          observaciones: string | null
+        }
+        Insert: {
+          creado_en?: string
+          mes_precios?: string
+          obra_id: string
+          observaciones?: string | null
+        }
+        Update: {
+          creado_en?: string
+          mes_precios?: string
+          obra_id?: string
+          observaciones?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "computos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: true
+            referencedRelation: "obra_balance"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "computos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: true
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "computos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: true
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       detalles: {
         Row: {
           ambito: string
@@ -950,6 +1123,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      indices_cac: {
+        Row: {
+          creado_en: string
+          mes: string
+          valor: number
+        }
+        Insert: {
+          creado_en?: string
+          mes: string
+          valor: number
+        }
+        Update: {
+          creado_en?: string
+          mes?: string
+          valor?: number
+        }
+        Relationships: []
       }
       ingresos: {
         Row: {
@@ -1894,6 +2085,89 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tarea_desglose: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          descripcion: string
+          id: string
+          orden: number
+          precio_unitario: number
+          tarea_id: string
+          tipo: string
+          unidad: string
+        }
+        Insert: {
+          cantidad?: number
+          creado_en?: string
+          descripcion: string
+          id?: string
+          orden?: number
+          precio_unitario?: number
+          tarea_id: string
+          tipo: string
+          unidad?: string
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          descripcion?: string
+          id?: string
+          orden?: number
+          precio_unitario?: number
+          tarea_id?: string
+          tipo?: string
+          unidad?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarea_desglose_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tareas: {
+        Row: {
+          creado_en: string
+          fuente: string | null
+          id: string
+          nombre: string
+          orden: number
+          precio_mano_obra: number
+          precio_materiales: number
+          rubro: string
+          subrubro: string | null
+          unidad: string
+        }
+        Insert: {
+          creado_en?: string
+          fuente?: string | null
+          id?: string
+          nombre: string
+          orden?: number
+          precio_mano_obra?: number
+          precio_materiales?: number
+          rubro: string
+          subrubro?: string | null
+          unidad: string
+        }
+        Update: {
+          creado_en?: string
+          fuente?: string | null
+          id?: string
+          nombre?: string
+          orden?: number
+          precio_mano_obra?: number
+          precio_materiales?: number
+          rubro?: string
+          subrubro?: string | null
+          unidad?: string
+        }
+        Relationships: []
       }
     }
     Views: {

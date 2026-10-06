@@ -60,6 +60,7 @@ export default function ObraSidebar({
 
   return (
     <aside
+      data-no-imprimir
       style={abierta ? { ...rail, width: ANCHO_ABIERTO } : rail}
       onMouseEnter={() => setAbierta(true)}
       onMouseLeave={() => setAbierta(false)}

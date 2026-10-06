@@ -60,6 +60,11 @@ Convenciones de código:
   relleno cuando la columna filtra y `ui.FILTRO_SIN_PONER` de contorno cuando
   no. Los rótulos de tarjeta (`ui.label`, "TOTAL GASTADO") siguen en gris: son
   el nombre de un número, no el título de una columna.
+- **Cada columna, alineada con su título** (06/10/2026): el `th` lleva el
+  mismo relleno lateral que sus celdas y la misma alineación. Campos que se
+  escriben (cantidades, precios unitarios) centrados bajo el título; montos
+  calculados a la derecha. Con rellenos distintos (`ui.th` 12px y una celda de
+  6px) la columna queda corrida y se nota.
 - Los comentarios explican el **porqué**, no el qué. Mantener ese estilo.
 - `formatMoney` y `formatUSD` muestran **dos decimales** (los gastos se cargan al
   centavo). En dólares importa igual o más: $ 1.200.000 al cambio de 1.433,90 son
@@ -307,6 +312,80 @@ De cada bloque se aprueba una (la elegida), que engancha con el
 proveedor/contratista de gastos. El gasto avisa si se pasa de lo cotizado, pero **no frena** (puede haber
 compra de urgencia). Dos números conviven: presupuesto **estimado** (manual, en
 Editar obra) y **real** (suma de lo aprobado).
+
+### Cómputo y presupuesto estimado (06/10/2026)
+Presupuestos tiene dos solapas: **Cotizaciones** (lo de siempre) y **Cómputo**.
+El cómputo es el tercer número de la obra, el de antes de cotizar: cantidad ×
+precio de referencia, separado en materiales y mano de obra.
+
+- **`tareas`**: catálogo común a todas las obras, cargado con la tabla de
+  costos unitarios de **Revista Cifras #367** (236 tareas; costo directo, sin
+  gastos generales, beneficio ni IVA). Lo que Cifras llama "costo de
+  ejecución" es `precio_mano_obra`. El rubro va **por nombre** y se engancha
+  sin mayúsculas con el rubro de la obra.
+- **Rubros de Cifras**: se sumaron al catálogo los que no existían
+  (Movimiento de Tierra, Estructuras, Mamposterías y Tabiquerías, Aislaciones,
+  Revoques, Contrapisos, Equipamiento, Varios). Los que ya existían con otro
+  nombre para lo mismo **no se duplicaron**: Pinturas → Pintura, Vidriería →
+  Vidrios y espejos, Cubierta → Cubiertas y Techos, Preliminares de obra →
+  Tareas Preliminares, Sanitaria/Incendio → Instalación Sanitaria.
+- **`computos`** (uno por obra, con `mes_precios`) y **`computo_items`**:
+  tildar una tarea **copia** nombre, unidad y precios; actualizar el catálogo
+  no mueve un cómputo ya usado. Tildar marca el rubro como activo en la obra.
+  Hay tareas propias de la obra (`tarea_id` null).
+- **`indices_cac`**: un valor por mes, global, se carga a mano. Estimado,
+  cotizado y gastado se llevan **a valores del último CAC cargado** antes de
+  comparar (`lib/cac.ts`). Un mes sin índice todavía usa el último anterior;
+  uno anterior a todo lo cargado queda sin ajustar y la pantalla lo cuenta.
+- **Una sola pantalla, estilo SISMAT** (06/10/2026). El cómputo tiene
+  cuatro pestañas por `?vista=`: **Tabla de cómputo** (default), **Listado de
+  materiales**, **Incidencia de costos** y **Estimado vs. cotizado** (la
+  comparación con CAC). Arriba a la derecha: **Excel** (CSV con `;` y coma
+  decimal + BOM, que el Excel en castellano abre directo: ruta
+  `computo/excel`, con `?vista=materiales` baja el listado), **Imprimir / PDF**
+  (`window.print()`; lo marcado `data-no-imprimir` se esconde, ver
+  `globals.css`) e **Índice CAC**.
+- **Tabla de cómputo**: arriba, el catálogo como **acordeón a lo ancho**
+  ("Agregar tareas", `CatalogoComputo`; abierto sólo si todavía no hay nada
+  elegido), con buscador, "+ Crear ítem propio" y los rubros en dos columnas
+  de diario como máximo (`columnCount: 2`; con tres se veía pegado), cada uno con "Agregar/Quitar todas". Al costado y
+  en vertical se veía apretado. Tildar llama `alternarTarea` y agrega **en el
+  momento** con su desglose de modelo; no hay "Guardar selección" (las rutas
+  viejas `computo/tareas` e `item/[id]` redirigen). Debajo la planilla
+  (`PlanillaComputo`) con encabezado agrupado: Tarea · U · Cantidad ·
+  Materiales (Unitario | Subtotal) · Mano de obra (Unitario | Subtotal) ·
+  [Integrado, sólo si el rubro lo usa] · Total · Desglose ▾ · 🗑. Los
+  unitarios salen del desglose y no se editan ahí. El desglose se **despliega
+  dentro de la fila** (`DesgloseTarea`, sin formulario propio: guarda con
+  `guardarDesgloseDe` y refresca). El tacho llama `quitarItem`. Las
+  cantidades siguen yendo juntas con "Guardar cantidades" (`guardarPlanilla`).
+  Las acciones directas devuelven `{ error }` en vez de redirigir, y la
+  planilla suma las filas nuevas que llegan al refrescar sin pisar lo que se
+  está escribiendo.
+- **Listado de materiales** (`listadoDeMateriales`): suma los renglones de
+  Materiales de todos los desgloses × cantidad de cada tarea, agrupados por
+  nombre y unidad. El renglón genérico de Cifras sale como "<tarea> (sin
+  desglosar)". **Incidencia** (`incidenciaPorRubro`): % de cada rubro sobre el
+  total estimado, sin ajuste CAC.
+- **El precio de una tarea sale sólo de su desglose** (migración
+  `20261006160000_desglose_modelo`). Materiales + mano de obra suman al
+  total; lo integrado va solo.
+- **Desglose por tarea** (`computo_item_desglose`): renglones de Materiales /
+  Mano de obra / Integrado **por unidad de la tarea** (15 ladrillos por m²).
+  `aplicarDesglose` rehace los precios de la tarea (suma por tipo; cero si no
+  hay renglones de ese tipo), sus casillas `usa_*` y prende las del rubro
+  para Cotizaciones. Para algo cotizado cerrado (el cartel), gl × 1 y
+  desglose en montos.
+- **Desglose de modelo** (`tarea_desglose`): cada tarea del catálogo trae
+  uno, que se **copia** a la obra al tildarla. Arranca con la referencia de
+  Cifras; la casilla "Usar también como modelo para otras obras" del
+  desglose lo reemplaza para las obras que la tilden después.
+- **Nombre y unidad** se corrigen con el lápiz de la fila (lista fija de
+  unidades; Confirmar / Enter, Cancelar / Escape; `editarTareaDelComputo`,
+  sólo esa fila). Son de la obra, no tocan el catálogo.
+- La comparación es **por rubro** (todavía no por tarea). El desvío total usa
+  sólo rubros con estimado y cotizado, para que un rubro sin cotizar no haga
+  parecer barata la obra.
 
 ### Contratistas y proveedores (el catálogo)
 Proveedores, contratistas y "varios" viven en una sola tabla (`proveedores`)
@@ -1770,7 +1849,13 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (30/09/2026)**: los cuatro roles de usuario (administrador,
+**Lo último (06/10/2026)**: cómputo y presupuesto estimado dentro de
+Presupuestos, con catálogo de tareas de Cifras #367 e índice CAC. Migraciones
+`20261006120000_computo_y_cac`, `20261006130000_computo_precio_integrado` y
+`20261006140000_computo_tipo_por_tarea`, `20261006150000_computo_desglose` y
+`20261006160000_desglose_modelo` (tipos editados a mano).
+
+**Antes (30/09/2026)**: los cuatro roles de usuario (administrador,
 desarrollador, inversor, comprador) con su emoji, `empresa` renombrado a
 `desarrollador` y Usuarios cerrado al administrador. Inversor y comprador
 todavía no ven nada: sus pantallas son lo que sigue.

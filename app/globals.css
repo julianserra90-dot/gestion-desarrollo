@@ -17,3 +17,27 @@ body {
   color: #171717;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Al imprimir (o guardar como PDF) sale sólo lo que se lee: la barra lateral,
+ * el catálogo y los botones se marcan con `data-no-imprimir`. El relleno que
+ * deja lugar a la barra lateral tampoco hace falta en papel.
+ */
+@media print {
+  [data-no-imprimir] {
+    display: none !important;
+  }
+
+  main > section {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  details > summary {
+    list-style: none;
+  }
+
+  details:not([open]) {
+    display: none;
+  }
+}

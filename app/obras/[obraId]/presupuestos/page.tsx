@@ -3,6 +3,7 @@ import AppShell from "@/components/AppShell";
 import BotonDescarga from "@/components/BotonDescarga";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
+import PresupuestosNav from "@/components/PresupuestosNav";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
@@ -154,6 +155,8 @@ export default async function PresupuestosPage({
         <p style={ui.eyebrow}>Situación económica</p>
         <h2 style={ui.pageTitle}>Presupuestos</h2>
       </section>
+
+      <PresupuestosNav slug={obra.slug} activa="cotizaciones" />
 
       {error && <p style={errorBox}>{error}</p>}
 
