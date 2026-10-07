@@ -262,7 +262,7 @@ export async function actualizarPresupuesto(formData: FormData) {
 
   const { data: actual } = await supabase
     .from("presupuestos")
-    .select("comprobante_drive_id")
+    .select("comprobante_drive_id, estado")
     .eq("id", id)
     .maybeSingle();
 
@@ -299,6 +299,9 @@ export async function actualizarPresupuesto(formData: FormData) {
     moneda: campos.moneda,
     detalle: campos.detalle === "" ? null : campos.detalle,
     observaciones: campos.observaciones === "" ? null : campos.observaciones,
+    // Un pedido del cómputo que ya tiene proveedor y precio pasa a ser una
+    // cotización como las demás, lista para aprobar.
+    ...(actual.estado === "A cotizar" ? { estado: "Pendiente" } : {}),
   };
 
   let subidoAhora: string | null = null;
@@ -373,6 +376,38 @@ export async function aprobarPresupuesto(id: string, formData: FormData) {
     .from("presupuestos")
     .update({ estado: "Aprobado" })
     .eq("id", id);
+
+  if (error) volverAListado(slug, error.message);
+
+  revalidatePath("/", "layout");
+  redirect(`/obras/${slug}/presupuestos`);
+}
+
+/**
+ * Copia una cotización como pedido "A cotizar", para pedirle lo mismo a otro
+ * proveedor y comparar. Se lleva rubro, tipo y detalle; el monto queda como
+ * referencia y el proveedor en blanco, que es justo lo que cambia.
+ */
+export async function duplicarPresupuesto(id: string, formData: FormData) {
+  const slug = String(formData.get("slug") ?? "");
+  const supabase = await createClient();
+
+  const { data: original } = await supabase
+    .from("presupuestos")
+    .select("obra_id, rubro_id, tipo, detalle, monto")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!original) volverAListado(slug, "No se encontró la cotización.");
+
+  const { error } = await supabase.from("presupuestos").insert({
+    obra_id: original!.obra_id,
+    rubro_id: original!.rubro_id,
+    tipo: original!.tipo,
+    detalle: original!.detalle,
+    monto: original!.monto,
+    estado: "A cotizar",
+  });
 
   if (error) volverAListado(slug, error.message);
 

@@ -64,6 +64,10 @@ type RenglonDesglose = {
   unidad: string;
   cantidad: number;
   precio: number;
+  /** La cotización pedida para esta subtarea, si se tildó "Cotización". */
+  presupuestoId?: string | null;
+  /** Si el cómputo toma lo cotizado en vez de lo computado. */
+  usarCotizado?: boolean;
 };
 
 const TIPOS_DESGLOSE = ["Materiales", "Mano de obra", "Integrado"] as const;
@@ -101,6 +105,8 @@ async function aplicarDesglose(
         unidad: r.unidad,
         cantidad: r.cantidad,
         precio_unitario: r.precio,
+        presupuesto_id: r.presupuestoId ?? null,
+        usar_cotizado: Boolean(r.presupuestoId && r.usarCotizado),
         orden,
       }))
     );
@@ -295,7 +301,7 @@ export async function agregarTareaPropia(formData: FormData) {
   const obraId = String(formData.get("obra_id") ?? "");
   const rubroId = String(formData.get("rubro_id") ?? "");
   const nombre = String(formData.get("nombre") ?? "").trim();
-  const unidad = String(formData.get("unidad") ?? "").trim() || "u";
+  const unidad = String(formData.get("unidad") ?? "").trim() || "un";
   const destino = `${base(slug)}/tareas`;
 
   if (!rubroId) volver(destino, "Elegí el rubro de la tarea.");
@@ -437,7 +443,7 @@ function leerRenglones(formData: FormData): RenglonDesglose[] | null {
       .map((r) => ({
         tipo: TIPOS_DESGLOSE.includes(r.tipo) ? r.tipo : "Materiales",
         descripcion: String(r.descripcion ?? "").trim(),
-        unidad: String(r.unidad ?? "").trim() || "u",
+        unidad: String(r.unidad ?? "").trim() || "un",
         cantidad: Math.max(Number(r.cantidad) || 0, 0),
         precio: Math.max(Number(r.precio) || 0, 0),
       }))
@@ -549,6 +555,23 @@ function revalidarComputo() {
   revalidatePath("/obras", "layout");
 }
 
+/**
+ * Borra los pedidos "A cotizar" que salieron del desglose de estas tareas.
+ * Se llama antes de borrar las tareas: después el enlace ya no existe. Lo que
+ * ya se cotizó de verdad queda en su solapa.
+ */
+async function borrarPedidosDe(supabase: Supabase, itemIds: string[]) {
+  if (itemIds.length === 0) return;
+  const { data } = await supabase
+    .from("computo_item_desglose")
+    .select("presupuesto_id")
+    .in("item_id", itemIds)
+    .not("presupuesto_id", "is", null);
+  const ids = (data ?? []).map((d) => d.presupuesto_id!);
+  if (ids.length === 0) return;
+  await supabase.from("presupuestos").delete().in("id", ids).eq("estado", "A cotizar");
+}
+
 /** Tilda o destilda una tarea del catálogo en la obra. */
 export async function alternarTarea(
   obraId: string,
@@ -558,6 +581,13 @@ export async function alternarTarea(
   const supabase = await createClient();
 
   if (!incluir) {
+    const { data: aBorrar } = await supabase
+      .from("computo_items")
+      .select("id")
+      .eq("obra_id", obraId)
+      .eq("tarea_id", tareaId);
+    await borrarPedidosDe(supabase, (aBorrar ?? []).map((i) => i.id));
+
     const { error } = await supabase
       .from("computo_items")
       .delete()
@@ -670,6 +700,7 @@ export async function crearTareaPropia(
 /** El tacho de una fila: saca la tarea del cómputo, con su desglose. */
 export async function quitarItem(itemId: string): Promise<Resultado> {
   const supabase = await createClient();
+  await borrarPedidosDe(supabase, [itemId]);
   const { error } = await supabase.from("computo_items").delete().eq("id", itemId);
   if (error) return { error: error.message };
   revalidarComputo();
@@ -682,27 +713,125 @@ export type RenglonParaGuardar = {
   unidad: string;
   cantidad: number;
   precio: number;
+  presupuestoId?: string | null;
+  /** Tildada la casilla "Cotización". */
+  cotizar?: boolean;
+  usarCotizado?: boolean;
+};
+
+/** El tipo de cotización que le corresponde a cada tipo de subtarea. */
+const TIPO_COTIZACION: Record<RenglonDesglose["tipo"], string> = {
+  Materiales: "Materiales",
+  "Mano de obra": "Mano de obra",
+  Integrado: "Mano de obra y materiales",
 };
 
 /**
- * Guarda el desglose desplegado de una fila. Con `comoModelo` además queda
- * como modelo de la tarea en el catálogo, para las obras que la tilden
- * después.
+ * Lleva a Cotizaciones lo que se tildó en el desglose.
+ *
+ * Una subtarea tildada sin cotización enlazada crea un pedido "A cotizar":
+ * sin proveedor, con lo que suma en la obra como referencia. Mientras siga
+ * siendo un pedido, su monto acompaña al cómputo. Destildar —o quitar el
+ * renglón— borra el pedido si todavía no se cotizó; si ya tiene proveedor y
+ * precio, la cotización se queda en su solapa y sólo se corta el enlace.
+ */
+async function sincronizarCotizaciones(
+  supabase: Supabase,
+  item: { id: string; obra_id: string; rubro_id: string; nombre: string; cantidad: number },
+  renglones: (RenglonDesglose & { cotizar: boolean })[]
+): Promise<string | null> {
+  const { data: anteriores } = await supabase
+    .from("computo_item_desglose")
+    .select("presupuesto_id")
+    .eq("item_id", item.id)
+    .not("presupuesto_id", "is", null);
+
+  const enlazadas = [
+    ...new Set([
+      ...(anteriores ?? []).map((a) => a.presupuesto_id!),
+      ...renglones.map((r) => r.presupuestoId).filter((x): x is string => Boolean(x)),
+    ]),
+  ];
+
+  const { data: cotizaciones } = enlazadas.length
+    ? await supabase.from("presupuestos").select("id, estado").in("id", enlazadas)
+    : { data: [] as { id: string; estado: string }[] };
+  const estado = new Map((cotizaciones ?? []).map((c) => [c.id, c.estado]));
+
+  const montoEnObra = (r: RenglonDesglose) =>
+    Math.round(r.cantidad * r.precio * item.cantidad * 100) / 100;
+  const detalle = (r: RenglonDesglose) => `${item.nombre} — ${r.descripcion}`;
+
+  for (const r of renglones) {
+    // Una cotización que se borró desde su solapa ya no está.
+    if (r.presupuestoId && !estado.has(r.presupuestoId)) r.presupuestoId = null;
+
+    if (r.cotizar && !r.presupuestoId) {
+      const { data, error } = await supabase
+        .from("presupuestos")
+        .insert({
+          obra_id: item.obra_id,
+          rubro_id: item.rubro_id,
+          tipo: TIPO_COTIZACION[r.tipo],
+          estado: "A cotizar",
+          monto: montoEnObra(r),
+          detalle: detalle(r),
+        })
+        .select("id")
+        .single();
+      if (error || !data) return error?.message ?? "No se pudo pedir la cotización.";
+      r.presupuestoId = data.id;
+      r.usarCotizado = false;
+    } else if (r.cotizar && r.presupuestoId && estado.get(r.presupuestoId) === "A cotizar") {
+      const { error } = await supabase
+        .from("presupuestos")
+        .update({ tipo: TIPO_COTIZACION[r.tipo], monto: montoEnObra(r), detalle: detalle(r) })
+        .eq("id", r.presupuestoId);
+      if (error) return error.message;
+    } else if (!r.cotizar && r.presupuestoId) {
+      r.presupuestoId = null;
+      r.usarCotizado = false;
+    }
+  }
+
+  // Los pedidos que quedaron sin renglón y nunca se cotizaron, se van.
+  const siguen = new Set(renglones.map((r) => r.presupuestoId).filter(Boolean));
+  const huerfanos = enlazadas.filter((id) => !siguen.has(id) && estado.get(id) === "A cotizar");
+  if (huerfanos.length) {
+    // Primero el desglose actual suelta el enlace, para que el borrado no
+    // dependa del orden en que se reemplazan los renglones.
+    await supabase
+      .from("computo_item_desglose")
+      .update({ presupuesto_id: null })
+      .in("presupuesto_id", huerfanos);
+    const { error } = await supabase.from("presupuestos").delete().in("id", huerfanos);
+    if (error) return error.message;
+  }
+
+  return null;
+}
+
+/**
+ * Guarda el desglose de una tarea desde la planilla y, si se pidió, lo deja
+ * como modelo de esa tarea para las obras que vengan.
  */
 export async function guardarDesgloseDe(
   itemId: string,
   crudos: RenglonParaGuardar[],
   comoModelo: boolean
 ): Promise<Resultado> {
-  const renglones: RenglonDesglose[] = crudos
+  const renglones = crudos
     .map((r) => ({
       tipo: (TIPOS_DESGLOSE as readonly string[]).includes(r.tipo)
         ? (r.tipo as RenglonDesglose["tipo"])
         : "Materiales",
       descripcion: String(r.descripcion ?? "").trim(),
-      unidad: String(r.unidad ?? "").trim() || "u",
+      unidad: String(r.unidad ?? "").trim() || "un",
       cantidad: Math.max(Number(r.cantidad) || 0, 0),
       precio: Math.max(Number(r.precio) || 0, 0),
+      presupuestoId: r.presupuestoId || null,
+      cotizar: Boolean(r.cotizar),
+      usarCotizado: Boolean(r.usarCotizado),
     }))
     .filter((r) => r.descripcion !== "");
 
@@ -710,10 +839,17 @@ export async function guardarDesgloseDe(
 
   const { data: item } = await supabase
     .from("computo_items")
-    .select("id, rubro_id, tarea_id")
+    .select("id, obra_id, rubro_id, tarea_id, nombre, cantidad")
     .eq("id", itemId)
     .maybeSingle();
   if (!item) return { error: "La tarea ya no está en el cómputo." };
+
+  const errorCotizar = await sincronizarCotizaciones(
+    supabase,
+    { ...item, cantidad: Number(item.cantidad) },
+    renglones
+  );
+  if (errorCotizar) return { error: errorCotizar };
 
   const error = await aplicarDesglose(supabase, item.id, item.rubro_id, renglones);
   if (error) return { error };

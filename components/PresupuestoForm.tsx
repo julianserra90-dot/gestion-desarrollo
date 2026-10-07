@@ -47,7 +47,7 @@ export type PresupuestoExistente = {
   tipo: string;
   numero: string | null;
   monto_desde_items: boolean;
-  proveedor_id: string;
+  proveedor_id: string | null;
   fecha: string;
   validez_hasta: string | null;
   monto: number;

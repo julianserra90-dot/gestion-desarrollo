@@ -105,6 +105,9 @@ export async function getPresupuestosConItems(
     )
     .eq("obra_id", obraId)
     .eq("tipo", "Materiales")
+    // Un pedido "A cotizar" no tiene precio ni proveedor: no hay contra qué
+    // facturar todavía.
+    .neq("estado", "A cotizar")
     .order("fecha", { ascending: false });
 
   const presupuestos = data ?? [];
@@ -142,7 +145,7 @@ export async function getPresupuestosConItems(
     numero: p.numero,
     fecha: p.fecha,
     monto: Number(p.monto),
-    proveedor_id: p.proveedor_id,
+    proveedor_id: p.proveedor_id ?? "",
     // El orden se acomoda acá y no en la consulta: ordenar un embebido de
     // PostgREST es más frágil que hacerlo con la lista ya traída.
     items: [...(p.presupuesto_materiales ?? [])]

@@ -82,7 +82,37 @@ export type RenglonItem = {
   unidad: string;
   cantidad: number;
   precio: number;
+  presupuestoId: string | null;
+  usarCotizado: boolean;
+  /** La cotización enlazada, si se pidió. */
+  cotizacion: CotizacionRenglon | null;
 };
+
+export type CotizacionRenglon = {
+  estado: string;
+  /** Lo cotizado para la obra entera, no por unidad. */
+  monto: number;
+  proveedor: string | null;
+};
+
+/** Una cotización con precio de verdad: ya no es un pedido ni se descartó. */
+export function tienePrecioCotizado(c: CotizacionRenglon | null): c is CotizacionRenglon {
+  return Boolean(c && (c.estado === "Pendiente" || c.estado === "Aprobado"));
+}
+
+/**
+ * Lo que suma un renglón por unidad de la tarea.
+ *
+ * Si se eligió lo cotizado, la cotización es por la obra entera: se reparte
+ * en la cantidad computada. Sin cantidad no hay cómo repartirla y vale lo
+ * computado.
+ */
+export function porUnidadDe(r: RenglonItem, cantidadTarea: number) {
+  if (r.usarCotizado && tienePrecioCotizado(r.cotizacion) && cantidadTarea > 0) {
+    return r.cotizacion.monto / cantidadTarea;
+  }
+  return r.cantidad * r.precio;
+}
 
 export type Computo = {
   mesPrecios: string;
@@ -101,7 +131,7 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
     supabase
       .from("computo_items")
       .select(
-        "id, rubro_id, tarea_id, subrubro, nombre, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado, usa_materiales, usa_mano_obra, usa_integrado, orden, computo_item_desglose(tipo, descripcion, unidad, cantidad, precio_unitario, orden)"
+        "id, rubro_id, tarea_id, subrubro, nombre, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado, usa_materiales, usa_mano_obra, usa_integrado, orden, computo_item_desglose(tipo, descripcion, unidad, cantidad, precio_unitario, orden, presupuesto_id, usar_cotizado, presupuestos(estado, monto, proveedores(nombre)))"
       )
       .eq("obra_id", obraId)
       .order("orden"),
@@ -111,21 +141,11 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
 
   return {
     mesPrecios: mesDeFecha(computo.mes_precios),
-    items: (items ?? []).map((i) => ({
-      id: i.id,
-      rubroId: i.rubro_id,
-      tareaId: i.tarea_id,
-      subrubro: i.subrubro,
-      nombre: i.nombre,
-      unidad: i.unidad,
-      cantidad: Number(i.cantidad),
-      precioMateriales: Number(i.precio_materiales),
-      precioManoObra: Number(i.precio_mano_obra),
-      precioIntegrado: Number(i.precio_integrado),
-      tipos: { mat: i.usa_materiales, mo: i.usa_mano_obra, int: i.usa_integrado },
+    items: (items ?? []).map((i) => {
+      const cantidad = Number(i.cantidad);
       // El orden se acomoda acá: ordenar un embebido de PostgREST es más
       // frágil que hacerlo con la lista ya traída.
-      renglones: [...(i.computo_item_desglose ?? [])]
+      const renglones: RenglonItem[] = [...(i.computo_item_desglose ?? [])]
         .sort((a, b) => a.orden - b.orden)
         .map((r) => ({
           tipo: r.tipo as RenglonItem["tipo"],
@@ -133,8 +153,37 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
           unidad: r.unidad,
           cantidad: Number(r.cantidad),
           precio: Number(r.precio_unitario),
-        })),
-    })),
+          presupuestoId: r.presupuesto_id,
+          usarCotizado: r.usar_cotizado,
+          cotizacion: r.presupuestos
+            ? {
+                estado: r.presupuestos.estado,
+                monto: Number(r.presupuestos.monto),
+                proveedor: r.presupuestos.proveedores?.nombre ?? null,
+              }
+            : null,
+        }));
+
+      // Los precios salen del desglose al leer, no de lo guardado en la
+      // tarea: una cotización puede cambiar en su solapa sin pasar por acá.
+      const suma = (tipo: RenglonItem["tipo"]) =>
+        renglones.filter((r) => r.tipo === tipo).reduce((a, r) => a + porUnidadDe(r, cantidad), 0);
+
+      return {
+        id: i.id,
+        rubroId: i.rubro_id,
+        tareaId: i.tarea_id,
+        subrubro: i.subrubro,
+        nombre: i.nombre,
+        unidad: i.unidad,
+        cantidad,
+        precioMateriales: renglones.length ? suma("Materiales") : Number(i.precio_materiales),
+        precioManoObra: renglones.length ? suma("Mano de obra") : Number(i.precio_mano_obra),
+        precioIntegrado: renglones.length ? suma("Integrado") : Number(i.precio_integrado),
+        tipos: { mat: i.usa_materiales, mo: i.usa_mano_obra, int: i.usa_integrado },
+        renglones,
+      };
+    }),
   };
 }
 
@@ -314,7 +363,7 @@ export function listadoDeMateriales(items: ItemComputo[]): MaterialListado[] {
         ids: new Set<string>(),
       };
       actual.cantidad += item.cantidad * r.cantidad;
-      actual.importe += item.cantidad * r.cantidad * r.precio;
+      actual.importe += item.cantidad * porUnidadDe(r, item.cantidad);
       actual.ids.add(item.id);
       actual.tareas = actual.ids.size;
       porClave.set(clave, actual);

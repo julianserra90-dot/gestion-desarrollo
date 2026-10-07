@@ -7,6 +7,7 @@ import DesgloseTarea, {
   type RenglonInicial,
 } from "@/components/DesgloseTarea";
 import * as ui from "@/components/ui";
+import SelectorUnidad from "@/components/SelectorUnidad";
 import { formatMoney } from "@/lib/format";
 
 export type FilaPlanilla = {
@@ -33,23 +34,6 @@ type Editable = { nombre: string; unidad: string; cantidad: string };
 type Suma = { mat: number; mo: number; int: number };
 
 const CERO: Suma = { mat: 0, mo: 0, int: 0 };
-
-/** Las unidades que se pueden elegir para una tarea. */
-const UNIDADES = [
-  { valor: "gl", nombre: "gl — global" },
-  { valor: "u", nombre: "u — unidad" },
-  { valor: "m", nombre: "m — metro" },
-  { valor: "ml", nombre: "ml — metro lineal" },
-  { valor: "m²", nombre: "m² — metro cuadrado" },
-  { valor: "m³", nombre: "m³ — metro cúbico" },
-  { valor: "kg", nombre: "kg — kilo" },
-  { valor: "t", nombre: "t — tonelada" },
-  { valor: "l", nombre: "l — litro" },
-  { valor: "h", nombre: "h — hora" },
-  { valor: "día", nombre: "día" },
-  { valor: "mes", nombre: "mes" },
-  { valor: "jgo", nombre: "jgo — juego" },
-];
 
 const num = (v: string) => {
   const n = Number(v);
@@ -110,6 +94,11 @@ export default function PlanillaComputo({
 }) {
   const router = useRouter();
   const todas = rubros.flatMap((r) => r.filas);
+  // Las unidades que ya se usan en la obra, para que una agregada a mano se
+  // pueda volver a elegir sin escribirla de nuevo.
+  const unidadesUsadas = [
+    ...new Set(todas.flatMap((f) => [f.unidad, ...f.renglones.map((r) => r.unidad)])),
+  ];
 
   const [valores, setValores] = useState<Record<string, Editable>>(() =>
     Object.fromEntries(todas.map((f) => [f.id, editableDe(f)]))
@@ -345,22 +334,12 @@ export default function PlanillaComputo({
                                   </div>
                                 </td>
                                 <td style={celdaUnidad}>
-                                  <select
+                                  <SelectorUnidad
                                     value={v.unidad}
-                                    onChange={(e) => cambiar(f.id, "unidad", e.target.value)}
+                                    onChange={(u) => cambiar(f.id, "unidad", u)}
+                                    extras={unidadesUsadas}
                                     style={selectUnidad}
-                                  >
-                                    {/* Una unidad que vino de Cifras y no está
-                                        en la lista se conserva como opción. */}
-                                    {!UNIDADES.some((u) => u.valor === v.unidad) && (
-                                      <option value={v.unidad}>{v.unidad}</option>
-                                    )}
-                                    {UNIDADES.map((u) => (
-                                      <option key={u.valor} value={u.valor}>
-                                        {u.nombre}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  />
                                 </td>
                               </>
                             ) : (
@@ -444,6 +423,7 @@ export default function PlanillaComputo({
                                   unidadTarea={v.unidad}
                                   cantidadTarea={num(v.cantidad)}
                                   iniciales={f.renglones}
+                                  unidadesUsadas={unidadesUsadas}
                                   puedeSerModelo={f.tareaId !== null}
                                   guardar={guardarDesglose}
                                   alGuardar={() => conmutar(setAbiertos, f.id, false)}

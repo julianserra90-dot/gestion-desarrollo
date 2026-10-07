@@ -13,6 +13,7 @@ import {
   aprobarPresupuesto,
   cambiarTiposDeRubro,
   desaprobarPresupuesto,
+  duplicarPresupuesto,
 } from "./actions";
 
 const TIPOS = ["Materiales", "Mano de obra", "Mano de obra y materiales"] as const;
@@ -31,7 +32,8 @@ const FLAG_DEL_TIPO: Record<
 const ORDEN_ESTADO: Record<string, number> = {
   Aprobado: 0,
   Pendiente: 1,
-  Descartado: 2,
+  "A cotizar": 2,
+  Descartado: 3,
 };
 
 export default async function PresupuestosPage({
@@ -321,6 +323,9 @@ export default async function PresupuestosPage({
                           <div style={listaCotizaciones}>
                             {ordenadas.map((c) => {
                               const esAprobada = c.estado === "Aprobado";
+                              // Pedido desde el cómputo: todavía sin proveedor
+                              // ni precio, el monto es la referencia computada.
+                              const esPedido = c.estado === "A cotizar";
 
                               // Qué se cotizó, no sólo cuánto. Se ordena acá y
                               // no en la consulta: ordenar un embebido de
@@ -345,7 +350,13 @@ export default async function PresupuestosPage({
                                 >
                                   <div style={cabeceraCotizacion}>
                                     <div>
-                                      <strong>{c.proveedores?.nombre ?? "—"}</strong>
+                                      <strong>
+                                        {c.proveedores?.nombre ??
+                                          (esPedido ? "Sin proveedor" : "—")}
+                                      </strong>
+                                      {esPedido && (
+                                        <span style={tagPedido}>A cotizar</span>
+                                      )}
                                       {esAprobada && (
                                         <span style={tagOk}>Aprobada</span>
                                       )}
@@ -354,9 +365,15 @@ export default async function PresupuestosPage({
                                       )}
                                     </div>
 
-                                    <strong style={montoCotizacion}>
-                                      {formatMoney(c.monto)}
-                                    </strong>
+                                    {esPedido ? (
+                                      <span style={montoReferencia}>
+                                        Computado {formatMoney(c.monto)}
+                                      </span>
+                                    ) : (
+                                      <strong style={montoCotizacion}>
+                                        {formatMoney(c.monto)}
+                                      </strong>
+                                    )}
                                   </div>
 
                                   {c.detalle && (
@@ -483,11 +500,25 @@ export default async function PresupuestosPage({
 
                                       <Link
                                         href={`/obras/${obra.slug}/presupuestos/${c.id}/editar`}
-                                        style={enlaceSimple}
+                                        style={esPedido ? botonAprobar : enlaceSimple}
                                       >
-                                        Editar
+                                        {esPedido ? "Cargar cotización" : "Editar"}
                                       </Link>
 
+                                      {/* Lo mismo, para pedírselo a otro
+                                          proveedor y comparar. */}
+                                      <form action={duplicarPresupuesto.bind(null, c.id)}>
+                                        <input type="hidden" name="slug" value={obra.slug} />
+                                        <button
+                                          type="submit"
+                                          style={botonDuplicar}
+                                          title="Copiar como pedido para otro proveedor"
+                                        >
+                                          Duplicar
+                                        </button>
+                                      </form>
+
+                                      {!esPedido && (
                                       <form
                                         action={
                                           esAprobada
@@ -511,6 +542,7 @@ export default async function PresupuestosPage({
                                           {esAprobada ? "Desaprobar" : "Aprobar"}
                                         </button>
                                       </form>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -539,6 +571,32 @@ export default async function PresupuestosPage({
 }
 
 const VERDE = "#15803d";
+
+const tagPedido = {
+  marginLeft: "8px",
+  fontSize: "11px",
+  fontWeight: 600,
+  background: "#fff4d6",
+  color: "#8a5a00",
+  borderRadius: "999px",
+  padding: "2px 8px",
+};
+
+const botonDuplicar = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  font: "inherit",
+  fontSize: "13px",
+  color: "#111111",
+  textDecoration: "underline",
+  cursor: "pointer",
+};
+
+const montoReferencia = {
+  fontSize: "14px",
+  color: "#888888",
+};
 const ROJO = "#b91c1c";
 
 // Lo que resta pagar va en rojo: es plata que todavía hay que poner, no una

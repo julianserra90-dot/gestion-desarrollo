@@ -66,6 +66,14 @@ export default async function EditarPresupuestoPage({
         <h2 style={ui.pageTitle}>Editar cotización</h2>
       </section>
 
+      {presupuesto.estado === "A cotizar" && (
+        <section style={avisoAprobada}>
+          <strong>Pedido desde el cómputo.</strong> Cargá quién cotizó y su
+          precio: al guardar pasa a Pendiente y desde el desglose de la tarea
+          se elige si el cómputo usa lo computado o lo cotizado.
+        </section>
+      )}
+
       {presupuesto.estado === "Aprobado" && (
         <section style={avisoAprobada}>
           <strong>Esta es la cotización aprobada del rubro.</strong> Lo que

@@ -4,9 +4,17 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import InputMonto from "@/components/InputMonto";
 import * as ui from "@/components/ui";
+import SelectorUnidad from "@/components/SelectorUnidad";
 import { formatMoney } from "@/lib/format";
 
 export type TipoRenglon = "Materiales" | "Mano de obra" | "Integrado";
+
+export type CotizacionDelRenglon = {
+  estado: string;
+  /** Lo cotizado para la obra entera, no por unidad. */
+  monto: number;
+  proveedor: string | null;
+};
 
 export type RenglonInicial = {
   tipo: TipoRenglon;
@@ -14,6 +22,9 @@ export type RenglonInicial = {
   unidad: string;
   cantidad: number;
   precio: number;
+  presupuestoId: string | null;
+  usarCotizado: boolean;
+  cotizacion: CotizacionDelRenglon | null;
 };
 
 type Renglon = {
@@ -24,6 +35,11 @@ type Renglon = {
   unidad: string;
   cantidad: string;
   precio: string;
+  presupuestoId: string | null;
+  /** La casilla "Cotización". */
+  cotizar: boolean;
+  usarCotizado: boolean;
+  cotizacion: CotizacionDelRenglon | null;
 };
 
 export type GuardarDesglose = (
@@ -34,6 +50,9 @@ export type GuardarDesglose = (
     unidad: string;
     cantidad: number;
     precio: number;
+    presupuestoId: string | null;
+    cotizar: boolean;
+    usarCotizado: boolean;
   }[],
   comoModelo: boolean
 ) => Promise<{ error?: string }>;
@@ -44,6 +63,10 @@ const num = (v: string) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+
+/** Ya tiene proveedor y precio: no es un pedido ni se descartó. */
+const conPrecio = (c: CotizacionDelRenglon | null): c is CotizacionDelRenglon =>
+  Boolean(c && (c.estado === "Pendiente" || c.estado === "Aprobado"));
 
 let siguiente = 0;
 const nuevaClave = () => `n${siguiente++}`;
@@ -67,7 +90,10 @@ export default function DesgloseTarea({
   puedeSerModelo,
   guardar,
   alGuardar,
+  unidadesUsadas = [],
 }: {
+  /** Las unidades ya usadas en la obra, para ofrecer las agregadas a mano. */
+  unidadesUsadas?: string[];
   itemId: string;
   unidadTarea: string;
   cantidadTarea: number;
@@ -87,34 +113,50 @@ export default function DesgloseTarea({
       unidad: r.unidad,
       cantidad: String(r.cantidad),
       precio: String(r.precio),
+      presupuestoId: r.presupuestoId,
+      cotizar: r.presupuestoId !== null,
+      usarCotizado: r.usarCotizado,
+      cotizacion: r.cotizacion,
     }))
   );
   const [comoModelo, setComoModelo] = useState(false);
   const [error, setError] = useState("");
   const [guardando, iniciar] = useTransition();
 
-  const cambiar = (clave: string, campo: keyof Renglon, valor: string) =>
+  const cambiar = (clave: string, campo: keyof Renglon, valor: string | boolean) =>
     setRenglones((antes) =>
       antes.map((r) => (r.clave === clave ? { ...r, [campo]: valor } : r))
     );
 
-  const agregar = (tipo: TipoRenglon) =>
+  // Una sola forma de agregar: el tipo se elige en la fila, como cualquier
+  // otro dato de la subtarea.
+  const agregar = () =>
     setRenglones((antes) => [
       ...antes,
       {
         clave: nuevaClave(),
-        tipo,
+        tipo: "Materiales",
         descripcion: "",
-        unidad: tipo === "Mano de obra" ? "h" : "u",
+        unidad: "un",
         cantidad: "",
         precio: "",
+        presupuestoId: null,
+        cotizar: false,
+        usarCotizado: false,
+        cotizacion: null,
       },
     ]);
 
   const quitar = (clave: string) =>
     setRenglones((antes) => antes.filter((r) => r.clave !== clave));
 
-  const subtotal = (r: Renglon) => num(r.cantidad) * num(r.precio);
+  const computado = (r: Renglon) => num(r.cantidad) * num(r.precio);
+  // Lo que suma por unidad de la tarea. Si se eligió lo cotizado, la
+  // cotización es por la obra entera y se reparte en la cantidad computada.
+  const usaCotizado = (r: Renglon) =>
+    r.cotizar && r.usarCotizado && conPrecio(r.cotizacion) && cantidadTarea > 0;
+  const subtotal = (r: Renglon) =>
+    usaCotizado(r) ? r.cotizacion!.monto / cantidadTarea : computado(r);
   const porTipo = (tipo: TipoRenglon) =>
     renglones.filter((r) => r.tipo === tipo).reduce((a, r) => a + subtotal(r), 0);
   const porUnidad = renglones.reduce((a, r) => a + subtotal(r), 0);
@@ -129,6 +171,9 @@ export default function DesgloseTarea({
           unidad: x.unidad,
           cantidad: num(x.cantidad),
           precio: num(x.precio),
+          presupuestoId: x.presupuestoId,
+          cotizar: x.cotizar,
+          usarCotizado: x.usarCotizado,
         })),
         comoModelo
       );
@@ -172,12 +217,13 @@ export default function DesgloseTarea({
             <thead>
               <tr>
                 <th style={thIzq}>Tipo</th>
-                <th style={thIzq}>Descripción</th>
+                <th style={thIzq}>Subtarea</th>
                 <th style={thCentro}>Unidad</th>
                 <th style={thCentro}>Cant. por {unidadTarea}</th>
                 <th style={thCentro}>Precio unit.</th>
                 <th style={thDer}>Por {unidadTarea}</th>
                 <th style={thDer}>En la obra</th>
+                <th style={thIzq}>Cotización</th>
                 <th style={thIzq} />
               </tr>
             </thead>
@@ -207,11 +253,12 @@ export default function DesgloseTarea({
                     />
                   </td>
                   <td style={celdaCentro}>
-                    <input
-                      type="text"
+                    <SelectorUnidad
                       value={r.unidad}
-                      onChange={(e) => cambiar(r.clave, "unidad", e.target.value)}
-                      style={{ ...inputBase, width: "64px", textAlign: "center" }}
+                      onChange={(u) => cambiar(r.clave, "unidad", u)}
+                      extras={[...unidadesUsadas, ...renglones.map((x) => x.unidad)]}
+                      corto
+                      style={{ ...inputBase, width: "100px", textAlign: "left" }}
                     />
                   </td>
                   <td style={celdaCentro}>
@@ -233,7 +280,18 @@ export default function DesgloseTarea({
                     />
                   </td>
                   <td style={celdaNumero}>{formatMoney(subtotal(r))}</td>
-                  <td style={celdaTotal}>{formatMoney(subtotal(r) * cantidadTarea)}</td>
+                  <td style={celdaTotal}>
+                    {formatMoney(subtotal(r) * cantidadTarea)}
+                    {usaCotizado(r) && <span style={marcaCotizado}>cotizado</span>}
+                  </td>
+                  <td style={celda}>
+                    <CeldaCotizacion
+                      renglon={r}
+                      computadoEnObra={computado(r) * cantidadTarea}
+                      alTildar={(v) => cambiar(r.clave, "cotizar", v)}
+                      alElegir={(v) => cambiar(r.clave, "usarCotizado", v)}
+                    />
+                  </td>
                   <td style={celda}>
                     <button
                       type="button"
@@ -254,11 +312,9 @@ export default function DesgloseTarea({
 
       <div style={pie}>
         <div style={agregarFila}>
-          {TIPOS.map((t) => (
-            <button key={t} type="button" onClick={() => agregar(t)} style={botonAgregar}>
-              + {t}
-            </button>
-          ))}
+          <button type="button" onClick={agregar} style={botonAgregar}>
+            + Agregar subtarea
+          </button>
         </div>
 
         <div style={guardarFila}>
@@ -282,6 +338,69 @@ export default function DesgloseTarea({
       </div>
 
       {error && <p style={textoError}>{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * La casilla para pedir cotización y, cuando ya llegó, la elección entre lo
+ * computado y lo cotizado.
+ */
+function CeldaCotizacion({
+  renglon: r,
+  computadoEnObra,
+  alTildar,
+  alElegir,
+}: {
+  renglon: Renglon;
+  computadoEnObra: number;
+  alTildar: (v: boolean) => void;
+  alElegir: (v: boolean) => void;
+}) {
+  const c = r.cotizacion;
+  const vinculada = r.cotizar && r.presupuestoId !== null;
+
+  let estado: React.ReactNode = null;
+  if (r.cotizar && !vinculada) {
+    estado = <span style={notaCotizacion}>Se pide al guardar</span>;
+  } else if (vinculada && c?.estado === "A cotizar") {
+    estado = <span style={etiquetaPedido}>A cotizar</span>;
+  } else if (vinculada && c?.estado === "Descartado") {
+    estado = <span style={notaCotizacion}>Descartada</span>;
+  }
+
+  return (
+    <div style={celdaCotizacionCaja}>
+      <label style={casillaCotizar} title="Pedir cotización de esta subtarea">
+        <input type="checkbox" checked={r.cotizar} onChange={(e) => alTildar(e.target.checked)} />
+        {estado}
+      </label>
+
+      {vinculada && conPrecio(c) && (
+        // Lo cotizado al lado de lo computado, y se elige con cuál se queda
+        // el cómputo. Un clic en el que no está elegido lo cambia.
+        <div style={eleccion} role="radiogroup" aria-label="Precio que usa el cómputo">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!r.usarCotizado}
+            onClick={() => alElegir(false)}
+            style={!r.usarCotizado ? opcionElegida : opcion}
+          >
+            Computado {formatMoney(computadoEnObra)}
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={r.usarCotizado}
+            onClick={() => alElegir(true)}
+            style={r.usarCotizado ? opcionElegida : opcion}
+            title={c.proveedor ?? undefined}
+          >
+            Cotizado {formatMoney(c.monto)}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -324,7 +443,7 @@ const scroll = {
 
 const tabla = {
   ...ui.table,
-  minWidth: "900px",
+  minWidth: "1060px",
 };
 
 const celda = {
@@ -431,4 +550,66 @@ const textoError = {
   color: ui.ROJO,
   fontSize: "13px",
   margin: "10px 0 0",
+};
+
+const marcaCotizado = {
+  display: "block",
+  fontSize: "10px",
+  fontWeight: 600,
+  color: "#888888",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+};
+
+const celdaCotizacionCaja = {
+  display: "grid",
+  gap: "6px",
+  minWidth: "150px",
+};
+
+const casillaCotizar = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  cursor: "pointer",
+};
+
+const notaCotizacion = {
+  fontSize: "12px",
+  color: "#888888",
+};
+
+const etiquetaPedido = {
+  fontSize: "11px",
+  fontWeight: 600,
+  background: "#fff4d6",
+  color: "#8a5a00",
+  borderRadius: "999px",
+  padding: "2px 8px",
+};
+
+const eleccion = {
+  display: "inline-flex",
+  flexDirection: "column" as const,
+  gap: "4px",
+};
+
+const opcion = {
+  background: "#ffffff",
+  border: "1px solid #dddddd",
+  borderRadius: "8px",
+  padding: "4px 8px",
+  fontSize: "12px",
+  color: "#777777",
+  cursor: "pointer",
+  textAlign: "left" as const,
+  whiteSpace: "nowrap" as const,
+};
+
+const opcionElegida = {
+  ...opcion,
+  background: "#111111",
+  borderColor: "#111111",
+  color: "#ffffff",
+  fontWeight: 600,
 };

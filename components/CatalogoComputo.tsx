@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import * as ui from "@/components/ui";
+import SelectorUnidad from "@/components/SelectorUnidad";
 
 export type TareaCatalogo = {
   id: string;
@@ -161,12 +162,10 @@ export default function CatalogoComputo({
             placeholder="Nombre de la tarea"
             style={{ ...campoChico, flex: 1, minWidth: "200px" }}
           />
-          <input
-            type="text"
+          <SelectorUnidad
             value={nueva.unidad}
-            onChange={(e) => setNueva({ ...nueva, unidad: e.target.value })}
-            placeholder="Unidad"
-            style={{ ...campoChico, width: "90px" }}
+            onChange={(u) => setNueva({ ...nueva, unidad: u })}
+            style={{ ...campoChico, width: "160px" }}
           />
           <button type="button" onClick={crear} style={botonAgregar}>
             Agregar

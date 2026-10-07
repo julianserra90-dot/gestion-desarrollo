@@ -204,8 +204,10 @@ export type Database = {
           item_id: string
           orden: number
           precio_unitario: number
+          presupuesto_id: string | null
           tipo: string
           unidad: string
+          usar_cotizado: boolean
         }
         Insert: {
           cantidad?: number
@@ -215,8 +217,10 @@ export type Database = {
           item_id: string
           orden?: number
           precio_unitario?: number
+          presupuesto_id?: string | null
           tipo: string
           unidad?: string
+          usar_cotizado?: boolean
         }
         Update: {
           cantidad?: number
@@ -226,8 +230,10 @@ export type Database = {
           item_id?: string
           orden?: number
           precio_unitario?: number
+          presupuesto_id?: string | null
           tipo?: string
           unidad?: string
+          usar_cotizado?: boolean
         }
         Relationships: [
           {
@@ -235,6 +241,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "computo_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "computo_item_desglose_presupuesto_id_fkey"
+            columns: ["presupuesto_id"]
+            isOneToOne: false
+            referencedRelation: "presupuestos"
             referencedColumns: ["id"]
           },
         ]
@@ -1884,7 +1897,7 @@ export type Database = {
           numero: string | null
           obra_id: string
           observaciones: string | null
-          proveedor_id: string
+          proveedor_id: string | null
           rubro_id: string
           tipo: string
           validez_hasta: string | null
@@ -1908,7 +1921,7 @@ export type Database = {
           numero?: string | null
           obra_id: string
           observaciones?: string | null
-          proveedor_id: string
+          proveedor_id?: string | null
           rubro_id: string
           tipo: string
           validez_hasta?: string | null
@@ -1932,7 +1945,7 @@ export type Database = {
           numero?: string | null
           obra_id?: string
           observaciones?: string | null
-          proveedor_id?: string
+          proveedor_id?: string | null
           rubro_id?: string
           tipo?: string
           validez_hasta?: string | null
