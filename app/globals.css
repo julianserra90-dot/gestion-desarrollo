@@ -19,6 +19,21 @@ body {
 }
 
 /*
+ * El logo que acompaña al título de una pantalla desaparece en pantalla
+ * angosta: ahí le saca el ancho al nombre de la obra, que es lo que hay que
+ * leer, y achicarlo hasta que entre deja "DESARROLLOS" ilegible. El logo del
+ * login no lleva esta clase, porque ahí es el contenido.
+ *
+ * Los estilos de la app van inline, en objetos al final de cada archivo; esto
+ * vive acá porque una media query no se puede escribir en un objeto de estilo.
+ */
+@media (max-width: 700px) {
+  .logo-acompana {
+    display: none;
+  }
+}
+
+/*
  * Al imprimir (o guardar como PDF) sale sólo lo que se lee: la barra lateral,
  * el catálogo y los botones se marcan con `data-no-imprimir`. El relleno que
  * deja lugar a la barra lateral tampoco hace falta en papel.

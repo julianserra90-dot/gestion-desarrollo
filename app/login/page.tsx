@@ -1,3 +1,4 @@
+import Logo from "@/components/Logo";
 import { iniciarSesion } from "./actions";
 
 export default async function LoginPage({
@@ -10,9 +11,12 @@ export default async function LoginPage({
   return (
     <main style={page}>
       <form action={iniciarSesion} style={panel}>
-        <p style={eyebrow}>Gestión de desarrollo</p>
-        <h1 style={title}>Ingresar</h1>
-        <p style={subtitle}>Accedé para ver el estado de las obras.</p>
+        {/* El logo es el título de la pantalla: entrar a la app no necesita
+            que se lo expliquen, y la marca dice de quién es. Va dentro del h1
+            para que el lector de pantalla siga anunciando un encabezado. */}
+        <h1 style={marca}>
+          <Logo ancho="200px" />
+        </h1>
 
         {error && <p style={errorBox}>{error}</p>}
 
@@ -69,25 +73,10 @@ const panel = {
   gap: "20px",
 };
 
-const eyebrow = {
-  fontSize: "12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.1em",
-  color: "#777777",
-  margin: 0,
-};
-
-const title = {
-  fontSize: "32px",
-  fontWeight: 500,
-  letterSpacing: "-0.01em",
-  margin: 0,
-};
-
-const subtitle = {
-  color: "#666666",
-  margin: 0,
-  fontSize: "15px",
+const marca = {
+  margin: "4px 0 8px",
+  display: "flex",
+  justifyContent: "center",
 };
 
 const errorBox = {

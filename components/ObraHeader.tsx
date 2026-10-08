@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Logo from "@/components/Logo";
 import Volver from "@/components/Volver";
 
 type Obra = {
@@ -95,6 +96,8 @@ export default function ObraHeader({
           <h2 style={title}>{obra.nombre}</h2>
           <p style={subtitle}>{obra.ubicacion}</p>
         </div>
+
+        <Logo acompana />
       </header>
 
       {!ocultarNav && (
