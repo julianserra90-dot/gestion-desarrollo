@@ -9,23 +9,36 @@ import {
 import * as ui from "@/components/ui";
 
 /**
- * La imagen de portada de la obra, siempre cuadrada (1:1).
+ * La imagen de portada de la obra, siempre apaisada (16:9), que es la
+ * proporción de la caja del listado.
  *
- * El recorte lo elige el usuario en el navegador —arrastra para mover,
- * desliza para acercar— y lo que se sube a Drive ya sale recortado al tamaño
+ * El encuadre lo elige el usuario en el navegador —arrastra para mover,
+ * desliza para acercar— y lo que se sube a Drive ya sale armado al tamaño
  * final. Así no hace falta guardar coordenadas ni recalcular nada al mostrarla
  * en el listado: es una imagen más, ya lista.
  *
- * El acercamiento nunca deja hueco: el mínimo (`zoom = 1`) es el que cubre el
- * marco entero, igual que un `object-fit: cover`, y desde ahí sólo se puede
- * acercar más, nunca alejar hasta ver de menos.
+ * **El mínimo del zoom entra la foto entera**, no la que cubre el marco: una
+ * foto de obra recortada a la fuerza pierde justo el edificio. Si sobra lugar
+ * a los costados queda el gris del fondo, el mismo de la tarjeta, así que en
+ * el listado no se nota el borde. Desde ahí se puede acercar hasta llenar el
+ * marco, que antes era lo único posible.
  */
 
-const MARCO_ANCHO = 350;
-const MARCO_ALTO = 350; // cuadrada
-
 const SALIDA_ANCHO = 960;
-const SALIDA_ALTO = 960; // misma proporción, en el tamaño que se guarda
+const SALIDA_ALTO = 540; // 16:9, la proporción de la caja del listado
+
+const MARCO_ANCHO = 350;
+// Derivado y no escrito a mano: la vista previa y el lienzo de salida usan el
+// mismo factor de escala, y con un alto redondeado a mano el encuadre que se
+// guarda quedaba corrido medio píxel respecto del que se vio.
+const MARCO_ALTO = (MARCO_ANCHO * SALIDA_ALTO) / SALIDA_ANCHO;
+
+/** El mismo gris que la tarjeta del listado, para que el borde no se vea. */
+const FONDO = "#f4f4f4";
+
+/** Hasta cuánto se puede acercar sobre el mínimo. Cuatro alcanza para llenar
+ *  el marco incluso con una foto bien vertical. */
+const ZOOM_MAXIMO = 4;
 
 export type ImagenActual = {
   driveId: string;
@@ -82,11 +95,12 @@ export default function ImagenPortadaForm({
     setArchivo(null);
   }
 
-  // El mínimo cubre el marco entero, como object-fit: cover. `zoom` multiplica
-  // desde ahí: 1 es "lo más lejos que se puede", nunca deja un borde vacío.
+  // El mínimo entra la foto entera, como object-fit: contain. `zoom`
+  // multiplica desde ahí: 1 es "la foto completa" y de ahí para arriba se
+  // acerca hasta llenar el marco.
   function escalaPara(z: number) {
     if (!archivo) return 1;
-    const base = Math.max(
+    const base = Math.min(
       MARCO_ANCHO / archivo.img.naturalWidth,
       MARCO_ALTO / archivo.img.naturalHeight
     );
@@ -139,25 +153,6 @@ export default function ImagenPortadaForm({
     setSubiendo(true);
     setError(null);
 
-    const s = escala();
-
-    // El centro de la imagen, desplazado por el pan, es el centro de lo que
-    // se ve en el marco. De ahí sale la esquina de recorte en coordenadas de
-    // la imagen original (sin escalar).
-    const centroX = archivo.img.naturalWidth / 2 - pan.x / s;
-    const centroY = archivo.img.naturalHeight / 2 - pan.y / s;
-    const cropAncho = MARCO_ANCHO / s;
-    const cropAlto = MARCO_ALTO / s;
-
-    const cropX = Math.max(
-      0,
-      Math.min(centroX - cropAncho / 2, archivo.img.naturalWidth - cropAncho)
-    );
-    const cropY = Math.max(
-      0,
-      Math.min(centroY - cropAlto / 2, archivo.img.naturalHeight - cropAlto)
-    );
-
     const canvas = document.createElement("canvas");
     canvas.width = SALIDA_ANCHO;
     canvas.height = SALIDA_ALTO;
@@ -169,16 +164,24 @@ export default function ImagenPortadaForm({
       return;
     }
 
+    // Se dibuja con la misma cuenta que la vista previa —centrada, corrida por
+    // el pan, en la escala del zoom— en vez de calcular un rectángulo de
+    // recorte sobre la original. Alejada, la foto no cubre el marco y no hay
+    // tal rectángulo: el recorte habría quedado fuera de la imagen.
+    const factor = SALIDA_ANCHO / MARCO_ANCHO;
+    const s = escala() * factor;
+    const ancho = archivo.img.naturalWidth * s;
+    const alto = archivo.img.naturalHeight * s;
+
+    ctx.fillStyle = FONDO;
+    ctx.fillRect(0, 0, SALIDA_ANCHO, SALIDA_ALTO);
+
     ctx.drawImage(
       archivo.img,
-      cropX,
-      cropY,
-      cropAncho,
-      cropAlto,
-      0,
-      0,
-      SALIDA_ANCHO,
-      SALIDA_ALTO
+      (SALIDA_ANCHO - ancho) / 2 + pan.x * factor,
+      (SALIDA_ALTO - alto) / 2 + pan.y * factor,
+      ancho,
+      alto
     );
 
     canvas.toBlob(
@@ -250,14 +253,19 @@ export default function ImagenPortadaForm({
             />
           </div>
 
-          <p style={ayuda}>Arrastrá para mover. Acercá con el control de abajo.</p>
+          {/* Lo que no se deduce mirando: que el control empieza con la foto
+              entera, y que lo que sobra a los costados no es un error. */}
+          <p style={ayuda}>
+            Entra la foto completa. Acercá para llenar el marco y arrastrá para
+            mover; el gris que sobre va a verse igual en la tarjeta.
+          </p>
 
           <div style={controlZoom}>
             <span style={ayuda}>Acercar</span>
             <input
               type="range"
               min={1}
-              max={3}
+              max={ZOOM_MAXIMO}
               step={0.01}
               value={zoom}
               onChange={(e) => onZoom(Number(e.target.value))}
@@ -335,15 +343,21 @@ const marco = {
   width: `${MARCO_ANCHO}px`,
   height: `${MARCO_ALTO}px`,
   overflow: "hidden" as const,
-  background: "#f2f2f2",
+  // El mismo gris con el que se va a guardar, así la vista previa no miente
+  // sobre lo que sobra a los costados.
+  background: FONDO,
   border: "1px solid #dcdcdc",
   touchAction: "none" as const,
 };
 
+// `contain` y no `cover`: acá se muestra la imagen que ya está guardada, y
+// recortarla para llenar el recuadro mostraría algo distinto de lo que hay.
+// Las cargadas antes de que la portada fuera apaisada son cuadradas.
 const previa = {
   width: `${MARCO_ANCHO}px`,
   height: `${MARCO_ALTO}px`,
-  objectFit: "cover" as const,
+  objectFit: "contain" as const,
+  background: FONDO,
   display: "block" as const,
   border: "1px solid #dcdcdc",
 };

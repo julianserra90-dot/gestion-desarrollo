@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
+import Logo from "@/components/Logo";
 import { formatDate } from "@/lib/format";
 import { ANCHO_SIDEBAR_CERRADO } from "@/lib/layout";
 import { createClient } from "@/lib/supabase/server";
@@ -52,14 +53,23 @@ export default async function Home({
       <AppSidebar activo="obras" />
 
       <header style={header}>
+        {/* El logo hace de título: las tarjetas de abajo ya dicen que esto es
+            el listado de obras. Lo archivado sí se anuncia, porque si no la
+            pantalla se ve igual que la principal con menos obras. */}
         <div>
-          <p style={eyebrow}>Gestión de desarrollo</p>
-          <h1 style={title}>{viendoArchivadas ? "Obras archivadas" : "Obras"}</h1>
-          <p style={subtitle}>
-            {viendoArchivadas
-              ? "Estas obras no aparecen en el listado principal. Entrá a una para desarchivarla."
-              : "Seleccioná una obra para ingresar a su información."}
-          </p>
+          <h1 style={marca}>
+            <Logo acompana />
+          </h1>
+
+          {viendoArchivadas && (
+            <>
+              <h2 style={title}>Obras archivadas</h2>
+              <p style={subtitle}>
+                Estas obras no aparecen en el listado principal. Entrá a una
+                para desarchivarla.
+              </p>
+            </>
+          )}
         </div>
 
         <div style={headerActions}>
@@ -125,7 +135,7 @@ export default async function Home({
 
           return (
             <Link key={obra.id} href={`/obras/${obra.slug}`} style={obraCard}>
-              {/* Siempre cuadrada, tenga o no imagen cargada: así las
+              {/* La misma caja apaisada, tenga o no imagen cargada: así las
                   tarjetas quedan de la misma altura entre sí y no saltan
                   cuando se le agrega una imagen a una obra que no tenía. */}
               {obra.imagen_drive_id ? (
@@ -223,6 +233,11 @@ const eyebrow = {
   margin: 0,
 };
 
+const marca = {
+  margin: 0,
+  display: "flex",
+};
+
 const title = {
   fontSize: "42px",
   fontWeight: 500,
@@ -276,22 +291,27 @@ const footerLink = {
 // sola, sea cual sea la cantidad de obras. El ancho máximo del contenedor es
 // el de seis tarjetas más sus separaciones: entran como mucho seis por fila y
 // en pantallas más anchas el bloque entero queda centrado.
-const ANCHO_TARJETA = 264;
 const SEPARACION = 24;
-const MAX_POR_FILA = 6;
+const MAX_POR_FILA = 4;
+// Abajo de esto la tarjeta se amontona: el nombre de la obra se parte y la
+// fila de fechas no entra en un renglón.
+const ANCHO_MINIMO = 280;
+
+// El `calc` descuenta las separaciones del 25%: sin eso, cuatro columnas de
+// 25% más tres huecos pasan del 100% y entran tres. El `max` con el ancho
+// mínimo es lo que hace que la grilla baje sola a tres, dos o una columna
+// cuando la pantalla se angosta, sin media queries.
+const COLUMNA = `max(calc(${100 / MAX_POR_FILA}% - ${
+  (SEPARACION * (MAX_POR_FILA - 1)) / MAX_POR_FILA
+}px), ${ANCHO_MINIMO}px)`;
 
 const obraGrid = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  justifyContent: "center",
+  display: "grid",
+  gridTemplateColumns: `repeat(auto-fit, minmax(${COLUMNA}, 1fr))`,
   gap: `${SEPARACION}px`,
-  maxWidth: `${ANCHO_TARJETA * MAX_POR_FILA + SEPARACION * (MAX_POR_FILA - 1)}px`,
-  margin: "0 auto",
 };
 
 const obraCard = {
-  width: `${ANCHO_TARJETA}px`,
-  flex: "0 0 auto",
   border: "1px solid rgba(17, 17, 17, 0.06)",
   borderRadius: "18px",
   textDecoration: "none",
@@ -304,15 +324,18 @@ const obraCard = {
   overflow: "hidden" as const,
 };
 
-// object-fit: cover corta los bordes que sobran en vez de deformar la
-// imagen; con la proporción fija (cuadrada) da igual el tamaño con que se
-// subió.
+// `contain` y no `cover`: la foto de una obra es un render o una fachada, y
+// recortarle los bordes para llenar la caja le come justo el edificio. Entra
+// entera y, si su proporción no es la de la caja, queda fondo a los costados.
+// La caja va en 16:9, que es con lo que vienen los renders que se suben: así
+// entran justas y no sobra fondo. El alto fijo —la proporción, no el tamaño—
+// es lo que mantiene las tarjetas parejas entre sí.
 const obraImagen = {
   width: "100%",
-  aspectRatio: "1 / 1",
-  objectFit: "cover" as const,
+  aspectRatio: "16 / 9",
+  objectFit: "contain" as const,
   display: "block",
-  background: "#f2f2f2",
+  background: "#f4f4f4",
 };
 
 const obraContenido = {

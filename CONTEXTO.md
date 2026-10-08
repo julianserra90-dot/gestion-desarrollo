@@ -1340,24 +1340,35 @@ construcción: lo que se recupera es lo vendible, así que es contra eso que se
 mide cuánto pesa la tierra. Se mostraban las dos y sobraba una.
 
 ### Imagen de portada
-El listado de obras (`/`) muestra una imagen por obra, siempre **cuadrada**
-(pasó por 16:9 y por 4:3 antes de esto; con fotos reales de obra, cuadrada es
-lo que mejor se lee), para que las tarjetas queden parejas entre sí tenga o no
-imagen cada una (sin imagen va un bloque gris del mismo tamaño, no se achica
-la tarjeta). Se carga desde Editar obra → Datos obra, con un recorte a mano en
-el navegador (`components/ImagenPortadaForm.tsx`): el usuario arrastra para
-mover y desliza para acercar, sobre un `<canvas>` que nunca deja ver un borde
-vacío —el zoom mínimo ya cubre el marco entero, como `object-fit: cover`—. Lo
-que se sube a Drive **ya sale recortado** a 960×960: no se guardan
-coordenadas de recorte, es una imagen más, lista para mostrar tal cual en
-cualquier lado.
+El listado de obras (`/`) muestra una imagen por obra, **apaisada 16:9**
+(08/10/2026; pasó por 16:9, 4:3 y cuadrada antes de volver acá), para que las
+tarjetas queden parejas entre sí tenga o no imagen cada una (sin imagen va un
+bloque gris del mismo tamaño, no se achica la tarjeta). Se carga desde Editar
+obra → Datos obra, con un encuadre a mano en el navegador
+(`components/ImagenPortadaForm.tsx`): el usuario arrastra para mover y desliza
+para acercar. Lo que se sube a Drive **ya sale armado** a 960×540: no se
+guardan coordenadas, es una imagen más, lista para mostrar tal cual.
 
-La grilla del listado (`obraGrid`) dejó de ser 3 columnas fijas: es
-`repeat(auto-fill, minmax(240px, 1fr))`, se acomoda sola según el ancho de
-pantalla. Con la imagen cuadrada —más alta que la 4:3 o la 16:9 de antes—,
-3 columnas fijas en una pantalla ancha dejaban la tarjeta demasiado alta y
-había que scrollear para verla entera; con más columnas (tarjetas más
-angostas) la imagen cuadrada da más chica y todo entra.
+**El zoom mínimo entra la foto entera, no la que cubre el marco.** Era al
+revés —`object-fit: cover`, nunca un borde vacío— y el usuario lo cambió: una
+foto de obra recortada a la fuerza pierde justo el edificio. Lo que sobra a
+los costados se rellena con el gris de la tarjeta (`#f4f4f4`), así que el
+borde no se ve en el listado. Desde ahí se puede acercar hasta llenar el
+marco. El alto del marco se **deriva** de la proporción de salida en vez de
+escribirse a mano: con un alto redondeado, el encuadre guardado quedaba
+corrido respecto del que se vio. Y el lienzo final se dibuja con la misma
+cuenta que la vista previa (centrado, corrido por el pan, en la escala del
+zoom) en lugar de calcular un rectángulo de recorte: alejada, la foto no cubre
+el marco y ese rectángulo caería fuera de la imagen.
+
+La grilla del listado (`obraGrid`) **ocupa todo el ancho, con un techo de
+cuatro por fila** (08/10/2026; antes eran tarjetas de 264 px centradas, que en
+un monitor ancho dejaban medio pantalla vacía a los costados). Es
+`repeat(auto-fit, minmax(max(calc(25% - 18px), 280px), 1fr))`: el `calc`
+descuenta las separaciones del 25% —sin eso entran tres y no cuatro—, el `max`
+con los 280 px de ancho mínimo hace que baje sola a tres, dos o una columna al
+angostarse, y `auto-fit` colapsa las columnas que sobran, así que con tres
+obras cada una se estira a un tercio de la pantalla.
 
 Mismas cuatro columnas que gastos/presupuestos/lote_pagos para su comprobante
 (`imagen_drive_id`, `imagen_nombre`, `imagen_mime`, `imagen_tamano`), esta vez
@@ -1849,7 +1860,13 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (06/10/2026)**: cómputo y presupuesto estimado dentro de
+**Lo último (08/10/2026)**: el logo de LAT Desarrollos reemplaza al título en
+el login, la portada y la ficha de obra (`components/Logo.tsx`; en pantalla
+angosta el que acompaña se esconde, regla en `globals.css`). El listado de
+obras pasa a ocupar todo el ancho con techo de cuatro por fila, y la imagen de
+portada vuelve a 16:9, con el zoom del encuadre arrancando en la foto entera.
+
+**Antes (06/10/2026)**: cómputo y presupuesto estimado dentro de
 Presupuestos, con catálogo de tareas de Cifras #367 e índice CAC. Migraciones
 `20261006120000_computo_y_cac`, `20261006130000_computo_precio_integrado` y
 `20261006140000_computo_tipo_por_tarea`, `20261006150000_computo_desglose` y
