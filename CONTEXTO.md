@@ -435,14 +435,27 @@ Cuarto tipo de gasto, al lado de Materiales, Mano de obra y Ajuste de saldo. Es
 para lo que la obra paga pero no compra ni contrata: impuestos del terreno (ABL),
 honorarios de agrimensor, tasas municipales. Se cargan en el rubro **Impuestos**
 (está en el catálogo, inactivo hasta que se lo marque). Diferencias con un gasto
-normal: no se cotiza ni aparece en Presupuestos, y no está atado a los flags del
-rubro (`usa_materiales`/`usa_mano_obra`) — se puede cargar en cualquiera. En todo
+normal: el **gasto** no está atado a los flags del rubro
+(`usa_materiales`/`usa_mano_obra`) — se puede cargar en cualquiera. En todo
 lo demás es un gasto común: se reparte entre las socias, suma al total y al
 balance, y **puede llevar Factura A con IVA/crédito fiscal** como el resto. El
 "proveedor" de estos gastos va en una tercera categoría, **Varios** (junto a
 Proveedor y Contratista); ahí se cargan los ABL, AFIP, agrimensores, etc.
 Economía lo muestra como una tercera fila en "En qué se gastó", pero sólo si la
 obra tiene alguno.
+
+**También se cotiza** (08/10/2026). Al principio no: "un impuesto se paga, no
+se contrata ni se presupuesta". Para un impuesto sigue siendo cierto, pero no
+para un honorario profesional —una gestoría municipal pasa su presupuesto antes
+de empezar, igual que un contratista—, y esa cotización había que forzarla como
+"Mano de obra y materiales". Ahora es el cuarto tipo de cotización, con su
+casilla `rubros.usa_administrativo` (apagada por defecto) y su bloque en la
+solapa. Lo cotiza **cualquiera**: el trigger `chequear_presupuesto_coherente`
+sólo exige contratista para la mano de obra y proveedor para los materiales, y
+un tipo que no nombra pasa derecho —un honorario lo factura una gestoría
+cargada como contratista, un agrimensor cargado en "Varios" o un estudio
+cargado como proveedor—. En el formulario eso se ve en que el desplegable
+ofrece las tres categorías y el rótulo pasa a "Quién lo cotiza".
 
 ### Gastos entre las socias
 Un gasto común lo puede poner **una socia, todas en partes iguales, o el dinero
@@ -1860,7 +1873,12 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (08/10/2026)**: el logo de LAT Desarrollos reemplaza al título en
+**Lo último (08/10/2026)**: lo administrativo también se cotiza —cuarto tipo,
+con `rubros.usa_administrativo` y migración `20261008120000`—, y las tres
+casillas del encabezado del rubro se reemplazaron por un desplegable
+"+ Agregar bloque" más un "Quitar" en cada bloque vacío (`BloquesDeRubro.tsx`).
+
+**Antes, el mismo día**: el logo de LAT Desarrollos reemplaza al título en
 el login, la portada y la ficha de obra (`components/Logo.tsx`; en pantalla
 angosta el que acompaña se esconde, regla en `globals.css`). El listado de
 obras pasa a ocupar todo el ancho con techo de cuatro por fila, y la imagen de

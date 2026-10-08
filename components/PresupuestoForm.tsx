@@ -16,20 +16,32 @@ type Rubro = {
   usaMateriales: boolean;
   usaManoObra: boolean;
   usaCombinado: boolean;
+  usaAdministrativo: boolean;
 };
 export type Proveedor = { id: string; nombre: string; tipo: string };
 
-const TIPOS = ["Materiales", "Mano de obra", "Mano de obra y materiales"];
+const TIPOS = [
+  "Materiales",
+  "Mano de obra",
+  "Mano de obra y materiales",
+  "Administrativo",
+];
 
 /**
  * Los materiales los cotiza un proveedor; la mano de obra, un contratista. El
  * combinado también lo cotiza un contratista: es el mismo gremio, sólo que
  * ahora su precio incluye el material.
+ *
+ * Lo administrativo no restringe a nadie, y por eso lleva las tres: un
+ * honorario lo factura una gestoría cargada como contratista, un agrimensor
+ * cargado en "Varios" o un estudio cargado como proveedor. El primero de la
+ * lista es la categoría con la que se da de alta a uno nuevo.
  */
-const TIPO_PROVEEDOR: Record<string, string> = {
-  Materiales: "Proveedor",
-  "Mano de obra": "Contratista",
-  "Mano de obra y materiales": "Contratista",
+const TIPO_PROVEEDOR: Record<string, string[]> = {
+  Materiales: ["Proveedor"],
+  "Mano de obra": ["Contratista"],
+  "Mano de obra y materiales": ["Contratista"],
+  Administrativo: ["Varios", "Contratista", "Proveedor"],
 };
 
 /** A qué casilla del rubro corresponde cada tipo, para saber si se ofrece. */
@@ -37,6 +49,28 @@ const FLAG_DEL_TIPO: Record<string, keyof Rubro> = {
   Materiales: "usaMateriales",
   "Mano de obra": "usaManoObra",
   "Mano de obra y materiales": "usaCombinado",
+  Administrativo: "usaAdministrativo",
+};
+
+/** Cómo se nombra a quien cotiza, según la categoría con la que se lo daría
+ *  de alta. "Varios" no tiene nombre propio: ahí van los que no son ninguna
+ *  de las otras dos. */
+const ROTULO_PROVEEDOR: Record<string, string> = {
+  Proveedor: "Proveedor que cotiza",
+  Contratista: "Contratista que cotiza",
+  Varios: "Quién lo cotiza",
+};
+
+const ALTA_PROVEEDOR: Record<string, string> = {
+  Proveedor: "+ Agregar proveedor nuevo",
+  Contratista: "+ Agregar contratista nuevo",
+  Varios: "+ Agregar uno nuevo",
+};
+
+const EJEMPLO_PROVEEDOR: Record<string, string> = {
+  Proveedor: "Ej: Corralón Central",
+  Contratista: "Ej: Yesería Martínez",
+  Varios: "Ej: Estudio Natolli",
 };
 
 const NUEVO = "__nuevo__";
@@ -131,8 +165,13 @@ export default function PresupuestoForm({
     moneda === "USD" ? (cotizacion ? ingresado * cotizacion : 0) : ingresado;
 
   // El desplegable muestra proveedores o contratistas según lo que se cotiza.
-  const tipoProveedor = TIPO_PROVEEDOR[tipo] ?? "Proveedor";
-  const disponibles = proveedores.filter((p) => p.tipo === tipoProveedor);
+  // Lo administrativo acepta las tres categorías, así que la lista es un array
+  // y el primero manda para los rótulos y para dar de alta a uno nuevo.
+  const tiposProveedor = TIPO_PROVEEDOR[tipo] ?? ["Proveedor"];
+  const tipoProveedor = tiposProveedor[0];
+  const disponibles = proveedores.filter((p) =>
+    tiposProveedor.includes(p.tipo)
+  );
   const agregandoNuevo = proveedorId === NUEVO;
 
   function cambiarTipo(nuevoTipo: string) {
@@ -221,9 +260,7 @@ export default function PresupuestoForm({
 
             <div style={fieldAncho}>
               <span style={labelCampo}>
-                {tipoProveedor === "Proveedor"
-                  ? "Proveedor que cotiza"
-                  : "Contratista que cotiza"}
+                {ROTULO_PROVEEDOR[tipoProveedor] ?? "Quién lo cotiza"}
               </span>
 
               <select
@@ -240,7 +277,7 @@ export default function PresupuestoForm({
                   </option>
                 ))}
                 <option value={NUEVO}>
-                  + Agregar {tipoProveedor.toLowerCase()} nuevo
+                  {ALTA_PROVEEDOR[tipoProveedor] ?? "+ Agregar uno nuevo"}
                 </option>
               </select>
 
@@ -248,11 +285,7 @@ export default function PresupuestoForm({
                 <input
                   type="text"
                   name="proveedor_nuevo"
-                  placeholder={
-                    tipoProveedor === "Proveedor"
-                      ? "Ej: Corralón Central"
-                      : "Ej: Yesería Martínez"
-                  }
+                  placeholder={EJEMPLO_PROVEEDOR[tipoProveedor] ?? ""}
                   required
                   autoFocus
                   style={{ ...ui.input, marginTop: "8px" }}

@@ -7,25 +7,34 @@ import PresupuestosNav from "@/components/PresupuestosNav";
 import * as ui from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
-import TiposDeRubro from "@/components/TiposDeRubro";
+import AgregarBloque, { QuitarBloque } from "@/components/BloquesDeRubro";
 import { createClient } from "@/lib/supabase/server";
 import {
   aprobarPresupuesto,
-  cambiarTiposDeRubro,
+  cambiarTipoDeRubro,
   desaprobarPresupuesto,
   duplicarPresupuesto,
 } from "./actions";
 
-const TIPOS = ["Materiales", "Mano de obra", "Mano de obra y materiales"] as const;
+const TIPOS = [
+  "Materiales",
+  "Mano de obra",
+  "Mano de obra y materiales",
+  "Administrativo",
+] as const;
 
 /** A qué casilla del rubro corresponde cada tipo, para saber si se ofrece. */
 const FLAG_DEL_TIPO: Record<
   (typeof TIPOS)[number],
-  "usa_materiales" | "usa_mano_obra" | "usa_mano_obra_y_materiales"
+  | "usa_materiales"
+  | "usa_mano_obra"
+  | "usa_mano_obra_y_materiales"
+  | "usa_administrativo"
 > = {
   Materiales: "usa_materiales",
   "Mano de obra": "usa_mano_obra",
   "Mano de obra y materiales": "usa_mano_obra_y_materiales",
+  Administrativo: "usa_administrativo",
 };
 
 /** La aprobada primera, después las pendientes, las descartadas al final. */
@@ -73,7 +82,7 @@ export default async function PresupuestosPage({
     supabase
       .from("rubros")
       .select(
-        "id, nombre, orden, activo, usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales"
+        "id, nombre, orden, activo, usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales, usa_administrativo"
       )
       .eq("obra_id", obra.id)
       .order("nombre"),
@@ -226,13 +235,11 @@ export default async function PresupuestosPage({
                 <div style={cabeceraRubro}>
                   <h3 style={tituloRubro}>{rubro.nombre}</h3>
 
-                  <TiposDeRubro
+                  <AgregarBloque
                     rubroId={rubro.id}
                     slug={obra.slug}
-                    usaMateriales={rubro.usa_materiales}
-                    usaManoObra={rubro.usa_mano_obra}
-                    usaCombinado={rubro.usa_mano_obra_y_materiales}
-                    accion={cambiarTiposDeRubro}
+                    faltantes={TIPOS.filter((t) => !tipos.includes(t))}
+                    accion={cambiarTipoDeRubro}
                   />
                 </div>
 
@@ -307,12 +314,31 @@ export default async function PresupuestosPage({
                             )}
                           </span>
 
-                          <Link
-                            href={`/obras/${obra.slug}/presupuestos/nuevo?rubro=${rubro.id}&tipo=${encodeURIComponent(tipo)}`}
-                            style={enlaceCotizar}
-                          >
-                            + Cotizar
-                          </Link>
+                          {/* Las dos acciones comparten la última columna de
+                              la grilla: suelto, "Quitar" caía a un renglón
+                              propio debajo del bloque. */}
+                          <span style={accionesTipo}>
+                            {/* Sólo en el bloque que no tiene nada y mientras
+                                quede otro: es lo único que se puede sacar sin
+                                esconder algo que existe. */}
+                            {suyas.length === 0 &&
+                              gastado === 0 &&
+                              tipos.length > 1 && (
+                                <QuitarBloque
+                                  rubroId={rubro.id}
+                                  slug={obra.slug}
+                                  tipo={tipo}
+                                  accion={cambiarTipoDeRubro}
+                                />
+                              )}
+
+                            <Link
+                              href={`/obras/${obra.slug}/presupuestos/nuevo?rubro=${rubro.id}&tipo=${encodeURIComponent(tipo)}`}
+                              style={enlaceCotizar}
+                            >
+                              + Cotizar
+                            </Link>
+                          </span>
                         </span>
                       </summary>
 
@@ -693,11 +719,17 @@ const aprobadaResumen = {
   whiteSpace: "nowrap" as const,
 };
 
+const accionesTipo = {
+  display: "flex",
+  alignItems: "center",
+  gap: "14px",
+  justifySelf: "end" as const,
+};
+
 const enlaceCotizar = {
   color: "#111111",
   fontSize: "13px",
   textDecoration: "underline",
-  justifySelf: "end" as const,
 };
 
 const contenidoAbierto = {

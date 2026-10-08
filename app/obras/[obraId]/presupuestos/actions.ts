@@ -459,36 +459,57 @@ export async function eliminarPresupuesto(formData: FormData) {
   redirect(`/obras/${slug}/presupuestos`);
 }
 
+/** La columna del rubro que prende cada bloque de cotización. */
+const COLUMNA_DEL_TIPO = {
+  Materiales: "usa_materiales",
+  "Mano de obra": "usa_mano_obra",
+  "Mano de obra y materiales": "usa_mano_obra_y_materiales",
+  Administrativo: "usa_administrativo",
+} as const;
+
+type TipoDeBloque = keyof typeof COLUMNA_DEL_TIPO;
+
 /**
- * Marca si un rubro lleva materiales, mano de obra o las dos.
+ * Agrega o saca un bloque de cotización del rubro, de a uno.
  *
  * Vive acá y no en la solapa Rubros porque es mirando las cotizaciones donde
  * uno se da cuenta de que un rubro no lleva mano de obra.
  */
-export async function cambiarTiposDeRubro(rubroId: string, formData: FormData) {
+export async function cambiarTipoDeRubro(rubroId: string, formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
-  const mat = formData.get("usa_materiales") === "on";
-  const mo = formData.get("usa_mano_obra") === "on";
-  const combinado = formData.get("usa_mano_obra_y_materiales") === "on";
+  const tipo = String(formData.get("tipo") ?? "") as TipoDeBloque;
+  const incluir = formData.get("incluir") === "1";
+  const columna = COLUMNA_DEL_TIPO[tipo];
 
-  // Un rubro sin ninguna de las tres no sirve para nada, y la base lo rechaza.
-  if (!mat && !mo && !combinado) {
-    volverAListado(
-      slug,
-      "Un rubro tiene que llevar al menos materiales o mano de obra."
-    );
-  }
+  if (!columna) volverAListado(slug, "Ese tipo de cotización no existe.");
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  // Hay que mirar las otras para no dejar el rubro sin ninguna: la base lo
+  // rechaza, y un rubro sin bloques no serviría para nada.
+  const { data: rubro } = await supabase
     .from("rubros")
-    .update({
-      usa_materiales: mat,
-      usa_mano_obra: mo,
-      usa_mano_obra_y_materiales: combinado,
-    })
-    .eq("id", rubroId);
+    .select(
+      "usa_materiales, usa_mano_obra, usa_mano_obra_y_materiales, usa_administrativo"
+    )
+    .eq("id", rubroId)
+    .maybeSingle();
+
+  if (!rubro) volverAListado(slug, "No se encontró el rubro.");
+
+  const quedan: Record<string, boolean> = { ...rubro!, [columna]: incluir };
+
+  if (!Object.values(quedan).some(Boolean)) {
+    volverAListado(slug, "El rubro tiene que llevar al menos un bloque.");
+  }
+
+  // La columna sale de un mapa, así que el tipo tiene que decir cuáles son las
+  // cuatro posibles: con una clave calculada a secas queda un índice de string
+  // y el update tipado no lo acepta.
+  const cambio: Partial<Record<(typeof COLUMNA_DEL_TIPO)[TipoDeBloque], boolean>> =
+    { [columna]: incluir };
+
+  const { error } = await supabase.from("rubros").update(cambio).eq("id", rubroId);
 
   if (error) volverAListado(slug, error.message);
 

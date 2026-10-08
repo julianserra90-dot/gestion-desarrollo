@@ -260,8 +260,8 @@ export type Database = {
           nombre: string
           obra_id: string
           orden: number
-          precio_mano_obra: number
           precio_integrado: number
+          precio_mano_obra: number
           precio_materiales: number
           rubro_id: string
           subrubro: string | null
@@ -278,8 +278,8 @@ export type Database = {
           nombre: string
           obra_id: string
           orden?: number
-          precio_mano_obra?: number
           precio_integrado?: number
+          precio_mano_obra?: number
           precio_materiales?: number
           rubro_id: string
           subrubro?: string | null
@@ -296,8 +296,8 @@ export type Database = {
           nombre?: string
           obra_id?: string
           orden?: number
-          precio_mano_obra?: number
           precio_integrado?: number
+          precio_mano_obra?: number
           precio_materiales?: number
           rubro_id?: string
           subrubro?: string | null
@@ -362,7 +362,7 @@ export type Database = {
             foreignKeyName: "computos_obra_id_fkey"
             columns: ["obra_id"]
             isOneToOne: true
-            referencedRelation: "obra_balance"
+            referencedRelation: "obra_caja"
             referencedColumns: ["obra_id"]
           },
           {
@@ -2051,6 +2051,7 @@ export type Database = {
           nombre: string
           obra_id: string | null
           orden: number
+          usa_administrativo: boolean
           usa_mano_obra: boolean
           usa_mano_obra_y_materiales: boolean
           usa_materiales: boolean
@@ -2061,6 +2062,7 @@ export type Database = {
           nombre: string
           obra_id?: string | null
           orden?: number
+          usa_administrativo?: boolean
           usa_mano_obra?: boolean
           usa_mano_obra_y_materiales?: boolean
           usa_materiales?: boolean
@@ -2071,6 +2073,7 @@ export type Database = {
           nombre?: string
           obra_id?: string | null
           orden?: number
+          usa_administrativo?: boolean
           usa_mano_obra?: boolean
           usa_mano_obra_y_materiales?: boolean
           usa_materiales?: boolean
