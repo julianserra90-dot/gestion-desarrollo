@@ -96,9 +96,13 @@ export function QuitarBloque({
   );
 }
 
+// Ancho fijo a propósito: un `select` nativo se mide por su opción más larga,
+// así que con "Mano de obra y materiales" en la lista salía ancho y sin ella
+// angosto, y el control cambiaba de tamaño de un rubro a otro. Los 210 px son
+// los que necesita esa opción, que es la más larga de las cuatro.
 const selector = {
   ...ui.input,
-  width: "auto",
+  width: "210px",
   padding: "7px 10px",
   color: "#555555",
   cursor: "pointer",
