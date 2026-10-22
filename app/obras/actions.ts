@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { normalizar } from "@/lib/ambitos";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 type Socio = { empresa_id: string; porcentaje: number };
@@ -227,22 +228,20 @@ export async function eliminarObra(formData: FormData) {
   // que se abrió la pantalla y se apretó el botón— la obra quedaba sin socias
   // ni porcentajes: el dato del que depende todo el reparto, perdido, y el
   // mensaje hablando de otra cosa.
-  const { error, count } = await supabase
+  const { data, error } = await supabase
     .from("obras")
-    .delete({ count: "exact" })
-    .eq("id", obraId);
+    .delete()
+    .eq("id", obraId)
+    .select("id");
 
   if (error) {
     volverCon(`/obras/${slug}/editar`, error.message);
   }
 
-  // Sin error y sin filas borradas es el RLS: Postgres no avisa, devuelve cero.
-  // Decir "listo" acá manda a buscar al listado una obra que sigue estando.
-  if (count === 0) {
-    volverCon(
-      `/obras/${slug}/editar`,
-      "No tenés permiso para borrar esta obra."
-    );
+  // Sin error y sin filas es el RLS, que no avisa (`lib/permisos.ts`): decir
+  // "listo" acá manda a buscar al listado una obra que sigue estando.
+  if (noTocoNada(data)) {
+    volverCon(`/obras/${slug}/editar`, sinPermisoPara("borrar esta obra"));
   }
 
   revalidatePath("/", "layout");
@@ -405,22 +404,22 @@ export async function eliminarObraConTodo(formData: FormData) {
     }
   }
 
-  const { error, count } = await supabase
+  const { data, error } = await supabase
     .from("obras")
-    .delete({ count: "exact" })
-    .eq("id", obraId);
+    .delete()
+    .eq("id", obraId)
+    .select("id");
 
   if (error) {
     volverAEditar(error.message);
     return;
   }
 
-  // Sin error y sin filas borradas es el RLS, que devuelve cero en silencio.
-  // Hay que frenar antes de Drive: los deletes de arriba tampoco pasaron, así
-  // que seguir sería borrar todos los comprobantes de una obra que sigue
-  // entera.
-  if (count === 0) {
-    volverAEditar("No tenés permiso para borrar esta obra.");
+  // Sin error y sin filas es el RLS, que no avisa (`lib/permisos.ts`). Hay que
+  // frenar antes de Drive: los deletes de arriba tampoco pasaron, así que
+  // seguir sería borrar todos los comprobantes de una obra que sigue entera.
+  if (noTocoNada(data)) {
+    volverAEditar(sinPermisoPara("borrar esta obra"));
     return;
   }
 

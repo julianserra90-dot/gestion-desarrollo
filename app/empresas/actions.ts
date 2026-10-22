@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 export async function crearEmpresa(formData: FormData) {
@@ -49,7 +50,11 @@ export async function eliminarEmpresa(formData: FormData) {
   const id = String(formData.get("empresa_id") ?? "");
 
   const supabase = await createClient();
-  const { error } = await supabase.from("empresas").delete().eq("id", id);
+  const { data, error } = await supabase
+    .from("empresas")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     // La base rechaza el borrado si la empresa está referenciada en alguna
@@ -61,6 +66,8 @@ export async function eliminarEmpresa(formData: FormData) {
         : error.message
     );
   }
+
+  if (noTocoNada(data)) volverCon("/empresas", sinPermisoPara("borrar empresas"));
 
   revalidatePath("/", "layout");
   redirect("/empresas");

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 type Campos = {
@@ -141,15 +142,24 @@ export async function eliminarAvance(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("avances")
     .delete()
     .eq("id", avanceId)
-    .eq("obra_id", obraId);
+    .eq("obra_id", obraId)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/avances/${rubroId}?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  if (noTocoNada(data)) {
+    redirect(
+      `/obras/${slug}/avances/${rubroId}?error=${encodeURIComponent(
+        sinPermisoPara("borrar este avance")
+      )}`
     );
   }
 

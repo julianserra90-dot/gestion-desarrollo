@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { TIPOS } from "@/lib/inversores";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -116,10 +117,11 @@ export async function eliminarInversor(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("inversores")
     .delete()
-    .eq("id", inversorId);
+    .eq("id", inversorId)
+    .select("id");
 
   if (error) {
     // La base no deja borrar a alguien con aportes cargados (`restrict`): eso
@@ -130,6 +132,14 @@ export async function eliminarInversor(formData: FormData) {
 
     redirect(
       `/obras/${slug}/inversores/${inversorId}/editar?error=${encodeURIComponent(mensaje)}`
+    );
+  }
+
+  if (noTocoNada(data)) {
+    redirect(
+      `/obras/${slug}/inversores/${inversorId}/editar?error=${encodeURIComponent(
+        sinPermisoPara("borrar esta ficha")
+      )}`
     );
   }
 

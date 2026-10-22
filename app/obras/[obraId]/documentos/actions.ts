@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { type Ambito, esAmbito, mismaLinea, usaRubro } from "@/lib/ambitos";
 import { getDocumentosBreves, resolverLinea } from "@/lib/documentos";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 export async function subirDocumento(formData: FormData) {
@@ -310,15 +311,25 @@ export async function eliminarArchivoDeDocumento(formData: FormData) {
     .eq("documento_id", documentoId)
     .maybeSingle();
 
-  const { error } = await supabase
+  const { data: borrados, error } = await supabase
     .from("documento_archivos")
     .delete()
     .eq("id", archivoId)
-    .eq("documento_id", documentoId);
+    .eq("documento_id", documentoId)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/documentos/${documentoId}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  // Antes de Drive (`lib/permisos.ts`).
+  if (noTocoNada(borrados)) {
+    redirect(
+      `/obras/${slug}/documentos/${documentoId}/editar?error=${encodeURIComponent(
+        sinPermisoPara("borrar este archivo")
+      )}`
     );
   }
 
@@ -372,10 +383,24 @@ export async function eliminarDocumento(formData: FormData) {
         )
       : [];
 
-  const { error } = await supabase.from("documentos").delete().eq("id", id);
+  const { data: borrados, error } = await supabase
+    .from("documentos")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     redirect(`/obras/${slug}/documentos?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Antes de heredar la vigencia y de tocar Drive: si el borrado no pasó, lo
+  // de abajo cambiaría el estado de otra versión por nada (`lib/permisos.ts`).
+  if (noTocoNada(borrados)) {
+    redirect(
+      `/obras/${slug}/documentos?error=${encodeURIComponent(
+        sinPermisoPara("borrar este documento")
+      )}`
+    );
   }
 
   // Si se borró la vigente y la línea tiene versiones anteriores, la más alta

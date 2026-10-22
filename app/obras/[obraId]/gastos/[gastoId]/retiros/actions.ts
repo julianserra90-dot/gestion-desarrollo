@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { leerItems } from "@/lib/items-material";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -124,13 +125,17 @@ export async function eliminarRetiro(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("acopio_retiros")
     .delete()
     .eq("id", retiroId)
-    .eq("gasto_id", gastoId);
+    .eq("gasto_id", gastoId)
+    .select("id");
 
   if (error) volverA(slug, gastoId, retiroId, error.message);
+  if (noTocoNada(data)) {
+    volverA(slug, gastoId, retiroId, sinPermisoPara("borrar este retiro"));
+  }
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/gastos/${gastoId}`);

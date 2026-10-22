@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 const LISTADO = "/prefactibilidades/referencias";
@@ -51,10 +52,18 @@ export async function eliminarReferencia(formData: FormData) {
   const id = String(formData.get("referencia_id") ?? "");
 
   const supabase = await createClient();
-  const { error } = await supabase.from("edificios_referencia").delete().eq("id", id);
+  const { data, error } = await supabase
+    .from("edificios_referencia")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volverCon(`${LISTADO}/${id}`, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(`${LISTADO}/${id}`, sinPermisoPara("borrar esta referencia"));
   }
 
   revalidatePath(LISTADO);

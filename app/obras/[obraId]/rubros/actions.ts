@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 export async function crearRubro(formData: FormData) {
@@ -118,7 +119,11 @@ export async function eliminarRubro(id: string, formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
 
   const supabase = await createClient();
-  const { error } = await supabase.from("rubros").delete().eq("id", id);
+  const { data, error } = await supabase
+    .from("rubros")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volver(
@@ -128,6 +133,8 @@ export async function eliminarRubro(id: string, formData: FormData) {
         : error.message
     );
   }
+
+  if (noTocoNada(data)) volver(slug, sinPermisoPara("borrar este rubro"));
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/rubros`);

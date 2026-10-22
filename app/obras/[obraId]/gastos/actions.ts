@@ -9,6 +9,7 @@ import { getCaja } from "@/lib/caja";
 import { guardarDetalleSiCorresponde } from "@/lib/detalles";
 import { camposDelFormulario } from "@/lib/borradores";
 import { leerItems, sumaDeItems } from "@/lib/items-material";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import type { ItemMaterial } from "@/lib/items-material";
 import { GASTO_COMPARTIDO, centavos, repartirPago } from "@/lib/reparto";
 import type { Reparto } from "@/lib/reparto";
@@ -1016,14 +1017,25 @@ export async function anularGasto(formData: FormData) {
   const gastoId = String(formData.get("gasto_id") ?? "");
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("gastos")
     .update({ estado: "Anulado" })
-    .eq("id", gastoId);
+    .eq("id", gastoId)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  // Anular es la salida que se le ofrece a quien no puede borrar, así que si
+  // esto también se va en silencio el mensaje de al lado manda a un callejón.
+  if (noTocoNada(data)) {
+    redirect(
+      `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(
+        sinPermisoPara("anular este gasto")
+      )}`
     );
   }
 
@@ -1038,15 +1050,25 @@ export async function restaurarGasto(formData: FormData) {
   const supabase = await createClient();
 
   // Reactivar un gasto que se había pagado con dinero en cuenta vuelve a
-  // tomar esa plata, y puede que ya no esté.
-  const { error } = await supabase
+  // tomar esa plata, y puede que ya no esté: eso lo frena el trigger de la
+  // base y el mensaje llega acá como error.
+  const { data, error } = await supabase
     .from("gastos")
     .update({ estado: "Pagado" })
-    .eq("id", gastoId);
+    .eq("id", gastoId)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  if (noTocoNada(data)) {
+    redirect(
+      `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(
+        sinPermisoPara("restaurar este gasto")
+      )}`
     );
   }
 
@@ -1075,10 +1097,11 @@ export async function eliminarGasto(formData: FormData) {
       .eq("gasto_id", gastoId),
   ]);
 
-  const { error, count } = await supabase
+  const { data: borrados, error } = await supabase
     .from("gastos")
-    .delete({ count: "exact" })
-    .eq("id", gastoId);
+    .delete()
+    .eq("id", gastoId)
+    .select("id");
 
   if (error) {
     redirect(
@@ -1086,14 +1109,14 @@ export async function eliminarGasto(formData: FormData) {
     );
   }
 
-  // Sin error y sin filas borradas es el RLS: sólo el administrador borra
-  // gastos, y Postgres no avisa, devuelve cero. Hay que frenar antes de Drive:
-  // seguir dejaba el gasto en la base y su comprobante borrado, que es perder
-  // el papel y quedarse con la fila apuntando a un archivo que ya no existe.
-  if (count === 0) {
+  // Sin error y sin filas es el RLS, que no avisa (`lib/permisos.ts`): sólo el
+  // administrador borra gastos. Hay que frenar antes de Drive, porque seguir
+  // dejaba el gasto en la base y su comprobante borrado —perder el papel y
+  // quedarse con la fila apuntando a un archivo que ya no existe—.
+  if (noTocoNada(borrados)) {
     redirect(
       `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(
-        "No tenés permiso para borrar este gasto. Podés anularlo: queda en el listado tachado y no suma a ningún total."
+        `${sinPermisoPara("borrar este gasto")} Podés anularlo: queda en el listado tachado y no suma a ningún total.`
       )}`
     );
   }

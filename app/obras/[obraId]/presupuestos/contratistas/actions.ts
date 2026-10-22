@@ -17,6 +17,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 import { TIPOS_DE_PROVEEDOR } from "@/lib/proveedores-tipos";
 
@@ -65,7 +66,7 @@ export async function actualizarProveedor(formData: FormData) {
     .select("id");
 
   if (error) volverCon(volver, mensajeDeError(error, nombre));
-  if (!data?.length) volverCon(volver, SIN_PERMISO);
+  if (noTocoNada(data)) volverCon(volver, SIN_PERMISO);
 
   listo(volver);
 }
@@ -94,7 +95,7 @@ export async function eliminarProveedor(formData: FormData) {
     );
   }
 
-  if (!data?.length) volverCon(volver, SIN_PERMISO);
+  if (noTocoNada(data)) volverCon(volver, SIN_PERMISO);
 
   listo(volver);
 }

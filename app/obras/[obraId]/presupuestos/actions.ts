@@ -7,6 +7,7 @@ import { convertirMonto } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { leerItems, sumaDeItems } from "@/lib/items-material";
 import type { ItemMaterial } from "@/lib/items-material";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 type PresupuestoUpdate = Database["public"]["Tables"]["presupuestos"]["Update"];
@@ -443,11 +444,24 @@ export async function eliminarPresupuesto(formData: FormData) {
     .eq("id", id)
     .maybeSingle();
 
-  const { error } = await supabase.from("presupuestos").delete().eq("id", id);
+  const { data: borrados, error } = await supabase
+    .from("presupuestos")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/presupuestos/${id}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  // Antes de Drive (`lib/permisos.ts`).
+  if (noTocoNada(borrados)) {
+    redirect(
+      `/obras/${slug}/presupuestos/${id}/editar?error=${encodeURIComponent(
+        sinPermisoPara("borrar esta cotización")
+      )}`
     );
   }
 

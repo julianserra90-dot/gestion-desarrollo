@@ -10,6 +10,7 @@ import {
   type ConsultaCiudad,
 } from "@/lib/ciudad";
 import type { Json } from "@/lib/database.types";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -144,13 +145,18 @@ export async function eliminarPrefactibilidad(formData: FormData) {
   const id = String(formData.get("prefactibilidad_id") ?? "");
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("prefactibilidades")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volverCon(`/prefactibilidades/${id}`, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(`/prefactibilidades/${id}`, sinPermisoPara("borrar este estudio"));
   }
 
   revalidatePath("/prefactibilidades");

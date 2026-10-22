@@ -6,6 +6,7 @@ import type { Database } from "@/lib/database.types";
 import { guardarDetalleSiCorresponde } from "@/lib/detalles";
 import { convertirMonto } from "@/lib/dolar";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 type IngresoUpdate = Database["public"]["Tables"]["ingresos"]["Update"];
@@ -349,11 +350,25 @@ export async function eliminarIngreso(formData: FormData) {
     .eq("id", ingresoId)
     .maybeSingle();
 
-  const { error } = await supabase.from("ingresos").delete().eq("id", ingresoId);
+  const { data: borrados, error } = await supabase
+    .from("ingresos")
+    .delete()
+    .eq("id", ingresoId)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/ingresos/${ingresoId}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  // Antes de Drive: sin este corte el ingreso quedaba en la base y su
+  // comprobante borrado (`lib/permisos.ts`).
+  if (noTocoNada(borrados)) {
+    redirect(
+      `/obras/${slug}/ingresos/${ingresoId}/editar?error=${encodeURIComponent(
+        sinPermisoPara("borrar este ingreso")
+      )}`
     );
   }
 

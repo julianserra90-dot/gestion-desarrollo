@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 const TODAS_LAS_SOCIAS = "todas";
@@ -154,14 +155,23 @@ export async function eliminarPrevisto(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("ingresos_previstos")
     .delete()
-    .eq("id", previstoId);
+    .eq("id", previstoId)
+    .select("id");
 
   if (error) {
     redirect(
       `/obras/${slug}/ingresos/agenda/${previstoId}/editar?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  if (noTocoNada(data)) {
+    redirect(
+      `/obras/${slug}/ingresos/agenda/${previstoId}/editar?error=${encodeURIComponent(
+        sinPermisoPara("borrar esta cuota")
+      )}`
     );
   }
 
