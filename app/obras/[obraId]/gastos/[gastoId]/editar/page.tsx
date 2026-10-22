@@ -83,7 +83,9 @@ export default async function EditarGastoPage({
     // Las facturas, si el gasto se facturó en varias.
     supabase
       .from("gasto_facturas")
-      .select("empresa_id, monto, numero, comprobante_drive_id, comprobante_nombre")
+      .select(
+        "empresa_id, monto, monto_usd, numero, comprobante_drive_id, comprobante_nombre"
+      )
       .eq("gasto_id", gasto.id)
       .order("orden"),
   ]);
@@ -152,7 +154,11 @@ export default async function EditarGastoPage({
         }))}
         facturasIniciales={(facturas ?? []).map((f) => ({
           empresaId: f.empresa_id,
-          monto: Number(f.monto),
+          // El formulario escribe las facturas en la moneda del papel y las
+          // compara contra el monto del gasto en esa misma moneda, así que acá
+          // va el monto en dólares si la factura se escribió en dólares.
+          // `monto` son pesos siempre; `monto_usd` sólo está cuando aplica.
+          monto: Number(f.monto_usd ?? f.monto),
           numero: f.numero,
           comprobanteDriveId: f.comprobante_drive_id,
           comprobanteNombre: f.comprobante_nombre,

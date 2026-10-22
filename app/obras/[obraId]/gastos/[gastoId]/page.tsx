@@ -35,7 +35,7 @@ export default async function FichaGastoPage({
     supabase
       .from("gastos")
       .select(
-        "id, fecha, concepto, tipo_gasto, es_acopio, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, descuento_detalle, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, numero, comprobante_drive_id, orden, empresas(nombre))"
+        "id, fecha, concepto, tipo_gasto, es_acopio, tipo_pago, tipo_factura, numero_factura, alicuota_iva, iva, precios_con_iva, descuento_detalle, monto, monto_usd, moneda, cotizacion, cotizacion_manual, caja_ars, caja_usd, monto_caja, compartido, estado, observaciones, comprobante_drive_id, comprobante_nombre, rubros(nombre), proveedores(nombre), pagadora:empresas!gastos_empresa_pagadora_id_fkey(nombre), receptora:empresas!gastos_empresa_receptora_id_fkey(nombre), titular:empresas!gastos_empresa_factura_id_fkey(nombre), gasto_facturas(empresa_id, monto, monto_usd, numero, comprobante_drive_id, orden, empresas(nombre))"
       )
       .eq("id", gastoId)
       .eq("obra_id", obra.id)
@@ -233,7 +233,14 @@ export default async function FichaGastoPage({
                 <tr key={f.empresa_id}>
                   <td style={ui.td}>{f.empresas?.nombre ?? "—"}</td>
                   <td style={ui.td}>{f.numero ?? "—"}</td>
-                  <td style={ui.tdRight}>{formatMoney(Number(f.monto))}</td>
+                  {/* Lo que dice el papel: en dólares si se escribió así, como
+                      el Monto de arriba. El crédito fiscal al lado va en pesos,
+                      igual que el IVA del gasto. */}
+                  <td style={ui.tdRight}>
+                    {f.monto_usd === null
+                      ? formatMoney(Number(f.monto))
+                      : formatUSD(Number(f.monto_usd))}
+                  </td>
                   {gasto.tipo_factura === "A" && (
                     <td style={ui.tdRight}>{formatMoney(ivaDe(Number(f.monto)))}</td>
                   )}

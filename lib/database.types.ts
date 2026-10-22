@@ -777,6 +777,7 @@ export type Database = {
           gasto_id: string
           id: string
           monto: number
+          monto_usd: number | null
           numero: string | null
           orden: number
         }
@@ -790,6 +791,7 @@ export type Database = {
           gasto_id: string
           id?: string
           monto: number
+          monto_usd?: number | null
           numero?: string | null
           orden?: number
         }
@@ -803,6 +805,7 @@ export type Database = {
           gasto_id?: string
           id?: string
           monto?: number
+          monto_usd?: number | null
           numero?: string | null
           orden?: number
         }

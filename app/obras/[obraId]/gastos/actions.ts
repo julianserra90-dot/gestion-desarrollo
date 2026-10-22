@@ -288,6 +288,65 @@ function leerFacturas(
   return { facturas };
 }
 
+/** Una factura con su monto en las dos monedas, lista para guardar. */
+type FacturaValuada = FacturaLeida & {
+  /** En pesos, que es como se guarda: la unidad en la que la app suma. */
+  montoArs: number;
+  /** Lo que dice el papel, si se escribió en dólares. */
+  montoUsd: number | null;
+};
+
+/**
+ * Pasa las facturas a pesos.
+ *
+ * Se escriben en la moneda en que se cargó el gasto, porque es lo que dice cada
+ * papel: un gasto en dólares pagado sin la cuenta se factura en dólares. Pero
+ * `gasto_facturas.monto` se guarda en pesos, como `gastos.monto`, porque las
+ * dos cifras se cruzan —qué parte de lo facturado y del IVA del gasto le toca a
+ * cada socia— y con unidades distintas esa cuenta daba cualquier cosa: lo
+ * facturado quedaba dividido por la cotización y el crédito fiscal en casi
+ * cero.
+ *
+ * El resto del redondeo va a la primera, igual que el reparto de un aporte
+ * entre todas las socias, para que la suma dé exactamente el monto del gasto:
+ * el desglose por empresa tiene que cuadrar con la tarjeta de la que se vino.
+ */
+function valuarFacturas(
+  facturas: FacturaLeida[],
+  enDolares: boolean,
+  montoGastoArs: number,
+  cotizacion: number | null
+): { facturas: FacturaValuada[]; error?: string } {
+  if (!enDolares) {
+    return {
+      facturas: facturas.map((f) => ({ ...f, montoArs: f.monto, montoUsd: null })),
+    };
+  }
+
+  // No puede pasar —un gasto en dólares sin cotización lo frena
+  // `convertirMonto` antes de llegar acá—, pero sin cotización no hay forma de
+  // escribir el monto en pesos, y guardar dólares en esa columna es el bug que
+  // esto viene a arreglar.
+  if (!cotizacion) {
+    return {
+      facturas: [],
+      error:
+        "No se pudo obtener la cotización del dólar para pasar las facturas a pesos.",
+    };
+  }
+
+  const enPesos = facturas.map((f) => centavos(f.monto * cotizacion));
+  const sobra = centavos(montoGastoArs - enPesos.reduce((acc, p) => acc + p, 0));
+
+  return {
+    facturas: facturas.map((f, i) => ({
+      ...f,
+      montoArs: centavos(enPesos[i] + (i === 0 ? sobra : 0)),
+      montoUsd: f.monto,
+    })),
+  };
+}
+
 /**
  * Guarda las facturas del gasto reemplazando las anteriores. Los archivos se
  * suben antes y se conservan los que ya estaban si no vino uno nuevo ni se
@@ -298,7 +357,7 @@ async function guardarFacturas(
   supabase: Awaited<ReturnType<typeof createClient>>,
   gastoId: string,
   slug: string,
-  facturas: FacturaLeida[]
+  facturas: FacturaValuada[]
 ): Promise<string | null> {
   const { data: previas } = await supabase
     .from("gasto_facturas")
@@ -343,7 +402,8 @@ async function guardarFacturas(
     filas.push({
       gasto_id: gastoId,
       empresa_id: f.empresaId,
-      monto: f.monto,
+      monto: f.montoArs,
+      monto_usd: f.montoUsd,
       numero: f.numero,
       comprobante_drive_id: archivo.id,
       comprobante_nombre: archivo.nombre,
@@ -591,16 +651,37 @@ export async function crearGasto(formData: FormData) {
     compartido || usarCaja,
     factura.tipo_pago === "Facturado"
   );
-  if (lecturaFacturas.error) volver(lecturaFacturas.error);
+  // Todo lo que vuelva al formulario de acá en adelante limpia el comprobante
+  // ya subido a Drive: el gasto no se guardó, así que ese archivo no lo
+  // referencia nadie.
+  if (lecturaFacturas.error) {
+    await limpiar();
+    volver(lecturaFacturas.error);
+  }
   const facturasDelGasto = lecturaFacturas.facturas;
+  let facturasParaGuardar: FacturaValuada[] = [];
   if (facturasDelGasto.length > 0) {
     const montoGasto = usarCaja ? montos.ars : Number(formData.get("monto") ?? 0);
     const sumaFacturas = facturasDelGasto.reduce((acc, f) => acc + f.monto, 0);
     if (Math.abs(sumaFacturas - montoGasto) >= 0.01) {
+      await limpiar();
       volver(
         `Las facturas suman ${sumaFacturas.toFixed(2)} y el gasto es ${montoGasto.toFixed(2)}: tienen que coincidir.`
       );
     }
+    // Se comparan en la moneda del papel, que es como se escribieron, y se
+    // guardan en pesos, que es como se suman.
+    const valuadas = valuarFacturas(
+      facturasDelGasto,
+      !usarCaja && moneda === "USD",
+      montos.ars,
+      montos.cotizacion
+    );
+    if (valuadas.error) {
+      await limpiar();
+      volver(valuadas.error);
+    }
+    facturasParaGuardar = valuadas.facturas;
   }
   const faltante = reparto ? reparto.deEmpresa : 0;
   // Si la cuenta se hizo cargo de todo, el gasto no lo puso nadie de su
@@ -698,7 +779,7 @@ export async function crearGasto(formData: FormData) {
       supabase,
       creado.id,
       slug,
-      facturasDelGasto
+      facturasParaGuardar
     );
     if (problemaFacturas) {
       revalidatePath("/", "layout");
@@ -801,6 +882,7 @@ export async function actualizarGasto(formData: FormData) {
   );
   if (lecturaFacturas.error) volver(lecturaFacturas.error);
   const facturasDelGasto = lecturaFacturas.facturas;
+  let facturasParaGuardar: FacturaValuada[] = [];
   if (facturasDelGasto.length > 0) {
     const montoGasto = usarCaja ? montos.ars : Number(formData.get("monto") ?? 0);
     const sumaFacturas = facturasDelGasto.reduce((acc, f) => acc + f.monto, 0);
@@ -809,6 +891,16 @@ export async function actualizarGasto(formData: FormData) {
         `Las facturas suman ${sumaFacturas.toFixed(2)} y el gasto es ${montoGasto.toFixed(2)}: tienen que coincidir.`
       );
     }
+    // Se comparan en la moneda del papel, que es como se escribieron, y se
+    // guardan en pesos, que es como se suman.
+    const valuadas = valuarFacturas(
+      facturasDelGasto,
+      !usarCaja && moneda === "USD",
+      montos.ars,
+      montos.cotizacion
+    );
+    if (valuadas.error) volver(valuadas.error);
+    facturasParaGuardar = valuadas.facturas;
   }
   const faltante = reparto ? reparto.deEmpresa : 0;
   // Si la cuenta se hizo cargo de todo, el gasto no lo puso nadie de su
@@ -909,7 +1001,7 @@ export async function actualizarGasto(formData: FormData) {
     supabase,
     gastoId,
     slug,
-    facturasDelGasto
+    facturasParaGuardar
   );
   if (problemaFacturas) {
     volver(`El gasto se guardó, pero las facturas no: ${problemaFacturas}`);

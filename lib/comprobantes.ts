@@ -32,6 +32,12 @@ export type GastoComprobante = {
    * Si el gasto se facturó en más de una factura: a nombre de quién y por
    * cuánto cada una. Con esto, lo facturado y el crédito fiscal van a cada
    * titular por su parte, y `empresaFacturaId` no se mira.
+   *
+   * El monto va **en pesos**, la misma unidad que `monto`: las dos cifras se
+   * cruzan para repartir el IVA, así que una en dólares dejaba lo facturado
+   * dividido por la cotización y el crédito fiscal en casi cero. Es lo que
+   * guarda `gasto_facturas.monto`; lo que dice el papel está al lado, en
+   * `monto_usd`, y acá no se usa.
    */
   facturas?: { empresaId: string; monto: number }[];
 };
