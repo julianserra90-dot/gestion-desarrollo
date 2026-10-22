@@ -15,9 +15,20 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Ingresos y Dinero en cuenta eran dos pantallas de lo mismo: todo ingreso
  * suma a la cuenta, y la lista de movimientos de la cuenta repetía el listado
- * de ingresos entero. Acá queda una sola historia: cómo están los dos lados de
- * la cuenta (los pesos quedan pesos y los dólares quedan dólares hasta que se
- * usan) y qué movimientos la dejaron así.
+ * de ingresos entero. Acá quedan las dos cosas: cómo están los dos lados de la
+ * cuenta (los pesos quedan pesos y los dólares quedan dólares hasta que se
+ * usan) y qué entró.
+ *
+ * La tabla lista **sólo los ingresos**. Durante un tiempo mezcló los gastos
+ * que se pagaron con la plata de la cuenta, y era la fusión llevada demasiado
+ * lejos: entrar a una solapa que se llama Ingresos y encontrar gastos
+ * confunde, y la pregunta que se viene a hacer acá es qué entró. Lo que salió
+ * se mira en Gastos, filtrando la columna Pagó por los valores de dinero en
+ * cuenta, que es donde se va a buscar un gasto.
+ *
+ * Las cuatro tarjetas sí siguen hablando de los dos lados: son el estado de la
+ * cuenta, y cuánto se usó es parte de ese estado. Por eso los gastos se siguen
+ * consultando acá aunque la tabla no los muestre.
  */
 
 type Movimiento = {
@@ -59,15 +70,15 @@ export default async function IngresosPage({
         "id, fecha, creado_en, origen, aportante, concepto, monto, monto_usd, moneda, comprobante_drive_id, inversor_id, empresas(nombre), inversores(nombre, apellido)"
       )
       .eq("obra_id", obra.id),
-    // Sólo los gastos que efectivamente tocaron la cuenta.
+    // Los gastos que tocaron la cuenta, sólo por los dólares que sacaron: ya
+    // no se listan acá, y lo único que falta calcular es a cuánto se vendieron
+    // esos dólares. Los pesos y los saldos los trae `getCaja`.
     supabase
       .from("gastos")
-      .select(
-        "id, fecha, creado_en, concepto, monto, caja_ars, caja_usd, cotizacion, monto_caja, tipo_factura, comprobante_drive_id, proveedores(nombre)"
-      )
+      .select("caja_usd, cotizacion")
       .eq("obra_id", obra.id)
       .eq("estado", "Pagado")
-      .or("caja_ars.gt.0,caja_usd.gt.0"),
+      .gt("caja_usd", 0),
     getCaja(obra.id),
   ]);
 
@@ -101,29 +112,6 @@ export default async function IngresosPage({
       href: `/obras/${obra.slug}/ingresos/${i.id}/editar`,
       tipoFactura: null,
       comprobanteDriveId: i.comprobante_drive_id,
-    })),
-    ...(gastos ?? []).map((g) => ({
-      id: `g-${g.id}`,
-      fecha: g.fecha,
-      orden: g.creado_en,
-      entrada: false,
-      // Un gasto pagado en parte con la cuenta se aclara, para que no parezca
-      // que la cuenta se hizo cargo de todo.
-      etiqueta:
-        // Con medio peso de tolerancia: pagado en pesos con dólares, el
-        // redondeo de la cotización deja unos centavos que no son un faltante.
-        Number(g.monto_caja) < Number(g.monto) - 0.5 ? "Gasto (parcial)" : "Gasto",
-      // El detalle del gasto es opcional; sin esto la celda queda muda y
-      // parece un dato que faltó cargar.
-      detalle: g.concepto ?? "Sin detalle",
-      quien: g.proveedores?.nombre ?? "—",
-      ars: -Number(g.caja_ars),
-      usd: -Number(g.caja_usd),
-      // Un gasto se abre por su ficha; editar es un botón dentro de ella.
-      href: `/obras/${obra.slug}/gastos/${g.id}`,
-      quienHref: null,
-      tipoFactura: g.tipo_factura,
-      comprobanteDriveId: g.comprobante_drive_id,
     })),
   ];
 
@@ -187,7 +175,9 @@ export default async function IngresosPage({
       </section>
 
       <div style={ui.toolbar}>
-        <h3 style={ui.sectionTitle}>Movimientos</h3>
+        {/* No "Movimientos": la tabla es lo que entró, y nombrarla por lo que
+            tiene adentro es lo que evita esperar también lo que salió. */}
+        <h3 style={ui.sectionTitle}>Lo que entró</h3>
 
         <div style={botones}>
           {/* La agenda es lo que todavía no entró; acá está lo que sí. */}
@@ -205,9 +195,7 @@ export default async function IngresosPage({
 
       <section style={ui.panel}>
         {movimientos.length === 0 ? (
-          <p style={ui.vacio}>
-            Todavía no entró ni salió plata de la cuenta de esta obra.
-          </p>
+          <p style={ui.vacio}>Todavía no entró plata a esta obra.</p>
         ) : (
           <TablaMovimientos filas={movimientos} volver={volver} />
         )}

@@ -77,12 +77,22 @@ function valorDe(g: GastoFila, col: ColumnaFiltrable): string {
       // De qué lado de la cuenta salió: son dos cuentas distintas, y no es lo
       // mismo haber usado dólares que pesos —los dólares hubo que venderlos—.
       // Al ser el valor de la columna, el filtro también los separa.
-      if (g.montoCaja >= g.monto) {
+      //
+      // Con los mismos 50 centavos de tolerancia que la celda: pagado en pesos
+      // con dólares, el redondeo de la cotización deja unos centavos que no son
+      // un faltante. Sin la tolerancia la celda decía "Dinero en cuenta" y el
+      // desplegable ofrecía ese gasto bajo el nombre de la socia.
+      if (g.montoCaja >= g.monto - 0.5) {
         if (g.cajaArs > 0 && g.cajaUsd > 0) return "Dinero en cuenta (mixto)";
         if (g.cajaUsd > 0) return "Dinero en cuenta (dólares)";
         if (g.cajaArs > 0) return "Dinero en cuenta (pesos)";
         return "Dinero en cuenta";
       }
+      // La cuenta puso una parte y una socia el resto. La celda muestra las dos
+      // cosas, así que el valor también: si no, estos gastos caían bajo el
+      // nombre de la socia y no había forma de pedirle al filtro todo lo que
+      // salió de la cuenta.
+      if (g.montoCaja > 0) return `${g.pagadora ?? "—"} + dinero en cuenta`;
       return g.pagadora ?? "—";
   }
 }
