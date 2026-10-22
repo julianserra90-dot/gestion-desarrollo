@@ -3,6 +3,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import PagoLoteForm from "@/components/PagoLoteForm";
 import * as ui from "@/components/ui";
+import { getCotizacionActual } from "@/lib/dolar";
 import { getPagoLote } from "@/lib/lote";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
@@ -25,12 +26,13 @@ export default async function EditarPagoLotePage({
 
   const supabase = await createClient();
 
-  const [pago, { data: socios }] = await Promise.all([
+  const [pago, { data: socios }, cotizacion] = await Promise.all([
     getPagoLote(obra.id, pagoId),
     supabase
       .from("obra_socios")
       .select("empresa_id, empresas(nombre)")
       .eq("obra_id", obra.id),
+    getCotizacionActual(),
   ]);
 
   if (!pago) {
@@ -65,6 +67,7 @@ export default async function EditarPagoLotePage({
           slug={obra.slug}
           hoy={hoy}
           socios={listaSocios}
+          cotizacion={cotizacion?.promedio ?? null}
           pago={{
             id: pago.id,
             fecha: pago.fecha,
@@ -72,6 +75,7 @@ export default async function EditarPagoLotePage({
             concepto: pago.concepto,
             monto: pago.monto,
             moneda: pago.moneda,
+            cotizacion: pago.cotizacion,
             observaciones: pago.observaciones,
             empresaId: pago.empresaId,
             compartido: pago.compartido,

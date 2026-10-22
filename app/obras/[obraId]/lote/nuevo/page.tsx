@@ -3,6 +3,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import PagoLoteForm from "@/components/PagoLoteForm";
 import * as ui from "@/components/ui";
+import { getCotizacionActual } from "@/lib/dolar";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 import { crearPagoLote } from "../actions";
@@ -31,10 +32,16 @@ export default async function NuevoPagoLotePage({
 
   const supabase = await createClient();
 
-  const { data: socios } = await supabase
-    .from("obra_socios")
-    .select("empresa_id, empresas(nombre)")
-    .eq("obra_id", obra.id);
+  // El blue de hoy va sólo de referencia al lado del campo: lo que se guarda
+  // es el cambio que se escriba, y si no se escribe ninguno la conversión usa
+  // el de la fecha del pago, no éste.
+  const [{ data: socios }, cotizacion] = await Promise.all([
+    supabase
+      .from("obra_socios")
+      .select("empresa_id, empresas(nombre)")
+      .eq("obra_id", obra.id),
+    getCotizacionActual(),
+  ]);
 
   const listaSocios = (socios ?? [])
     .map((s) => ({ id: s.empresa_id, nombre: s.empresas?.nombre ?? "—" }))
@@ -64,6 +71,7 @@ export default async function NuevoPagoLotePage({
           slug={obra.slug}
           hoy={hoy}
           socios={listaSocios}
+          cotizacion={cotizacion?.promedio ?? null}
         />
       </div>
     </AppShell>

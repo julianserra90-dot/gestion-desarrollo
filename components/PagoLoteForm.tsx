@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import InputMonto from "@/components/InputMonto";
+import InputMonto, { formatearMonto } from "@/components/InputMonto";
 import * as ui from "@/components/ui";
 import { CATEGORIAS_LOTE, PAGO_COMPARTIDO } from "@/lib/lote-tipos";
 
@@ -13,6 +13,8 @@ export type PagoEnEdicion = {
   concepto: string;
   monto: number;
   moneda: string;
+  /** El cambio cargado a mano, si lo tiene. */
+  cotizacion: number | null;
   observaciones: string | null;
   empresaId: string | null;
   compartido: boolean;
@@ -28,6 +30,7 @@ export default function PagoLoteForm({
   slug,
   hoy,
   socios,
+  cotizacion,
   pago,
   textoBoton,
 }: {
@@ -36,11 +39,18 @@ export default function PagoLoteForm({
   slug: string;
   hoy: string;
   socios: SocioOpcion[];
+  /** El blue de hoy, sólo para mostrar de referencia. Null si Ámbito no responde. */
+  cotizacion: number | null;
   pago?: PagoEnEdicion;
   textoBoton?: string;
 }) {
   const [moneda, setMoneda] = useState(pago?.moneda ?? "USD");
   const [reemplazar, setReemplazar] = useState(false);
+  // Al editar arranca tildada si el pago ya traía un cambio propio.
+  const [cotizManual, setCotizManual] = useState(pago?.cotizacion != null);
+  const [cotizValor, setCotizValor] = useState(
+    pago?.cotizacion != null ? String(pago.cotizacion) : ""
+  );
 
   return (
     <form action={action}>
@@ -141,10 +151,55 @@ export default function PagoLoteForm({
           </select>
           <span style={ayuda}>
             {moneda === "ARS"
-              ? "Se valúa al dólar de la fecha del pago."
+              ? "El lote se mide en dólares, así que un pago en pesos se convierte."
               : "El lote se mide en dólares."}
           </span>
         </label>
+
+        {/* Los dólares de un lote se consiguen al cambio que se consiguen, que
+            rara vez es el blue de ese día. Sin esto, la incidencia del terreno
+            y el reparto entre socias quedaban valuados a un número que no
+            pasó. Va en las dos monedas: un pago en pesos se mide en dólares, y
+            uno en dólares se valúa en pesos para sumarlo con los gastos. */}
+        <div style={field}>
+          <span style={labelCampo}>
+            Cotización <span style={opcional}>opcional</span>
+          </span>
+
+          <label style={checkboxFila}>
+            <input
+              type="checkbox"
+              name="cotizacion_manual"
+              checked={cotizManual}
+              onChange={(e) => setCotizManual(e.target.checked)}
+            />
+            <span>Cotización personalizada</span>
+          </label>
+
+          {cotizManual ? (
+            <>
+              <InputMonto
+                name="cotizacion_valor"
+                placeholder={cotizacion ? formatearMonto(Math.round(cotizacion)) : "0"}
+                value={cotizValor}
+                onChange={setCotizValor}
+                required
+                style={ui.input}
+              />
+              <span style={ayuda}>
+                Pesos por dólar. A este cambio se convierte el pago, en lugar
+                del blue de su fecha.
+              </span>
+            </>
+          ) : (
+            <span style={ayuda}>
+              Se usa el blue de la fecha del pago
+              {cotizacion
+                ? ` (hoy ${formatearMonto(Math.round(cotizacion))}).`
+                : "."}
+            </span>
+          )}
+        </div>
 
         <div style={fieldAncho}>
           <span style={labelCampo}>
@@ -258,6 +313,17 @@ const comprobanteActual = {
 const enlaceChico = {
   color: "#111111",
   fontSize: "14px",
+};
+
+const checkboxFila = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  border: "1px solid #dcdcdc",
+  background: "#ffffff",
+  padding: "12px",
+  fontSize: "14px",
+  cursor: "pointer",
 };
 
 const quitarLabel = {

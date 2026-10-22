@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Database } from "@/lib/database.types";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { esCategoriaLote, PAGO_COMPARTIDO } from "@/lib/lote-tipos";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 type PagoLoteUpdate = Database["public"]["Tables"]["lote_pagos"]["Update"];
@@ -62,11 +63,30 @@ type CamposPago = {
   concepto: string;
   monto: number;
   moneda: string;
+  /**
+   * El cambio con el que se hizo el pago, si se cargó a mano. Null deja que se
+   * valúe al blue de su fecha, que es el caso de siempre.
+   */
+  cotizacion: number | null;
   observaciones: string;
   /** La socia que pagó, o null si es compartido. */
   empresaId: string | null;
   compartido: boolean;
 };
+
+/**
+ * El cambio cargado a mano, o null.
+ *
+ * Mismo criterio que en un gasto de obra (`leerCaja`): la casilla sin tildar, o
+ * tildada con un valor que no es un número mayor a cero, es "no se cargó". No
+ * se guarda un cero, que se leería como un cambio de cero pesos por dólar.
+ */
+function leerCotizacion(formData: FormData): number | null {
+  const manual = formData.get("cotizacion_manual") === "on";
+  const valor = Number(formData.get("cotizacion_valor") ?? 0);
+
+  return manual && Number.isFinite(valor) && valor > 0 ? valor : null;
+}
 
 function leerPago(formData: FormData): CamposPago {
   const quienPago = String(formData.get("empresa_id") ?? "").trim();
@@ -78,6 +98,7 @@ function leerPago(formData: FormData): CamposPago {
     concepto: String(formData.get("concepto") ?? "").trim(),
     monto: Number(formData.get("monto") ?? 0),
     moneda: String(formData.get("moneda") ?? "USD"),
+    cotizacion: leerCotizacion(formData),
     observaciones: String(formData.get("observaciones") ?? "").trim(),
     empresaId: compartido || quienPago === "" ? null : quienPago,
     compartido,
@@ -144,6 +165,7 @@ export async function crearPagoLote(formData: FormData) {
     concepto: campos.concepto,
     monto: campos.monto,
     moneda: campos.moneda,
+    cotizacion: campos.cotizacion,
     observaciones: campos.observaciones === "" ? null : campos.observaciones,
     empresa_id: campos.empresaId,
     compartido: campos.compartido,
@@ -202,6 +224,9 @@ export async function actualizarPagoLote(formData: FormData) {
     concepto: campos.concepto,
     monto: campos.monto,
     moneda: campos.moneda,
+    // Va siempre, también en null: destildar la casilla tiene que **borrar** el
+    // cambio cargado antes, no dejar el viejo pegado al pago.
+    cotizacion: campos.cotizacion,
     observaciones: campos.observaciones === "" ? null : campos.observaciones,
     empresa_id: campos.empresaId,
     compartido: campos.compartido,
@@ -269,14 +294,24 @@ export async function eliminarPagoLote(formData: FormData) {
     .eq("obra_id", obraId)
     .maybeSingle();
 
-  const { error } = await supabase
+  const { data: borrados, error } = await supabase
     .from("lote_pagos")
     .delete()
     .eq("id", pagoId)
-    .eq("obra_id", obraId);
+    .eq("obra_id", obraId)
+    .select("id");
 
   if (error) {
     redirect(`/obras/${slug}/lote?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Antes de Drive, como en gastos e ingresos (`lib/permisos.ts`).
+  if (noTocoNada(borrados)) {
+    redirect(
+      `/obras/${slug}/lote?error=${encodeURIComponent(
+        sinPermisoPara("borrar este pago")
+      )}`
+    );
   }
 
   if (pago?.comprobante_drive_id) {

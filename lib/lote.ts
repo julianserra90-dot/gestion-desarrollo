@@ -31,7 +31,13 @@ export type PagoLote = {
   concepto: string;
   monto: number;
   moneda: "ARS" | "USD";
-  /** El pago valuado en dólares al cambio de su fecha. */
+  /**
+   * Pesos por dólar cargados a mano para este pago. Null es "no se cargó": ahí
+   * se valúa al blue de su fecha.
+   */
+  cotizacion: number | null;
+  /** El pago valuado en dólares: a su cotización si la tiene, si no al cambio
+   *  de su fecha. */
   usd: number | null;
   /** El mismo pago en pesos, para poder sumarlo con los gastos de obra. */
   ars: number;
@@ -109,7 +115,7 @@ export async function getLote(
     supabase
       .from("lote_pagos")
       .select(
-        "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, comprobante_drive_id, comprobante_nombre, empresas(nombre)"
+        "id, fecha, categoria, concepto, monto, moneda, cotizacion, observaciones, empresa_id, compartido, comprobante_drive_id, comprobante_nombre, empresas(nombre)"
       )
       .eq("obra_id", obraId)
       .order("fecha", { ascending: false }),
@@ -122,17 +128,44 @@ export async function getLote(
   const filas = data ?? [];
   const convertidor = await getConvertidor(filas.map((p) => p.fecha));
 
-  const aUsd = (monto: number, moneda: string, fecha: string): number | null => {
+  /** `numeric` llega como string o number según el driver; cero no es un cambio. */
+  const propiaDe = (valor: number | null): number | null => {
+    const n = Number(valor);
+    return valor !== null && Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  /**
+   * A qué cambio se convierte este pago: el que se cargó a mano, si se cargó,
+   * y si no el blue de su fecha.
+   *
+   * Los dólares de un lote se consiguen al cambio que se consiguen, que rara
+   * vez es el blue de ese día. Cuando alguien lo anota, manda ese: lo que se
+   * quiere medir es lo que pasó, no lo que decía Ámbito.
+   */
+  const cambioDe = (propia: number | null, fecha: string) =>
+    propia ?? convertidor.cotizacionDe(fecha);
+
+  const aUsd = (
+    monto: number,
+    moneda: string,
+    fecha: string,
+    propia: number | null
+  ): number | null => {
     if (moneda === "USD") return monto;
-    const cotizacion = convertidor.cotizacionDe(fecha);
+    const cotizacion = cambioDe(propia, fecha);
     return cotizacion ? monto / cotizacion : null;
   };
 
-  // El mismo pago en pesos: los dólares valuados al cambio de su fecha. Sirve
-  // para sumar el lote con los gastos, que están en pesos.
-  const aArs = (monto: number, moneda: string, fecha: string): number => {
+  // El mismo pago en pesos. Sirve para sumar el lote con los gastos, que están
+  // en pesos.
+  const aArs = (
+    monto: number,
+    moneda: string,
+    fecha: string,
+    propia: number | null
+  ): number => {
     if (moneda === "ARS") return monto;
-    const cotizacion = convertidor.cotizacionDe(fecha);
+    const cotizacion = cambioDe(propia, fecha);
     return cotizacion ? monto * cotizacion : 0;
   };
 
@@ -143,8 +176,9 @@ export async function getLote(
     concepto: p.concepto,
     monto: Number(p.monto),
     moneda: p.moneda === "ARS" ? "ARS" : "USD",
-    usd: aUsd(Number(p.monto), p.moneda, p.fecha),
-    ars: aArs(Number(p.monto), p.moneda, p.fecha),
+    cotizacion: p.cotizacion === null ? null : Number(p.cotizacion),
+    usd: aUsd(Number(p.monto), p.moneda, p.fecha, propiaDe(p.cotizacion)),
+    ars: aArs(Number(p.monto), p.moneda, p.fecha, propiaDe(p.cotizacion)),
     observaciones: p.observaciones,
     empresaId: p.empresa_id,
     empresa: p.empresas?.nombre ?? null,
@@ -232,7 +266,7 @@ export async function getPagoLote(
   const { data } = await supabase
     .from("lote_pagos")
     .select(
-      "id, fecha, categoria, concepto, monto, moneda, observaciones, empresa_id, compartido, comprobante_drive_id, comprobante_nombre, empresas(nombre)"
+      "id, fecha, categoria, concepto, monto, moneda, cotizacion, observaciones, empresa_id, compartido, comprobante_drive_id, comprobante_nombre, empresas(nombre)"
     )
     .eq("id", pagoId)
     .eq("obra_id", obraId)
@@ -247,8 +281,11 @@ export async function getPagoLote(
     concepto: data.concepto,
     monto: Number(data.monto),
     moneda: data.moneda === "ARS" ? "ARS" : "USD",
+    // Ésta sí hace falta: es un dato cargado a mano y el formulario tiene que
+    // volver a mostrarlo.
+    cotizacion: data.cotizacion === null ? null : Number(data.cotizacion),
     // El formulario de edición muestra el monto tal como se cargó: no necesita
-    // las conversiones, así que acá no se piden cotizaciones.
+    // las conversiones, así que acá no se piden cotizaciones al convertidor.
     usd: null,
     ars: 0,
     observaciones: data.observaciones,
