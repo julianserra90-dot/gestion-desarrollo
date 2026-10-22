@@ -12,7 +12,7 @@ import {
   getPresupuestosConItems,
   getPresupuestosDeObra,
 } from "@/lib/presupuestos";
-import { getRubrosActivos } from "@/lib/rubros";
+import { getRubrosDeObra } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import {
   actualizarGasto,
@@ -61,7 +61,7 @@ export default async function EditarGastoPage({
   ] = await Promise.all([
     // El rubro del gasto viaja aunque esté desmarcado: si no, desaparecería
     // del desplegable y se perdería al guardar.
-    getRubrosActivos(obra.id, gasto.rubro_id),
+    getRubrosDeObra(obra.id),
     supabase
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")

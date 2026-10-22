@@ -18,7 +18,7 @@ import {
   getPresupuestosConItems,
   getPresupuestosDeObra,
 } from "@/lib/presupuestos";
-import { getRubrosActivos } from "@/lib/rubros";
+import { getRubrosDeObra } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import { crearGasto, descartarBorrador, guardarBorrador } from "../actions";
 
@@ -59,7 +59,7 @@ export default async function NuevoGastoPage({
     presupuestosConItems,
     detallesPredefinidos,
   ] = await Promise.all([
-    getRubrosActivos(obra.id),
+    getRubrosDeObra(obra.id),
     supabase
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")
@@ -115,16 +115,24 @@ export default async function NuevoGastoPage({
         <h2 style={ui.pageTitle}>{borrador ? "Borrador de gasto" : "Nuevo gasto"}</h2>
       </section>
 
-      {rubros.length === 0 && (
+      {/* Dos avisos distintos: sin catálogo no hay nada que elegir y hay que
+          ir a cargarlo; con catálogo pero sin ninguno marcado ya se resuelve
+          acá, porque el desplegable los ofrece todos. */}
+      {rubros.length === 0 ? (
         <section style={avisoRubros}>
-          Esta obra todavía no tiene rubros elegidos, así que el gasto va a
-          quedar sin clasificar. Marcalos en la solapa{" "}
+          Esta obra no tiene rubros cargados, así que el gasto va a quedar sin
+          clasificar. Cargalos en la solapa{" "}
           <Link href={`/obras/${obra.slug}/rubros`} style={enlaceAviso}>
             Rubros
           </Link>
           .
         </section>
-      )}
+      ) : rubros.every((r) => !r.activo) ? (
+        <section style={avisoRubros}>
+          Esta obra todavía no usa ningún rubro. Elegí uno en el desplegable
+          —están todos ahí— y se suma a la obra al guardar.
+        </section>
+      ) : null}
 
       {listaSocios.length === 0 ? (
         <section style={ui.panel}>

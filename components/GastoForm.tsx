@@ -19,6 +19,8 @@ type Socio = { empresa_id: string; nombre: string; porcentaje: number };
 type Rubro = {
   id: string;
   nombre: string;
+  /** Si la obra lo usa. Los que no, se ofrecen aparte y se activan al guardar. */
+  activo: boolean;
   usaMateriales: boolean;
   usaManoObra: boolean;
   usaCombinado: boolean;
@@ -578,6 +580,23 @@ export default function GastoForm({
   // El desplegable de tipo ofrece sólo lo que el rubro admite. Sin rubro
   // elegido se ofrecen los tres: todavía no hay con qué decidir.
   const rubroElegido = rubros.find((r) => r.id === rubroId);
+
+  // Los que la obra usa, y aparte los que no. El rubro del gasto que se está
+  // editando va con los usados aunque esté desmarcado: ahí ya está elegido, y
+  // mostrarlo bajo "Agregar a esta obra" diría que falta hacer algo.
+  const rubrosUsados = rubros.filter(
+    (r) => r.activo || r.id === (gasto?.rubro_id ?? "")
+  );
+  const rubrosSinUsar = rubros.filter(
+    (r) => !r.activo && r.id !== (gasto?.rubro_id ?? "")
+  );
+
+  // Sólo si se eligió uno de los sin usar. Editar un gasto viejo cuyo rubro se
+  // desmarcó después no lo reactiva solo: eso sería deshacer una decisión que
+  // alguien tomó en la solapa Rubros, sin pedirlo.
+  const activarRubro = Boolean(
+    rubroElegido && !rubroElegido.activo && rubroId !== (gasto?.rubro_id ?? "")
+  );
   const tiposDisponibles = TIPOS_GASTO.filter((t) => {
     // Ajuste y Administrativo no dependen del rubro: un impuesto o un honorario
     // no se cotiza, va en cualquier rubro.
@@ -974,13 +993,39 @@ export default function GastoForm({
                 style={ui.input}
               >
                 <option value="">Sin rubro</option>
-                {rubros.map((rubro) => (
+                {rubrosUsados.map((rubro) => (
                   <option key={rubro.id} value={rubro.id}>
                     {rubro.nombre}
                   </option>
                 ))}
+
+                {/* Los que la obra no marcó, en un grupo aparte: elegir uno lo
+                    activa al guardar. Antes había que salir a la solapa Rubros
+                    y volver, y el gasto a medio cargar se perdía. El grupo los
+                    separa para que quede claro que el desplegable de arriba es
+                    lo que la obra usa hoy. */}
+                {rubrosSinUsar.length > 0 && (
+                  <optgroup label="Agregar a esta obra">
+                    {rubrosSinUsar.map((rubro) => (
+                      <option key={rubro.id} value={rubro.id}>
+                        {rubro.nombre}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
+
+              {activarRubro && (
+                <span style={ayudaCampo}>
+                  {rubroElegido?.nombre} se va a sumar a los rubros de la obra
+                  al guardar.
+                </span>
+              )}
             </label>
+
+            {/* Que el rubro elegido no esté marcado se resuelve en el server
+                action, no acá: si el gasto no se guarda, la obra no cambia. */}
+            {activarRubro && <input type="hidden" name="activar_rubro" value="1" />}
 
             <label style={field}>
               <span style={labelCampo}>Tipo de gasto</span>

@@ -527,6 +527,40 @@ async function guardarItems(
   return error?.message ?? null;
 }
 
+/**
+ * Marca el rubro elegido como usado por la obra, si el formulario lo pidió.
+ *
+ * El desplegable ofrece también los rubros que la obra no marcó, para no tener
+ * que salir a la solapa Rubros y volver —perdiendo el gasto a medio cargar—.
+ * Elegir uno de esos lo activa acá.
+ *
+ * Va **antes** de guardar el gasto y frena si no se pudo: `rubros` lo escribe
+ * sólo el administrador, y dejar el gasto apuntando a un rubro que el resto de
+ * las pantallas no ofrece es peor que no guardarlo.
+ *
+ * Devuelve el problema, o null si no había nada que hacer o salió bien.
+ */
+async function activarRubro(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  formData: FormData,
+  obraId: string,
+  rubroId: string
+): Promise<string | null> {
+  if (formData.get("activar_rubro") !== "1" || rubroId === "") return null;
+
+  const { data, error } = await supabase
+    .from("rubros")
+    .update({ activo: true })
+    .eq("id", rubroId)
+    .eq("obra_id", obraId)
+    .select("id");
+
+  if (error) return error.message;
+  if (noTocoNada(data)) return sinPermisoPara("agregar rubros a la obra");
+
+  return null;
+}
+
 export async function crearGasto(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const obraId = String(formData.get("obra_id") ?? "");
@@ -692,6 +726,17 @@ export async function crearGasto(formData: FormData) {
   if (faltante > 0 && !empresaPagadora && !compartido) {
     await limpiar();
     volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
+  }
+
+  const problemaRubro = await activarRubro(
+    supabase,
+    formData,
+    obraId,
+    esAjuste || rubro === "" ? "" : rubro
+  );
+  if (problemaRubro) {
+    await limpiar();
+    volver(problemaRubro);
   }
 
   // Se pide el id de vuelta porque el detalle de materiales cuelga de él.
@@ -911,6 +956,14 @@ export async function actualizarGasto(formData: FormData) {
   if (faltante > 0 && !empresaPagadora && !compartido) {
     volver("El dinero en cuenta no alcanza: elegí qué empresa aporta el resto.");
   }
+
+  const problemaRubro = await activarRubro(
+    supabase,
+    formData,
+    actual.obra_id,
+    esAjuste || rubro === "" ? "" : rubro
+  );
+  if (problemaRubro) volver(problemaRubro);
 
   // El comprobante puede quedar igual, reemplazarse o quitarse.
   const cambios: GastoUpdate = {
