@@ -222,14 +222,27 @@ export async function eliminarObra(formData: FormData) {
 
   const supabase = await createClient();
 
-  // Los socios no bloquean el borrado, pero hay que sacarlos primero porque
-  // apuntan a la obra. El trigger de la base es el que decide si se puede.
-  await supabase.from("obra_socios").delete().eq("obra_id", obraId);
-
-  const { error } = await supabase.from("obras").delete().eq("id", obraId);
+  // Los socios se van por cascada, en el mismo delete. Antes se los borraba a
+  // mano primero, y cuando el trigger frenaba el borrado —entró un gasto entre
+  // que se abrió la pantalla y se apretó el botón— la obra quedaba sin socias
+  // ni porcentajes: el dato del que depende todo el reparto, perdido, y el
+  // mensaje hablando de otra cosa.
+  const { error, count } = await supabase
+    .from("obras")
+    .delete({ count: "exact" })
+    .eq("id", obraId);
 
   if (error) {
     volverCon(`/obras/${slug}/editar`, error.message);
+  }
+
+  // Sin error y sin filas borradas es el RLS: Postgres no avisa, devuelve cero.
+  // Decir "listo" acá manda a buscar al listado una obra que sigue estando.
+  if (count === 0) {
+    volverCon(
+      `/obras/${slug}/editar`,
+      "No tenés permiso para borrar esta obra."
+    );
   }
 
   revalidatePath("/", "layout");
@@ -238,7 +251,8 @@ export async function eliminarObra(formData: FormData) {
 
 /**
  * Borra una obra archivada con todo lo que cuelga de ella: gastos, ingresos,
- * presupuestos, avances, fotos, documentos y los archivos en Drive.
+ * cotizaciones, el cómputo, los pagos del lote, avances, fotos, documentos y
+ * los archivos en Drive.
  *
  * Dos candados a propósito, porque esto no se deshace:
  *
@@ -287,21 +301,30 @@ export async function eliminarObraConTodo(formData: FormData) {
 
   // ---- Los archivos de Drive, antes de perder las filas que los referencian --
 
-  const [{ data: registros }, { data: documentos }] = await Promise.all([
-    supabase.from("foto_registros").select("id").eq("obra_id", obraId),
-    supabase.from("documentos").select("id").eq("obra_id", obraId),
-  ]);
+  // Los gastos van en esta primera vuelta porque de su id cuelgan las facturas
+  // del gasto facturado en varias, que tienen su propio archivo cada una.
+  const [{ data: registros }, { data: documentos }, { data: gastos }] =
+    await Promise.all([
+      supabase.from("foto_registros").select("id").eq("obra_id", obraId),
+      supabase.from("documentos").select("id").eq("obra_id", obraId),
+      supabase
+        .from("gastos")
+        .select("id, comprobante_drive_id")
+        .eq("obra_id", obraId),
+    ]);
 
   const registroIds = (registros ?? []).map((r) => r.id);
   const documentoIds = (documentos ?? []).map((d) => d.id);
+  const gastoIds = (gastos ?? []).map((g) => g.id);
 
   const [
     { data: fotos },
     { data: adjuntos },
-    { data: gastos },
+    { data: facturas },
     { data: ingresos },
     { data: presupuestos },
     { data: borradores },
+    { data: pagosLote },
   ] = await Promise.all([
     registroIds.length > 0
       ? supabase.from("fotos").select("drive_file_id").in("registro_id", registroIds)
@@ -312,7 +335,15 @@ export async function eliminarObraConTodo(formData: FormData) {
           .select("drive_file_id")
           .in("documento_id", documentoIds)
       : Promise.resolve({ data: [] }),
-    supabase.from("gastos").select("comprobante_drive_id").eq("obra_id", obraId),
+    // Un gasto facturado en varias no lleva comprobante propio: el archivo de
+    // cada factura vive en su fila, y la cascada se lleva las filas sin tocar
+    // Drive.
+    gastoIds.length > 0
+      ? supabase
+          .from("gasto_facturas")
+          .select("comprobante_drive_id")
+          .in("gasto_id", gastoIds)
+      : Promise.resolve({ data: [] }),
     supabase.from("ingresos").select("comprobante_drive_id").eq("obra_id", obraId),
     supabase
       .from("presupuestos")
@@ -324,6 +355,11 @@ export async function eliminarObraConTodo(formData: FormData) {
       .from("gastos_borradores")
       .select("comprobante_drive_id")
       .eq("obra_id", obraId),
+    // Los pagos del lote también llevan comprobante, y también cascadean.
+    supabase
+      .from("lote_pagos")
+      .select("comprobante_drive_id")
+      .eq("obra_id", obraId),
   ]);
 
   const enDrive = [
@@ -331,16 +367,22 @@ export async function eliminarObraConTodo(formData: FormData) {
     ...(fotos ?? []).map((f) => f.drive_file_id),
     ...(adjuntos ?? []).map((a) => a.drive_file_id),
     ...(gastos ?? []).map((g) => g.comprobante_drive_id),
+    ...(facturas ?? []).map((f) => f.comprobante_drive_id),
     ...(ingresos ?? []).map((i) => i.comprobante_drive_id),
     ...(presupuestos ?? []).map((p) => p.comprobante_drive_id),
     ...(borradores ?? []).map((b) => b.comprobante_drive_id),
+    ...(pagosLote ?? []).map((p) => p.comprobante_drive_id),
   ].filter((id): id is string => Boolean(id));
 
   // ---- Las filas ------------------------------------------------------------
   //
-  // El orden importa: gastos, presupuestos y avances apuntan a rubros con
-  // `on delete restrict`, así que tienen que irse antes de que el borrado de la
-  // obra se lleve los rubros por cascada.
+  // El orden importa: gastos, presupuestos, avances, documentos y las tareas
+  // del cómputo apuntan a rubros con `on delete restrict`, así que tienen que
+  // irse antes de que el borrado de la obra se lleve los rubros por cascada.
+  //
+  // `lote_pagos` y `computo_items` cascadean igual, pero el trigger de la base
+  // los cuenta para decidir si la obra se puede borrar: si quedan filas, el
+  // delete de `obras` se frena y no se llega a la cascada.
 
   const enOrden = [
     "gastos",
@@ -349,6 +391,8 @@ export async function eliminarObraConTodo(formData: FormData) {
     "documentos",
     "foto_registros",
     "ingresos",
+    "computo_items",
+    "lote_pagos",
     "obra_socios",
   ] as const;
 
@@ -361,10 +405,22 @@ export async function eliminarObraConTodo(formData: FormData) {
     }
   }
 
-  const { error } = await supabase.from("obras").delete().eq("id", obraId);
+  const { error, count } = await supabase
+    .from("obras")
+    .delete({ count: "exact" })
+    .eq("id", obraId);
 
   if (error) {
     volverAEditar(error.message);
+    return;
+  }
+
+  // Sin error y sin filas borradas es el RLS, que devuelve cero en silencio.
+  // Hay que frenar antes de Drive: los deletes de arriba tampoco pasaron, así
+  // que seguir sería borrar todos los comprobantes de una obra que sigue
+  // entera.
+  if (count === 0) {
+    volverAEditar("No tenés permiso para borrar esta obra.");
     return;
   }
 

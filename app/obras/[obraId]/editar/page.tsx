@@ -39,31 +39,46 @@ export default async function EditarObraPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const contar = (tabla: "gastos" | "avances" | "foto_registros" | "documentos") =>
+  // Las mismas ocho tablas que cuenta el trigger de la base
+  // (`impedir_borrar_obra_con_datos`). Tienen que ser las mismas: si acá
+  // faltara una, la pantalla ofrecería el borrado rápido para una obra que la
+  // base va a frenar, o —peor, que es lo que pasaba con los ingresos, las
+  // cotizaciones, el cómputo y los pagos del lote— uno que se lleva por
+  // cascada datos que nadie contó y comprobantes que nadie borra de Drive.
+  const CUELGAN_DE_LA_OBRA = [
+    { tabla: "gastos", etiqueta: "gastos" },
+    { tabla: "avances", etiqueta: "avances" },
+    { tabla: "foto_registros", etiqueta: "registros de fotos" },
+    { tabla: "documentos", etiqueta: "documentos" },
+    { tabla: "ingresos", etiqueta: "ingresos" },
+    { tabla: "presupuestos", etiqueta: "cotizaciones" },
+    { tabla: "computo_items", etiqueta: "tareas del cómputo" },
+    { tabla: "lote_pagos", etiqueta: "pagos del lote" },
+  ] as const;
+
+  const contar = (tabla: (typeof CUELGAN_DE_LA_OBRA)[number]["tabla"]) =>
     supabase
       .from(tabla)
       .select("*", { count: "exact", head: true })
       .eq("obra_id", obra.id);
 
-  const [{ data: empresas }, { data: socios }, gastos, avances, fotos, documentos] =
-    await Promise.all([
+  // Anidado y no una lista sola para que TypeScript siga viendo la tupla de
+  // los dos primeros: las ocho cuentas salen igual todas juntas.
+  const [[{ data: empresas }, { data: socios }], cuentas] = await Promise.all([
+    Promise.all([
       supabase.from("empresas").select("id, nombre").order("nombre"),
       supabase
         .from("obra_socios")
         .select("empresa_id, porcentaje")
         .eq("obra_id", obra.id),
-      contar("gastos"),
-      contar("avances"),
-      contar("foto_registros"),
-      contar("documentos"),
-    ]);
+    ]),
+    Promise.all(CUELGAN_DE_LA_OBRA.map((t) => contar(t.tabla))),
+  ]);
 
-  const registros = [
-    { etiqueta: "gastos", cantidad: gastos.count ?? 0 },
-    { etiqueta: "avances", cantidad: avances.count ?? 0 },
-    { etiqueta: "registros de fotos", cantidad: fotos.count ?? 0 },
-    { etiqueta: "documentos", cantidad: documentos.count ?? 0 },
-  ];
+  const registros = CUELGAN_DE_LA_OBRA.map((t, i) => ({
+    etiqueta: t.etiqueta,
+    cantidad: cuentas[i].count ?? 0,
+  }));
 
   const totalRegistros = registros.reduce((acc, r) => acc + r.cantidad, 0);
   const sePuedeBorrar = totalRegistros === 0;
@@ -212,8 +227,8 @@ export default async function EditarObraPage({
               .filter((r) => r.cantidad > 0)
               .map((r) => `${r.cantidad} ${r.etiqueta}`)
               .join(", ")}
-            , los ingresos, los presupuestos y los archivos en Drive.{" "}
-            <strong>No se puede deshacer.</strong>
+            {" "}
+            y los archivos en Drive. <strong>No se puede deshacer.</strong>
           </p>
 
           <p style={text}>

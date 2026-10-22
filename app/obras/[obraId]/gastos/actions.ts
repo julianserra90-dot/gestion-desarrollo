@@ -968,13 +968,25 @@ export async function eliminarGasto(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { data: gasto } = await supabase
-    .from("gastos")
-    .select("comprobante_drive_id")
-    .eq("id", gastoId)
-    .maybeSingle();
+  // Los archivos se juntan antes del borrado, porque la cascada se lleva las
+  // filas que los referencian. Un gasto facturado en varias no tiene
+  // comprobante propio: el archivo de cada factura vive en su fila.
+  const [{ data: gasto }, { data: facturas }] = await Promise.all([
+    supabase
+      .from("gastos")
+      .select("comprobante_drive_id")
+      .eq("id", gastoId)
+      .maybeSingle(),
+    supabase
+      .from("gasto_facturas")
+      .select("comprobante_drive_id")
+      .eq("gasto_id", gastoId),
+  ]);
 
-  const { error } = await supabase.from("gastos").delete().eq("id", gastoId);
+  const { error, count } = await supabase
+    .from("gastos")
+    .delete({ count: "exact" })
+    .eq("id", gastoId);
 
   if (error) {
     redirect(
@@ -982,9 +994,24 @@ export async function eliminarGasto(formData: FormData) {
     );
   }
 
-  if (gasto?.comprobante_drive_id) {
-    await eliminarArchivo(gasto.comprobante_drive_id).catch(() => {});
+  // Sin error y sin filas borradas es el RLS: sólo el administrador borra
+  // gastos, y Postgres no avisa, devuelve cero. Hay que frenar antes de Drive:
+  // seguir dejaba el gasto en la base y su comprobante borrado, que es perder
+  // el papel y quedarse con la fila apuntando a un archivo que ya no existe.
+  if (count === 0) {
+    redirect(
+      `/obras/${slug}/gastos/${gastoId}/editar?error=${encodeURIComponent(
+        "No tenés permiso para borrar este gasto. Podés anularlo: queda en el listado tachado y no suma a ningún total."
+      )}`
+    );
   }
+
+  const enDrive = [
+    gasto?.comprobante_drive_id,
+    ...(facturas ?? []).map((f) => f.comprobante_drive_id),
+  ].filter((id): id is string => Boolean(id));
+
+  await Promise.all(enDrive.map((id) => eliminarArchivo(id).catch(() => {})));
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/gastos`);
