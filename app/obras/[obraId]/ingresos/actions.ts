@@ -318,14 +318,21 @@ export async function actualizarIngreso(formData: FormData) {
 
   // Bajar el monto de un ingreso que ya se gastó dejaría la caja en rojo. La
   // base lo frena y el mensaje que devuelve explica por qué.
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("ingresos")
     .update(cambios)
-    .eq("id", ingresoId);
+    .eq("id", ingresoId)
+    .select("id");
 
   if (error) {
     if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
     volver(error.message);
+  }
+
+  // El ingreso quedó como estaba: el comprobante nuevo no lo referencia nadie.
+  if (noTocoNada(data)) {
+    if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
+    volver(sinPermisoPara("modificar este ingreso"));
   }
 
   // Recién con el cambio confirmado se borra el comprobante viejo de Drive.

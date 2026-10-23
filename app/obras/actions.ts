@@ -72,10 +72,20 @@ export async function actualizarObra(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase.from("obras").update(datos).eq("id", obraId);
+  const { data, error } = await supabase
+    .from("obras")
+    .update(datos)
+    .eq("id", obraId)
+    .select("id");
 
   if (error) {
     volverCon(`/obras/${slug}/editar`, error.message);
+  }
+
+  // Sin esto el reparto se reescribiría igual: los datos de la obra no se
+  // habrían guardado y las socias sí, que es peor que no guardar nada.
+  if (noTocoNada(data)) {
+    volverCon(`/obras/${slug}/editar`, sinPermisoPara("modificar esta obra"));
   }
 
   const { error: errorSocios } = await supabase.rpc("set_obra_socios", {
@@ -131,7 +141,7 @@ export async function subirImagenObra(formData: FormData) {
 
   if (!subida) return;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("obras")
     .update({
       imagen_drive_id: subida.id,
@@ -139,11 +149,18 @@ export async function subirImagenObra(formData: FormData) {
       imagen_mime: subida.mimeType,
       imagen_tamano: subida.tamano,
     })
-    .eq("id", obraId);
+    .eq("id", obraId)
+    .select("id");
 
   if (error) {
     await eliminarArchivo(subida.id).catch(() => {});
     volver(error.message);
+  }
+
+  // Si el RLS no dejó guardar, la imagen recién subida no la referencia nadie.
+  if (noTocoNada(data)) {
+    await eliminarArchivo(subida.id).catch(() => {});
+    volver(sinPermisoPara("cambiar la portada de esta obra"));
   }
 
   // Recién ahora se borra la anterior: si el guardado hubiera fallado, la
@@ -168,7 +185,7 @@ export async function eliminarImagenObra(formData: FormData) {
     .eq("id", obraId)
     .maybeSingle();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("obras")
     .update({
       imagen_drive_id: null,
@@ -176,10 +193,17 @@ export async function eliminarImagenObra(formData: FormData) {
       imagen_mime: null,
       imagen_tamano: null,
     })
-    .eq("id", obraId);
+    .eq("id", obraId)
+    .select("id");
 
   if (error) {
     volverCon(`/obras/${slug}/editar`, error.message);
+  }
+
+  // Primero el candado, después Drive: borrar el archivo de una portada que
+  // sigue puesta la dejaría rota en la pantalla.
+  if (noTocoNada(data)) {
+    volverCon(`/obras/${slug}/editar`, sinPermisoPara("quitar la portada de esta obra"));
   }
 
   if (actual?.imagen_drive_id) {
@@ -194,13 +218,21 @@ export async function archivarObra(formData: FormData) {
   const obraId = String(formData.get("obra_id") ?? "");
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("obras")
     .update({ archivada_en: new Date().toISOString() })
-    .eq("id", obraId);
+    .eq("id", obraId)
+    .select("id");
 
   if (error) {
     volverCon(`/obras/${formData.get("slug")}/editar`, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(
+      `/obras/${formData.get("slug")}/editar`,
+      sinPermisoPara("archivar esta obra")
+    );
   }
 
   revalidatePath("/", "layout");
@@ -209,9 +241,22 @@ export async function archivarObra(formData: FormData) {
 
 export async function desarchivarObra(formData: FormData) {
   const obraId = String(formData.get("obra_id") ?? "");
+  const slug = String(formData.get("slug") ?? "");
 
   const supabase = await createClient();
-  await supabase.from("obras").update({ archivada_en: null }).eq("id", obraId);
+  const { data, error } = await supabase
+    .from("obras")
+    .update({ archivada_en: null })
+    .eq("id", obraId)
+    .select("id");
+
+  if (error) {
+    volverCon(`/obras/${slug}/editar`, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(`/obras/${slug}/editar`, sinPermisoPara("desarchivar esta obra"));
+  }
 
   revalidatePath("/", "layout");
   redirect("/");

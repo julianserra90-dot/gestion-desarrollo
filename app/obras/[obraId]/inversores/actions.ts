@@ -100,12 +100,14 @@ export async function actualizarInversor(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("inversores")
     .update(aFila(campos))
-    .eq("id", inversorId);
+    .eq("id", inversorId)
+    .select("id");
 
   if (error) volver(traducirError(error.message, campos.nombre));
+  if (noTocoNada(data)) volver(sinPermisoPara("modificar esta ficha"));
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/inversores`);

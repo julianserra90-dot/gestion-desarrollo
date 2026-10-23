@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { ROL_CON_EMPRESA, leerRol } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -31,7 +32,7 @@ export async function actualizarUsuario(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("perfiles")
     .update({
       nombre,
@@ -40,10 +41,18 @@ export async function actualizarUsuario(formData: FormData) {
       // todas las obras, y el inversor y el comprador no son de ninguna.
       empresa_id: rol === ROL_CON_EMPRESA ? empresaId : null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volver(error.message);
+  }
+
+  // Esta pantalla es sólo del administrador, pero el candado está en la base:
+  // sin filas, el rol y la empresa quedaron como estaban y decir "listo" haría
+  // creer que alguien ya tiene los permisos que se le acaban de dar.
+  if (noTocoNada(data)) {
+    volver(sinPermisoPara("modificar usuarios"));
   }
 
   // El nombre queda copiado en lo que la persona ya cargó, así que se

@@ -37,10 +37,18 @@ export async function actualizarReferencia(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("edificios_referencia").update(datos).eq("id", id);
+  const { data, error } = await supabase
+    .from("edificios_referencia")
+    .update(datos)
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volverCon(`${LISTADO}/${id}`, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(`${LISTADO}/${id}`, sinPermisoPara("modificar esta referencia"));
   }
 
   revalidatePath(LISTADO);

@@ -33,14 +33,17 @@ export async function renombrarEmpresa(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("empresas")
     .update({ nombre })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volverCon("/empresas", mensajeDeError(error, nombre));
   }
+
+  if (noTocoNada(data)) volverCon("/empresas", sinPermisoPara("renombrar empresas"));
 
   revalidatePath("/", "layout");
   redirect("/empresas");

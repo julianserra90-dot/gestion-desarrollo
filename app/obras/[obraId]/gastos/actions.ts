@@ -1023,12 +1023,25 @@ export async function actualizarGasto(formData: FormData) {
     cambios.comprobante_tamano = null;
   }
 
-  const { error } = await supabase.from("gastos").update(cambios).eq("id", gastoId);
+  const { data, error } = await supabase
+    .from("gastos")
+    .update(cambios)
+    .eq("id", gastoId)
+    .select("id");
 
   if (error) {
     // Si la actualización falla, se limpia el archivo recién subido.
     if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
     volver(error.message);
+  }
+
+  // Sin filas es el RLS (`lib/permisos.ts`): el gasto quedó como estaba, así
+  // que el comprobante nuevo no lo referencia nadie y hay que sacarlo de
+  // Drive. Y se frena antes del detalle: reemplazarlo sobre un gasto que no se
+  // guardó dejaría la ficha mezclada.
+  if (noTocoNada(data)) {
+    if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
+    volver(sinPermisoPara("modificar este gasto"));
   }
 
   // Recién con el cambio confirmado se borra el comprobante viejo de Drive.

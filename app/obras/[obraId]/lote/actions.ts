@@ -31,7 +31,10 @@ export async function guardarDatosLote(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const volver = (mensaje: string): never =>
+    redirect(`/obras/${slug}/editar/lote?error=${encodeURIComponent(mensaje)}`);
+
+  const { data, error } = await supabase
     .from("obras")
     .update({
       lote_valor_usd: valor === "" ? null : Number(valor),
@@ -45,13 +48,11 @@ export async function guardarDatosLote(formData: FormData) {
       lote_parcela: texto("lote_parcela"),
       lote_detalle: texto("lote_detalle"),
     })
-    .eq("id", obraId);
+    .eq("id", obraId)
+    .select("id");
 
-  if (error) {
-    redirect(
-      `/obras/${slug}/editar/lote?error=${encodeURIComponent(error.message)}`
-    );
-  }
+  if (error) volver(error.message);
+  if (noTocoNada(data)) volver(sinPermisoPara("modificar los datos del lote"));
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/lote`);
@@ -259,15 +260,23 @@ export async function actualizarPagoLote(formData: FormData) {
     cambios.comprobante_tamano = null;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("lote_pagos")
     .update(cambios)
     .eq("id", pagoId)
-    .eq("obra_id", obraId);
+    .eq("obra_id", obraId)
+    .select("id");
 
   if (error) {
     if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
     volver(error.message);
+    return;
+  }
+
+  // El pago quedó como estaba: el comprobante nuevo no lo referencia nadie.
+  if (noTocoNada(data)) {
+    if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
+    volver(sinPermisoPara("modificar este pago"));
     return;
   }
 

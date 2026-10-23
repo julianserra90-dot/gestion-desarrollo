@@ -127,7 +127,7 @@ export async function actualizarPrevisto(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("ingresos_previstos")
     .update({
       empresa_id: empresaId,
@@ -137,9 +137,11 @@ export async function actualizarPrevisto(formData: FormData) {
       detalle,
       observaciones: observaciones === "" ? null : observaciones,
     })
-    .eq("id", previstoId);
+    .eq("id", previstoId)
+    .select("id");
 
   if (error) volver(error.message);
+  if (noTocoNada(data)) volver(sinPermisoPara("modificar esta cuota"));
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/ingresos/agenda`);

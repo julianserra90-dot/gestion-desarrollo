@@ -94,13 +94,20 @@ export async function actualizarRetiro(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("acopio_retiros")
     .update({ fecha, observaciones: observaciones === "" ? null : observaciones })
     .eq("id", retiroId)
-    .eq("gasto_id", gastoId);
+    .eq("gasto_id", gastoId)
+    .select("id");
 
   if (error) volverA(slug, gastoId, retiroId, error.message);
+
+  // Antes de reemplazar los items: si la cabecera no se guardó, borrarlos
+  // dejaría el retiro vacío y con la fecha vieja.
+  if (noTocoNada(data)) {
+    volverA(slug, gastoId, retiroId, sinPermisoPara("modificar este retiro"));
+  }
 
   // Los items se reemplazan enteros, como el detalle de un gasto.
   const { error: errorBorrado } = await supabase

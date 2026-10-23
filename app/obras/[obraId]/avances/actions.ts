@@ -113,7 +113,7 @@ export async function actualizarAvance(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("avances")
     .update({
       porcentaje: campos.porcentaje,
@@ -123,10 +123,16 @@ export async function actualizarAvance(formData: FormData) {
       actualizado_en: new Date().toISOString(),
     })
     .eq("id", avanceId)
-    .eq("obra_id", obraId);
+    .eq("obra_id", obraId)
+    .select("id");
 
   if (error) {
     volver(error.message);
+    return;
+  }
+
+  if (noTocoNada(data)) {
+    volver(sinPermisoPara("modificar este avance"));
     return;
   }
 

@@ -216,7 +216,7 @@ export async function actualizarDocumento(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("documentos")
     .update({
       ambito,
@@ -228,10 +228,18 @@ export async function actualizarDocumento(formData: FormData) {
       ...(fecha === "" ? {} : { fecha }),
     })
     .eq("id", id)
-    .eq("obra_id", obraId);
+    .eq("obra_id", obraId)
+    .select("id");
 
   if (error) {
     volver(error.message);
+    return;
+  }
+
+  // Antes de tocar las otras versiones de la línea: si esto no se guardó, el
+  // documento no quedó vigente y no hay a quién dejar obsoleto.
+  if (noTocoNada(data)) {
+    volver(sinPermisoPara("modificar este documento"));
     return;
   }
 

@@ -109,6 +109,7 @@ export default async function EditarObraPage({
 
           <form action={desarchivarObra}>
             <input type="hidden" name="obra_id" value={obra.id} />
+            <input type="hidden" name="slug" value={obra.slug} />
             <button type="submit" style={secondaryButton}>
               Desarchivar
             </button>

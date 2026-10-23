@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 export async function actualizarMiPerfil(formData: FormData) {
@@ -21,13 +22,20 @@ export async function actualizarMiPerfil(formData: FormData) {
     redirect("/login");
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("perfiles")
     .update({ nombre })
-    .eq("id", user.id);
+    .eq("id", user.id)
+    .select("id");
 
   if (error) {
     redirect("/perfil?error=" + encodeURIComponent(error.message));
+  }
+
+  // Sin esto, el nombre nuevo se copiaría en todo lo cargado mientras el
+  // perfil sigue con el viejo: lo peor de los dos lados.
+  if (noTocoNada(data)) {
+    redirect("/perfil?error=" + encodeURIComponent(sinPermisoPara("cambiar tu nombre")));
   }
 
   // El nombre queda copiado en cada registro al momento de cargarlo (para poder

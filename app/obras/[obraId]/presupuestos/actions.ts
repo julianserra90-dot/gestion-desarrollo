@@ -332,14 +332,22 @@ export async function actualizarPresupuesto(formData: FormData) {
     cambios.comprobante_tamano = null;
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("presupuestos")
     .update(cambios)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
     volver(error.message);
+  }
+
+  // La cotización quedó como estaba: ni el comprobante nuevo sirve, ni hay que
+  // reemplazarle el detalle.
+  if (noTocoNada(data)) {
+    if (subidoAhora) await eliminarArchivo(subidoAhora).catch(() => {});
+    volver(sinPermisoPara("modificar esta cotización"));
   }
 
   // Si dejó de ser de materiales, el detalle que tenía ya no significa nada:
@@ -373,12 +381,16 @@ export async function aprobarPresupuesto(id: string, formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("presupuestos")
     .update({ estado: "Aprobado" })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) volverAListado(slug, error.message);
+  if (noTocoNada(data)) {
+    volverAListado(slug, sinPermisoPara("aprobar esta cotización"));
+  }
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/presupuestos`);
@@ -421,12 +433,16 @@ export async function desaprobarPresupuesto(id: string, formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("presupuestos")
     .update({ estado: "Pendiente" })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) volverAListado(slug, error.message);
+  if (noTocoNada(data)) {
+    volverAListado(slug, sinPermisoPara("desaprobar esta cotización"));
+  }
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/presupuestos`);
@@ -523,9 +539,16 @@ export async function cambiarTipoDeRubro(rubroId: string, formData: FormData) {
   const cambio: Partial<Record<(typeof COLUMNA_DEL_TIPO)[TipoDeBloque], boolean>> =
     { [columna]: incluir };
 
-  const { error } = await supabase.from("rubros").update(cambio).eq("id", rubroId);
+  const { data, error } = await supabase
+    .from("rubros")
+    .update(cambio)
+    .eq("id", rubroId)
+    .select("id");
 
   if (error) volverAListado(slug, error.message);
+  if (noTocoNada(data)) {
+    volverAListado(slug, sinPermisoPara("cambiar los bloques de este rubro"));
+  }
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/presupuestos`);

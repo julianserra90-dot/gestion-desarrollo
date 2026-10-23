@@ -100,7 +100,7 @@ export async function reconsultarPrefactibilidad(formData: FormData) {
     nueva
   );
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("prefactibilidades")
     .update({
       ...valoresDesdeCiudad(consulta),
@@ -108,10 +108,15 @@ export async function reconsultarPrefactibilidad(formData: FormData) {
       consultado_en: consulta.consultadoEn,
       actualizado_en: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volverCon(ficha, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(ficha, sinPermisoPara("actualizar este estudio"));
   }
 
   revalidatePath("/prefactibilidades");
@@ -128,13 +133,18 @@ export async function actualizarPrefactibilidad(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("prefactibilidades")
     .update({ ...datos, actualizado_en: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
   if (error) {
     volverCon(`/prefactibilidades/${id}/editar`, error.message);
+  }
+
+  if (noTocoNada(data)) {
+    volverCon(`/prefactibilidades/${id}/editar`, sinPermisoPara("modificar este estudio"));
   }
 
   revalidatePath("/prefactibilidades");

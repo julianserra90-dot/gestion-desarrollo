@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -130,7 +131,7 @@ async function aplicarDesglose(
   // rechaza): conserva los que tenía y queda en cero.
   const algunTipo = tipos.usa_materiales || tipos.usa_mano_obra || tipos.usa_integrado;
 
-  const { error: errorItem } = await supabase
+  const { data: itemTocado, error: errorItem } = await supabase
     .from("computo_items")
     .update({
       ...(algunTipo ? tipos : {}),
@@ -138,8 +139,10 @@ async function aplicarDesglose(
       precio_mano_obra: suma("Mano de obra"),
       precio_integrado: suma("Integrado"),
     })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .select("id");
   if (errorItem) return errorItem.message;
+  if (noTocoNada(itemTocado)) return sinPermisoPara("cambiar el desglose de esta tarea");
 
   if (!algunTipo) return null;
 
@@ -209,8 +212,15 @@ export async function guardarTareas(formData: FormData) {
     .map((i) => i.id);
 
   if (aBorrar.length > 0) {
-    const { error } = await supabase.from("computo_items").delete().in("id", aBorrar);
+    const { data, error } = await supabase
+      .from("computo_items")
+      .delete()
+      .in("id", aBorrar)
+      .select("id");
     if (error) volver(destino, error.message);
+    if (noTocoNada(data)) {
+      volver(destino, sinPermisoPara("sacar tareas del cómputo"));
+    }
   }
 
   const porNombre = new Map(
@@ -339,11 +349,15 @@ export async function guardarPlanilla(formData: FormData) {
   const supabase = await createClient();
 
   if (/^\d{4}-\d{2}$/.test(mes)) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("computos")
       .update({ mes_precios: `${mes}-01` })
-      .eq("obra_id", obraId);
+      .eq("obra_id", obraId)
+      .select("id");
     if (error) volver(base(slug), error.message);
+    if (noTocoNada(data)) {
+      volver(base(slug), sinPermisoPara("modificar el cómputo de esta obra"));
+    }
   }
 
   const { data: actuales } = await supabase
@@ -381,7 +395,7 @@ export async function guardarPlanilla(formData: FormData) {
       continue;
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("computo_items")
       .update({
         nombre,
@@ -391,9 +405,17 @@ export async function guardarPlanilla(formData: FormData) {
         precio_mano_obra: pmo,
         precio_integrado: pint,
       })
-      .eq("id", item.id);
+      .eq("id", item.id)
+      .select("id");
 
     if (error) volver(base(slug), error.message);
+
+    // Sin filas es el RLS (`lib/permisos.ts`). Se frena en la primera: seguir
+    // con el resto de la planilla sólo cambiaría cuántas filas no se guardaron
+    // antes de decir "guardado".
+    if (noTocoNada(data)) {
+      volver(base(slug), sinPermisoPara("modificar el cómputo de esta obra"));
+    }
   }
 
   revalidatePath(base(slug));
@@ -429,8 +451,13 @@ export async function eliminarIndiceCac(mes: string, formData: FormData) {
   const destino = `${base(slug)}/cac`;
   const supabase = await createClient();
 
-  const { error } = await supabase.from("indices_cac").delete().eq("mes", mes);
+  const { data, error } = await supabase
+    .from("indices_cac")
+    .delete()
+    .eq("mes", mes)
+    .select("mes");
   if (error) volver(destino, error.message);
+  if (noTocoNada(data)) volver(destino, sinPermisoPara("borrar índices del CAC"));
 
   revalidatePath("/", "layout");
   redirect(destino);
@@ -532,12 +559,14 @@ export async function editarTareaDelComputo(
 
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("computo_items")
     .update({ nombre: n, unidad: u })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("modificar esta tarea") };
 
   revalidatePath("/obras", "layout");
   return {};
@@ -588,12 +617,18 @@ export async function alternarTarea(
       .eq("tarea_id", tareaId);
     await borrarPedidosDe(supabase, (aBorrar ?? []).map((i) => i.id));
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("computo_items")
       .delete()
       .eq("obra_id", obraId)
-      .eq("tarea_id", tareaId);
+      .eq("tarea_id", tareaId)
+      .select("id");
     if (error) return { error: error.message };
+    // Destildar una tarea que no estaba no borra nada y está bien: el candado
+    // sólo aplica cuando había filas para borrar.
+    if ((aBorrar ?? []).length > 0 && noTocoNada(data)) {
+      return { error: sinPermisoPara("sacar tareas del cómputo") };
+    }
     revalidarComputo();
     return {};
   }
@@ -701,8 +736,13 @@ export async function crearTareaPropia(
 export async function quitarItem(itemId: string): Promise<Resultado> {
   const supabase = await createClient();
   await borrarPedidosDe(supabase, [itemId]);
-  const { error } = await supabase.from("computo_items").delete().eq("id", itemId);
+  const { data, error } = await supabase
+    .from("computo_items")
+    .delete()
+    .eq("id", itemId)
+    .select("id");
   if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("sacar esta tarea del cómputo") };
   revalidarComputo();
   return {};
 }
