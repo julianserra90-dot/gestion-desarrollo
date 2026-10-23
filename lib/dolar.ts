@@ -36,6 +36,47 @@ let cacheActual: { valor: Cotizacion; expira: number } | null = null;
 const cacheHistorico = new Map<string, { valor: Map<string, number>; expira: number }>();
 
 /**
+ * Cuántos rangos distintos se guardan a la vez.
+ *
+ * La clave del caché es el rango pedido, y el rango sale de las fechas que hay
+ * en la pantalla: cambia casi en cada vista y en cada obra. Sin tope, un
+ * proceso largo —el servidor, que no se reinicia entre pantalla y pantalla—
+ * suma una entrada por rango distinto y no saca ninguna: las vencidas dejan de
+ * usarse pero siguen ocupando lugar.
+ *
+ * Cuarenta alcanza para que las pantallas que se repiten sigan pegando en el
+ * caché —una obra usa un puñado de rangos— y le pone un techo al mapa.
+ */
+const MAX_HISTORICOS = 40;
+
+/**
+ * Guarda un rango y deja el caché acotado.
+ *
+ * Primero salen las entradas vencidas, que es lugar que ya no le sirve a
+ * nadie. Si aun así sobran, se van las más viejas: un `Map` se recorre en
+ * orden de inserción, así que las primeras son las que hace más tiempo que no
+ * se escriben. Perder una sólo cuesta volver a pedirle ese rango a Ámbito.
+ */
+function guardarHistorico(clave: string, valor: Map<string, number>) {
+  const ahora = Date.now();
+
+  for (const [k, v] of cacheHistorico) {
+    if (v.expira <= ahora) cacheHistorico.delete(k);
+  }
+
+  // Si la clave ya estaba, se reinserta al final: así vuelve a contar como
+  // reciente y el recorte de abajo no se la lleva antes de tiempo.
+  cacheHistorico.delete(clave);
+  cacheHistorico.set(clave, { valor, expira: ahora + TTL_HISTORICO });
+
+  while (cacheHistorico.size > MAX_HISTORICOS) {
+    const masVieja = cacheHistorico.keys().next();
+    if (masVieja.done) break;
+    cacheHistorico.delete(masVieja.value);
+  }
+}
+
+/**
  * Pasa un número con formato argentino a number.
  * "1.459,89" -> 1459.89   (el punto separa miles, la coma decimales)
  */
@@ -147,7 +188,7 @@ async function getHistorico(
       if (!mapa.has(iso)) mapa.set(iso, (c + v) / 2);
     }
 
-    cacheHistorico.set(clave, { valor: mapa, expira: Date.now() + TTL_HISTORICO });
+    guardarHistorico(clave, mapa);
   } catch {
     // Se devuelve vacío: quien llama cae en la cotización actual.
   }
