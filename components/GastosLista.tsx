@@ -627,12 +627,26 @@ export default function GastosLista({
                         pantalla llena de campos invita a tocar algo sin
                         querer. Editar es un botón dentro de la ficha. */}
                     <td style={celda}>
-                      <Link
-                        href={`/obras/${slug}/gastos/${gasto.id}`}
-                        style={editarLink}
-                      >
-                        Ver
-                      </Link>
+                      <span style={accionesFila}>
+                        <Link
+                          href={`/obras/${slug}/gastos/${gasto.id}`}
+                          style={editarLink}
+                        >
+                          Ver
+                        </Link>
+                        {/* Los que vuelven todos los meses —impuestos,
+                            honorarios— se cargan de nuevo desde acá, sin
+                            pasar por la ficha. Abre el alta precargada: no
+                            escribe nada hasta que se guarde. */}
+                        <Link
+                          href={`/obras/${slug}/gastos/nuevo?repetir=${gasto.id}`}
+                          style={repetirLink}
+                          title="Repetir este gasto"
+                          aria-label="Repetir este gasto"
+                        >
+                          ↻
+                        </Link>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -850,4 +864,19 @@ const editarLink = {
   color: "#111111",
   fontSize: "14px",
   textDecoration: "underline",
+};
+
+const accionesFila = {
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: "10px",
+};
+
+// Sin subrayar y más grande que el texto: es un ícono, y al lado de "Ver" los
+// dos subrayados se leían como un solo enlace partido.
+const repetirLink = {
+  color: "#111111",
+  fontSize: "17px",
+  lineHeight: 1,
+  textDecoration: "none",
 };

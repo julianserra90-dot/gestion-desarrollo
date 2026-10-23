@@ -134,6 +134,14 @@ export default async function FichaGastoPage({
               </Link>
             )
         )}
+        {/* Repetir no toca este gasto: abre el alta con lo suyo puesto. Por
+            eso va con los botones de mirar y no con el de editar. */}
+        <Link
+          href={`${base}/nuevo?repetir=${gasto.id}`}
+          style={ui.secondaryButton}
+        >
+          ↻ Repetir gasto
+        </Link>
         <Link href={`${base}/${gasto.id}/editar`} style={ui.button}>
           Editar gasto
         </Link>

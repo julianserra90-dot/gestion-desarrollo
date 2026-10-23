@@ -10,6 +10,7 @@ import {
   type CamposBorrador,
 } from "@/lib/borradores";
 import { getCaja } from "@/lib/caja";
+import { camposParaRepetir } from "@/lib/repetir-gasto";
 import { getDetalles } from "@/lib/detalles";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getMaterialesCatalogo } from "@/lib/materiales";
@@ -27,10 +28,10 @@ export default async function NuevoGastoPage({
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  searchParams: Promise<{ error?: string; borrador?: string }>;
+  searchParams: Promise<{ error?: string; borrador?: string; repetir?: string }>;
 }) {
   const { obraId } = await params;
-  const { error, borrador: borradorId } = await searchParams;
+  const { error, borrador: borradorId, repetir: repetirId } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -96,6 +97,42 @@ export default async function NuevoGastoPage({
       }
     : undefined;
 
+  // Se repite un gasto: el formulario arranca con lo suyo, con la fecha de
+  // hoy. No es editarlo —se está creando uno nuevo—, así que va por la misma
+  // puerta que un borrador: valores puestos y nada más. Si el gasto ya no
+  // está, se arranca vacío, igual que con un borrador que se descartó.
+  const { data: repetido } = repetirId
+    ? await supabase
+        .from("gastos")
+        .select(
+          "rubro_id, proveedor_id, empresa_receptora_id, tipo_gasto, es_acopio, concepto, tipo_pago, tipo_factura, alicuota_iva, precios_con_iva, pesos_con_dolares, empresa_factura_id, monto, monto_usd, moneda, caja_ars, caja_usd, cotizacion, descuento_detalle, observaciones, empresa_pagadora_id, compartido"
+        )
+        .eq("id", repetirId)
+        .eq("obra_id", obra.id)
+        .maybeSingle()
+    : { data: null };
+
+  const [{ data: itemsRepetidos }, { data: facturasRepetidas }] = repetido
+    ? await Promise.all([
+        supabase
+          .from("gasto_materiales")
+          .select("material_id, cantidad, precio_unitario")
+          .eq("gasto_id", repetirId as string)
+          .order("orden"),
+        supabase
+          .from("gasto_facturas")
+          .select("empresa_id, monto, monto_usd")
+          .eq("gasto_id", repetirId as string)
+          .order("orden"),
+      ])
+    : [{ data: null }, { data: null }];
+
+  // La fecha la pone la pantalla, no el módulo: el servidor corre en UTC y a
+  // la noche "hoy" en Buenos Aires todavía es ayer allá.
+  const hoy = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  });
+
   const listaSocios = (socios ?? [])
     .map((s) => ({
       empresa_id: s.empresa_id,
@@ -112,7 +149,9 @@ export default async function NuevoGastoPage({
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>{obra.nombre}</p>
-        <h2 style={ui.pageTitle}>{borrador ? "Borrador de gasto" : "Nuevo gasto"}</h2>
+        <h2 style={ui.pageTitle}>
+          {borrador ? "Borrador de gasto" : repetido ? "Repetir gasto" : "Nuevo gasto"}
+        </h2>
       </section>
 
       {/* Dos avisos distintos: sin catálogo no hay nada que elegir y hay que
@@ -146,7 +185,7 @@ export default async function NuevoGastoPage({
         // uno nuevo): es la misma página, y sin ella el estado quedaría del
         // anterior.
         <GastoForm
-          key={borrador?.id ?? "nuevo"}
+          key={borrador?.id ?? (repetirId ? `repetir-${repetirId}` : "nuevo")}
           action={crearGasto}
           obraId={obra.id}
           slug={obra.slug}
@@ -163,7 +202,18 @@ export default async function NuevoGastoPage({
           detallesPredefinidos={detallesPredefinidos}
           materiales={materiales}
           borrador={borrador}
-          itemsIniciales={borrador ? itemsDelBorrador(borrador.campos) : undefined}
+          camposIniciales={repetido ? camposParaRepetir(repetido, hoy) : undefined}
+          itemsIniciales={
+            borrador
+              ? itemsDelBorrador(borrador.campos)
+              : repetido
+                ? (itemsRepetidos ?? []).map((i) => ({
+                    materialId: i.material_id,
+                    cantidad: String(i.cantidad),
+                    precio: i.precio_unitario === null ? "" : String(i.precio_unitario),
+                  }))
+                : undefined
+          }
           facturasIniciales={
             borrador
               ? facturasDelBorrador(borrador.campos).map((f) => ({
@@ -171,7 +221,18 @@ export default async function NuevoGastoPage({
                   comprobanteDriveId: null,
                   comprobanteNombre: null,
                 }))
-              : undefined
+              : repetido
+                ? (facturasRepetidas ?? []).map((f) => ({
+                    empresaId: f.empresa_id,
+                    // En la moneda del papel, igual que al editar: `monto` son
+                    // pesos siempre y `monto_usd` sólo está cuando aplica.
+                    monto: Number(f.monto_usd ?? f.monto),
+                    // El número no se repite: la factura de este mes es otra.
+                    numero: null,
+                    comprobanteDriveId: null,
+                    comprobanteNombre: null,
+                  }))
+                : undefined
           }
           accionBorrador={guardarBorrador}
           accionDescartar={descartarBorrador}

@@ -11,6 +11,7 @@ import ItemsDeMaterial, {
 } from "@/components/ItemsDeMaterial";
 import * as ui from "@/components/ui";
 import { tildado, valorDe, type CamposBorrador } from "@/lib/borradores";
+import { loPedidoALaCuenta } from "@/lib/repetir-gasto";
 import { formatDate, formatMoney, formatPorcentaje, formatUSD } from "@/lib/format";
 import { GASTO_COMPARTIDO, repartirPago } from "@/lib/reparto";
 import { semanaDeObra } from "@/lib/semanas";
@@ -209,6 +210,7 @@ export default function GastoForm({
   facturasIniciales = [],
   textoBoton = "Guardar gasto",
   borrador,
+  camposIniciales,
   accionBorrador,
   accionDescartar,
 }: {
@@ -244,14 +246,20 @@ export default function GastoForm({
   textoBoton?: string;
   /** El borrador que se retoma, si se entró por uno. */
   borrador?: BorradorGasto;
+  /**
+   * Valores con los que arrancar, sin que haya un borrador ni un gasto que
+   * editar: hoy, repetir un gasto. Se leen igual que los de un borrador, que
+   * es lo que hace que el formulario no tenga que distinguirlos.
+   */
+  camposIniciales?: CamposBorrador;
   /** Guarda el formulario como está, sin validar nada, para terminarlo después. */
   accionBorrador?: (formData: FormData) => void;
   /** Tira el borrador que se retoma. */
   accionDescartar?: (formData: FormData) => void;
 }) {
-  // Lo que tenía el borrador, campo por campo. Al editar un gasto no hay
-  // borrador: los valores salen de `gasto`.
-  const b = gasto ? null : (borrador?.campos ?? null);
+  // Lo que tenía el borrador —o lo que se le precargó—, campo por campo. Al
+  // editar un gasto no hay nada de eso: los valores salen de `gasto`.
+  const b = gasto ? null : (borrador?.campos ?? camposIniciales ?? null);
   const delBorrador = (clave: string) => valorDe(b, clave);
 
   // Al editar se muestra el número tal como se cargó: si el gasto se ingresó en
@@ -345,30 +353,19 @@ export default function GastoForm({
     gasto?.empresa_receptora_id ?? delBorrador("empresa_receptora_id") ?? ""
   );
   const [rubroId, setRubroId] = useState(gasto?.rubro_id ?? delBorrador("rubro_id") ?? "");
-  const [usarCaja, setUsarCaja] = useState(
-    gasto
-      ? Number(gasto.caja_ars) > 0 || Number(gasto.caja_usd) > 0
-      : tildado(b, "usar_caja")
-  );
   // Al editar se reconstruye lo que se había pedido: lo que salió de la cuenta
-  // más lo que tuvo que poner una empresa, que siempre fue un faltante en pesos.
-  const [cajaArs, setCajaArs] = useState(() => {
-    if (!gasto) return delBorrador("caja_ars") ?? "";
-    // En pesos con dólares no se pidieron pesos de la cuenta: lo que no
-    // cubrieron los dólares lo puso una socia.
-    if (gasto.pesos_con_dolares) return "";
-    const deCuenta =
-      Number(gasto.caja_ars) + Number(gasto.caja_usd) * Number(gasto.cotizacion ?? 0);
-    if (deCuenta <= 0) return "";
-    const pedido = Number(gasto.caja_ars) + Math.max(Number(gasto.monto) - deCuenta, 0);
-    return pedido > 0 ? String(Math.round(pedido * 100) / 100) : "";
-  });
+  // más lo que tuvo que poner una empresa, que siempre fue un faltante en
+  // pesos. La cuenta vive en `lib/repetir-gasto.ts`, porque repetir un gasto
+  // necesita exactamente la misma y no puede salir distinta.
+  const pedidoALaCuenta = gasto ? loPedidoALaCuenta(gasto) : null;
+  const [usarCaja, setUsarCaja] = useState(
+    pedidoALaCuenta ? pedidoALaCuenta.usaLaCuenta : tildado(b, "usar_caja")
+  );
+  const [cajaArs, setCajaArs] = useState(
+    pedidoALaCuenta ? pedidoALaCuenta.ars : (delBorrador("caja_ars") ?? "")
+  );
   const [cajaUsd, setCajaUsd] = useState(
-    gasto
-      ? Number(gasto.caja_usd) > 0
-        ? String(gasto.caja_usd)
-        : ""
-      : (delBorrador("caja_usd") ?? "")
+    pedidoALaCuenta ? pedidoALaCuenta.usd : (delBorrador("caja_usd") ?? "")
   );
   // El gasto es en pesos pero en la cuenta hay dólares: se carga el monto en
   // pesos y los dólares que salen se calculan al cambio, en vez de hacer la
@@ -381,10 +378,8 @@ export default function GastoForm({
     gasto ? gasto.pesos_con_dolares : b !== null && "caja_pesos_en_dolares" in b
   );
   const [pesosEnDolares, setPesosEnDolares] = useState(
-    gasto
-      ? gasto.pesos_con_dolares
-        ? String(gasto.monto)
-        : ""
+    pedidoALaCuenta
+      ? (pedidoALaCuenta.pesosEnDolares ?? "")
       : (delBorrador("caja_pesos_en_dolares") ?? "")
   );
   const [cotizManual, setCotizManual] = useState(
