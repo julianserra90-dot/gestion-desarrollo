@@ -675,7 +675,18 @@ const contenidoResumen = {
   display: "inline-grid",
   // Tres columnas de números del mismo ancho fijo: montos completos, sin
   // recortes, y alineados en la misma vertical en todos los rubros.
-  gridTemplateColumns: "minmax(0, 1fr) 150px 150px 150px auto",
+  //
+  // La de acciones también va fija, y por lo mismo. Medida al contenido, el
+  // bloque que muestra "Quitar" la ensanchaba casi 50 px y empujaba los tres
+  // números hacia la izquierda: dentro de un mismo rubro, una fila quedaba
+  // corrida respecto de las otras dos.
+  //
+  // El caso más ancho —"Quitar" más "+ Cotizar"— pide 102 px. Van 110 porque
+  // el sobrante no se nota (la fila sin "Quitar" lo deja vacío a la izquierda
+  // del enlace, que igual va pegado a la derecha) y quedarse corto sí: son
+  // elementos de un flex, así que en vez de desbordar se comprimen, y con el
+  // ancho justo el enlace perdía un par de píxeles.
+  gridTemplateColumns: "minmax(0, 1fr) 150px 150px 150px 110px",
   alignItems: "center",
   gap: "20px",
   width: "calc(100% - 28px)",
