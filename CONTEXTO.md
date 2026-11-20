@@ -387,6 +387,67 @@ precio de referencia, separado en materiales y mano de obra.
   sólo rubros con estimado y cotizado, para que un rubro sin cotizar no haga
   parecer barata la obra.
 
+### De dónde sale cada número del cómputo (20/11/2026)
+Tres capas nuevas con la misma idea atrás: **guardar lo que se sabe y derivar
+lo que se necesita**, en vez de guardar el resultado y perder la cuenta. Antes,
+un desglose decía "0,6 bolsas por m²" y una tarea decía "22,28 m³": los dos
+números eran correctos y ninguno se podía verificar.
+
+- **El envase del material** (`materiales.contenido`, `contenido_unidad`):
+  cuánto trae la bolsa en la que se compra. Opcional, y las dos columnas van
+  juntas o no va ninguna (`check` en la base): un "30" sin unidad no convierte
+  nada. Va en el material y no en la tarea porque la misma bolsa de 30 kg
+  sirve para el revoque grueso y para el fino.
+- **El consumo del renglón** (`computo_item_desglose.consumo` y
+  `consumo_unidad`; lo mismo en `tarea_desglose`): se carga **18 kg por m²** y
+  la cantidad en bolsas sale de dividir por el contenido. `cantidad` sigue
+  mandando en todos los precios; el consumo la **explica** y la rehace si
+  mañana la bolsa cambia de tamaño. Se guardan las dos, y al leer el cómputo
+  la cantidad se recalcula si el consumo está y su unidad es la del envase. La
+  regla vive sola en `lib/consumo.ts`, sin importar nada, porque la usan el
+  servidor al leer y la pantalla al escribir: si cada uno convirtiera a su
+  manera, la fila mostraría un número y la base guardaría otro.
+- **La medición de la tarea** (`computo_item_medicion`): de dónde salen los
+  22,28 m³ de vigas. Un renglón por elemento medido, con `nivel` (texto
+  libre), `etiqueta` (V-201), `forma` y `unidades`. La forma dice qué se
+  multiplica —`prisma` a×b×c, `superficie` b×c (espesor por área),
+  `directo` c (un volumen ya calculado aparte)— porque meter las tres en una
+  sola columna es lo que vuelve ilegible una planilla. La cantidad de la tarea
+  es la suma y **la calcula el servidor** al guardar: de ella salen los precios
+  y el peso del avance físico. Un elemento al que le falta una medida de las
+  que su forma pide **no suma** y se cuenta aparte, así lo que falta medir se
+  ve restando. Reglas en `lib/medicion.ts`.
+- **La medición se pide al abrir**, no viene con la planilla: una tarea puede
+  tener 250 elementos y casi nunca se miran. En pantalla van en **bloques por
+  nivel**, con el nombre del piso y su subtotal arriba, y plegables; una
+  medición de más de 24 elementos llega plegada (las 132 vigas de Andonaegui
+  medían 7.082 px abiertas y 482 plegadas). El bloque se identifica por una
+  clave propia y no por el nombre del nivel, porque dos bloques nuevos se
+  llaman los dos "" y agruparlos por texto los fundiría.
+- **"Pegar desde Excel"** lee las columnas **por posición** (tipo · ID · ancho
+  · alto · largo · unidades · volumen · estado · fuente · nivel) y usa seis. La
+  columna de volumen se descarta: el resultado lo rehace la app. Se saltean
+  solos los títulos, los subtotales y **el resumen del final**, que es el que
+  casi se cuela — sus filas tienen números en las mismas columnas que un
+  elemento y sumarlas contaba todo dos veces. Las distingue que una fila de
+  totales trae un número donde los elementos traen su nombre.
+- **Solapa "Por nivel"** (`lib/niveles.ts`): el cuadro que cierra cualquier
+  planilla de hormigón, niveles abajo uno de otro y tareas como columnas. Cada
+  celda va en la unidad de su tarea y **no se suman entre sí**; la última
+  columna, que está en pesos, sí. Abajo dice cuántas tareas tienen cantidad y
+  ninguna medición, y por cuánta plata: sin eso, una obra de la que sólo se
+  midió el hormigón mostraría su total y parecería la obra entera.
+- **Filtro por rubro** en la planilla: **esconde, no desmonta**. Las filas de
+  los otros rubros siguen adentro del formulario, así que una cantidad escrita
+  en un rubro y filtrada después se guarda igual. No hay filtro por nivel y es
+  a propósito: una tarea vive en todos los pisos a la vez, y filtrarla por uno
+  dejaría su cantidad completa abajo de un título que dice "sobre planta baja".
+- **Probado con datos de verdad**: el cómputo de hormigón de Andonaegui, 251
+  elementos en 5 niveles, pegado en sus cinco tareas. Da 103,080 m³ —22,281 de
+  vigas, 48,361 de losas, 13,619 de columnas, 9,725 de escalera y 9,094 de
+  tabiques— y el cuadro por nivel reproduce el resumen de la planilla original
+  fila por fila, con los 6 elementos de altura pendiente marcados donde van.
+
 ### Contratistas y proveedores (el catálogo)
 Proveedores, contratistas y "varios" viven en una sola tabla (`proveedores`)
 separada por `tipo`, y el catálogo es **uno solo para todas las obras**: el mismo
@@ -1616,23 +1677,49 @@ Al empezar: `git pull`. Al terminar: `git add -A && git commit && git push`.
 Commits en `main` directo (proyecto de una persona; no usar ramas salvo pedido).
 Mensajes de commit en español, explicando el porqué, con `Co-Authored-By`.
 
-**Cuando cambia el esquema** (el orden importa):
+**En esta máquina `npx` está bloqueado** por la política de ejecución de
+PowerShell (`npx.ps1` no carga). Hay que llamar al `.cmd`, que no pasa por esa
+política: `.\node_modules\.bin\supabase.cmd <sub>`, `.\node_modules\.bin\tsc.cmd`,
+`.\node_modules\.bin\eslint.cmd`.
+
+**Cuando se AGREGA algo al esquema, el orden no se puede invertir** (20/11/2026,
+después de romper la pantalla del catálogo de materiales):
 1. Escribir la migración en `supabase/migrations/`.
-2. Aplicar: `npx supabase db push`.
-3. Regenerar tipos: `npx supabase gen types typescript --linked > lib/database.types.ts`.
-4. Commitear el `.sql` **y** los tipos juntos.
+2. Aplicarla (la corre el usuario, ver abajo).
+3. Regenerar los tipos.
+4. **Recién ahí** escribir código que nombre las columnas nuevas.
+5. Commitear el `.sql` **y** los tipos juntos.
+
+El paso 4 no es una formalidad: un `select` que pide una columna que todavía no
+existe **falla entero**, así que la pantalla queda en cero con un "Could not
+find the 'X' column of 'Y' in the schema cache". Pasó con `materiales.contenido`
+y el catálogo mostró 0 de 213 materiales.
+
+**Cuando se BORRA algo, el orden es al revés**: primero sacarlo del código,
+después de la base. Si no, el código viejo sigue pidiendo lo que ya no está.
+
+Regenerar los tipos, con la vuelta que hace falta en Windows:
+
+```
+.\node_modules\.bin\supabase.cmd gen types typescript --linked | Out-File "$env:TEMP\tipos.ts" -Encoding utf8
+```
+
+y después convertir a UTF-8 sin BOM con Node antes de escribir
+`lib/database.types.ts`. **El `>` de PowerShell escribe UTF-16** y deja el
+archivo como binario para git. Se verifica con `git diff --stat`: si el diff es
+el archivo entero, salió mal.
 
 La base es una sola: una migración se aplica **una vez** desde cualquier máquina.
 Cuando el pull trae migraciones ya aplicadas por la otra, no hay que hacer nada.
-Antes de subir: `npx tsc --noEmit && npx eslint . && npm run build`.
+Antes de subir: `tsc --noEmit`, `eslint .` y `npm run build`.
 
-**Qué puede correr Claude y qué no.** `npx supabase db push` le está bloqueado:
-lo corre el usuario. Sí puede correr `npx supabase migration list` (ver qué
-está aplicado), `npx supabase migration repair --status reverted <version>`, y
-`npx supabase db query --linked "<sql>"` para consultas de lectura y para
-`notify pgrst, 'reload schema'`. Con eso verifica sin pedir capturas. Cuando
-edita los tipos a mano (porque no puede regenerarlos), lo dice en el commit; el
-usuario regenera cuando puede y commitea si cambia algo.
+**Qué puede correr Claude y qué no.** `supabase db push` le está bloqueado por
+el clasificador del modo automático: **lo corre el usuario**, y no es algo a
+esquivar porque la base es producción. Claude escribe la migración, pasa el
+comando y espera. Sí puede correr `supabase.cmd migration list` (`local` y
+`remote` iguales en la última fila = aplicada), `migration repair` y
+`gen types`. **No existe `supabase db query` en el CLI 2.109.1**, aunque este
+documento lo dijera antes.
 
 ## Pozos en los que ya caímos (no repetir)
 
