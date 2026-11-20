@@ -5,14 +5,11 @@ import { useEffect, useState, useTransition } from "react";
 import * as ui from "@/components/ui";
 import {
   cantidadDeElemento,
-  ESTADOS,
   FORMAS,
   leerPegado,
   leFaltaMedida,
   medidasDe,
   totalDeMedicion,
-  totalesPorNivel,
-  type EstadoMedida,
   type Forma,
 } from "@/lib/medicion";
 
@@ -24,8 +21,6 @@ export type ElementoInicial = {
   b: number | null;
   c: number | null;
   unidades: number;
-  estado: EstadoMedida;
-  fuente: string | null;
 };
 
 export type ElementoAGuardar = {
@@ -36,8 +31,6 @@ export type ElementoAGuardar = {
   b: number | null;
   c: number | null;
   unidades: number;
-  estado: string;
-  fuente: string | null;
 };
 
 export type LeerMedicion = (
@@ -52,16 +45,23 @@ export type GuardarMedicion = (
 type Fila = {
   /** Sólo para React: las filas no tienen id de la base mientras se editan. */
   clave: string;
-  nivel: string;
+  /**
+   * A qué bloque pertenece.
+   *
+   * Es una clave propia y no el nombre del nivel: dos bloques recién creados
+   * se llaman los dos "" y agruparlos por el texto los fundiría en uno, que es
+   * justo lo que no se quiere al empezar a separar los pisos.
+   */
+  grupo: string;
   etiqueta: string;
   forma: Forma;
   a: string;
   b: string;
   c: string;
   unidades: string;
-  estado: EstadoMedida;
-  fuente: string;
 };
+
+type Grupo = { clave: string; nivel: string; filas: Fila[] };
 
 let siguiente = 0;
 const nuevaClave = () => `m${siguiente++}`;
@@ -92,7 +92,13 @@ const cantidadAR = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 });
  * Cada fila es un elemento medido —la viga V-201, de 0,12 x 0,45 x 4,49— y la
  * cantidad de la tarea es la suma. Hasta ahora esa cuenta vivía en una planilla
  * aparte: el cómputo mostraba 22,28 m³ y no había forma de revisar de dónde
- * salían, ni de ver cuánto de eso era firme.
+ * salían.
+ *
+ * Los elementos van **en bloques por nivel**, con su nombre y su subtotal
+ * arriba, porque es como se piensa y se revisa una estructura: las vigas de
+ * sobre planta baja juntas, y abajo las de sobre el primero. Ciento treinta y
+ * dos vigas en una lista corrida, con el piso repetido en cada renglón, no hay
+ * forma de controlarlas contra el plano.
  *
  * Los elementos se piden al abrir y no vienen con la planilla: pueden ser
  * doscientos cincuenta y pico y casi nunca se miran.
@@ -118,6 +124,7 @@ export default function MedicionTarea({
 }) {
   const router = useRouter();
   const [filas, setFilas] = useState<Fila[] | null>(null);
+  const [niveles, setNiveles] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [pegado, setPegado] = useState<string | null>(null);
   const [aviso, setAviso] = useState("");
@@ -132,20 +139,9 @@ export default function MedicionTarea({
         setFilas([]);
         return;
       }
-      setFilas(
-        (r.elementos ?? []).map((e) => ({
-          clave: nuevaClave(),
-          nivel: texto(e.nivel),
-          etiqueta: texto(e.etiqueta),
-          forma: e.forma,
-          a: numero(e.a),
-          b: numero(e.b),
-          c: numero(e.c),
-          unidades: String(e.unidades),
-          estado: e.estado,
-          fuente: texto(e.fuente),
-        }))
-      );
+      const { filas, niveles } = agrupar(r.elementos ?? []);
+      setFilas(filas);
+      setNiveles(niveles);
     });
     return () => {
       vigente = false;
@@ -165,75 +161,84 @@ export default function MedicionTarea({
       (antes ?? []).map((f) => (f.clave === clave ? { ...f, ...cambios } : f))
     );
 
-  const agregar = () =>
-    setFilas((antes) => [
-      ...(antes ?? []),
-      {
-        clave: nuevaClave(),
-        // El nivel del último: se cargan de a bloques, piso por piso.
-        nivel: antes?.[antes.length - 1]?.nivel ?? "",
-        etiqueta: "",
-        forma: "prisma",
-        a: "",
-        b: "",
-        c: "",
-        unidades: "1",
-        estado: "firme",
-        fuente: "",
-      },
-    ]);
+  const filaNueva = (grupo: string): Fila => ({
+    clave: nuevaClave(),
+    grupo,
+    etiqueta: "",
+    forma: "prisma",
+    a: "",
+    b: "",
+    c: "",
+    unidades: "1",
+  });
+
+  /**
+   * Un elemento va al final de su bloque, no al final de todo: si no, al
+   * agregarle una viga a planta baja aparecería abajo de la terraza.
+   */
+  const agregarEn = (grupo: string) =>
+    setFilas((antes) => {
+      const lista = [...(antes ?? [])];
+      let ultimo = -1;
+      lista.forEach((f, i) => {
+        if (f.grupo === grupo) ultimo = i;
+      });
+      lista.splice(ultimo + 1, 0, filaNueva(grupo));
+      return lista;
+    });
+
+  const agregarNivel = () => {
+    const grupo = nuevaClave();
+    setNiveles((antes) => ({ ...antes, [grupo]: "" }));
+    setFilas((antes) => [...(antes ?? []), filaNueva(grupo)]);
+  };
+
+  const renombrar = (grupo: string, nombre: string) =>
+    setNiveles((antes) => ({ ...antes, [grupo]: nombre }));
 
   const quitar = (clave: string) =>
     setFilas((antes) => (antes ?? []).filter((f) => f.clave !== clave));
 
   const desdeExcel = (reemplazar: boolean) => {
-    const leidas: Fila[] = leerPegado(pegado ?? "").map((e) => ({
-      clave: nuevaClave(),
-      nivel: texto(e.nivel),
-      etiqueta: texto(e.etiqueta),
-      forma: e.forma,
-      a: numero(e.a),
-      b: numero(e.b),
-      c: numero(e.c),
-      unidades: String(e.unidades),
-      estado: e.estado,
-      fuente: texto(e.fuente),
-    }));
-
+    const leidas = leerPegado(pegado ?? "");
     if (leidas.length === 0) {
       setAviso("No encontré elementos ahí. ¿Pegaste las columnas con sus tabulaciones?");
       return;
     }
 
-    setFilas((antes) => (reemplazar ? leidas : [...(antes ?? []), ...leidas]));
+    const nuevo = agrupar(leidas);
+    setFilas((antes) => (reemplazar ? nuevo.filas : [...(antes ?? []), ...nuevo.filas]));
+    setNiveles((antes) => (reemplazar ? nuevo.niveles : { ...antes, ...nuevo.niveles }));
     setAviso(leidas.length === 1 ? "Leí 1 elemento." : `Leí ${leidas.length} elementos.`);
     setPegado(null);
   };
 
-  const elementos = filas.map(comoElemento);
-  const total = totalDeMedicion(elementos);
-  const niveles = totalesPorNivel(
-    filas.map((f, i) => ({ ...elementos[i], nivel: f.nivel }))
-  );
-  const pendientes = elementos.filter(leFaltaMedida).length;
-  // Los niveles ya escritos, para no volver a tipearlos en cada elemento.
-  const nivelesUsados = [...new Set(filas.map((f) => f.nivel).filter(Boolean))];
+  // Los bloques, en el orden en que aparece su primer elemento.
+  const grupos: Grupo[] = [];
+  for (const f of filas) {
+    const ya = grupos.find((g) => g.clave === f.grupo);
+    if (ya) ya.filas.push(f);
+    else grupos.push({ clave: f.grupo, nivel: niveles[f.grupo] ?? "", filas: [f] });
+  }
+
+  const total = totalDeMedicion(filas.map(comoElemento));
+  const sinMedir = filas.map(comoElemento).filter(leFaltaMedida).length;
 
   const enviar = () =>
     iniciar(async () => {
       const r = await guardar(
         itemId,
-        filas.map((f) => ({
-          nivel: f.nivel.trim() || null,
-          etiqueta: f.etiqueta.trim() || null,
-          forma: f.forma,
-          a: num(f.a),
-          b: num(f.b),
-          c: num(f.c),
-          unidades: num(f.unidades) ?? 1,
-          estado: f.estado,
-          fuente: f.fuente.trim() || null,
-        }))
+        grupos.flatMap((g) =>
+          g.filas.map((f) => ({
+            nivel: g.nivel.trim() || null,
+            etiqueta: f.etiqueta.trim() || null,
+            forma: f.forma,
+            a: num(f.a),
+            b: num(f.b),
+            c: num(f.c),
+            unidades: num(f.unidades) ?? 1,
+          }))
+        )
       );
       if (r.error) {
         setError(r.error);
@@ -257,21 +262,12 @@ export default function MedicionTarea({
           <span style={ui.label}>Elementos</span>
           <strong>{filas.length}</strong>
         </span>
-        {pendientes > 0 && (
+        {sinMedir > 0 && (
           <span style={dato}>
             <span style={ui.label}>Sin medir</span>
-            <strong style={{ color: ui.ROJO }}>{pendientes}</strong>
+            <strong style={{ color: ui.ROJO }}>{sinMedir}</strong>
           </span>
         )}
-        {niveles.length > 1 &&
-          niveles.map((n) => (
-            <span key={n.nivel} style={dato}>
-              <span style={ui.label}>{n.nivel || "Sin nivel"}</span>
-              <strong>
-                {cantidadAR.format(n.cantidad)} {unidadTarea}
-              </strong>
-            </span>
-          ))}
       </div>
 
       {filas.length > 0 && Math.abs(total - cantidadTarea) > 0.0005 && (
@@ -290,7 +286,6 @@ export default function MedicionTarea({
           <table style={tabla}>
             <thead>
               <tr>
-                <th style={thIzq}>Nivel</th>
                 <th style={thIzq}>Elemento</th>
                 <th style={thIzq}>Se mide</th>
                 <th style={thCentro}>Ancho</th>
@@ -298,126 +293,118 @@ export default function MedicionTarea({
                 <th style={thCentro}>Largo / área</th>
                 <th style={thCentro}>Unid.</th>
                 <th style={thDer}>{unidadTarea}</th>
-                <th style={thIzq}>Estado</th>
-                <th style={thIzq}>De dónde sale</th>
                 <th style={thIzq} />
               </tr>
             </thead>
-            <tbody>
-              {filas.map((f, i) => {
-                const usa = medidasDe(f.forma);
-                const cantidad = cantidadDeElemento(elementos[i]);
-                return (
-                  <tr key={f.clave}>
-                    <td style={celda}>
+            {grupos.map((g) => (
+              <tbody key={g.clave}>
+                <tr>
+                  <td colSpan={8} style={celdaNivel}>
+                    <span style={filaNivel}>
                       <input
                         type="text"
-                        list="niveles-medicion"
-                        value={f.nivel}
-                        onChange={(e) => aplicar(f.clave, { nivel: e.target.value })}
+                        value={g.nivel}
+                        onChange={(e) => renombrar(g.clave, e.target.value)}
                         placeholder="Sobre planta baja"
-                        style={{ ...inputBase, textAlign: "left", width: "150px" }}
+                        style={inputNivel}
+                        aria-label="Nombre del nivel"
                       />
-                    </td>
-                    <td style={celda}>
-                      <input
-                        type="text"
-                        value={f.etiqueta}
-                        onChange={(e) => aplicar(f.clave, { etiqueta: e.target.value })}
-                        placeholder="V-201"
-                        style={{ ...inputBase, textAlign: "left", width: "110px" }}
-                      />
-                    </td>
-                    <td style={celda}>
-                      <select
-                        value={f.forma}
-                        onChange={(e) => aplicar(f.clave, { forma: e.target.value as Forma })}
-                        style={{ ...inputBase, textAlign: "left", width: "195px" }}
-                      >
-                        {FORMAS.map((x) => (
-                          <option key={x.valor} value={x.valor} title={x.cuenta}>
-                            {x.nombre}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    {(["a", "b", "c"] as const).map((cual) => (
-                      <td key={cual} style={celdaCentro}>
-                        <input
-                          type="number"
-                          value={f[cual]}
-                          min={0}
-                          step="any"
-                          disabled={!usa.includes(cual)}
-                          placeholder={usa.includes(cual) ? "0" : "—"}
-                          onChange={(e) => aplicar(f.clave, { [cual]: e.target.value })}
-                          style={
-                            usa.includes(cual)
-                              ? { ...inputBase, width: "92px" }
-                              : { ...inputBase, width: "92px", ...apagado }
-                          }
-                        />
-                      </td>
-                    ))}
-                    <td style={celdaCentro}>
-                      <input
-                        type="number"
-                        value={f.unidades}
-                        min={0}
-                        step="any"
-                        placeholder="1"
-                        onChange={(e) => aplicar(f.clave, { unidades: e.target.value })}
-                        style={{ ...inputBase, width: "64px" }}
-                      />
-                    </td>
-                    <td style={cantidad > 0 ? celdaTotal : celdaFalta}>
-                      {cantidad > 0 ? cantidadAR.format(cantidad) : "—"}
-                    </td>
-                    <td style={celda}>
-                      <select
-                        value={f.estado}
-                        onChange={(e) =>
-                          aplicar(f.clave, { estado: e.target.value as EstadoMedida })
-                        }
-                        style={{ ...inputBase, textAlign: "left", width: "130px" }}
-                      >
-                        {ESTADOS.map((x) => (
-                          <option key={x.valor} value={x.valor}>
-                            {x.nombre}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={celda}>
-                      <input
-                        type="text"
-                        value={f.fuente}
-                        onChange={(e) => aplicar(f.clave, { fuente: e.target.value })}
-                        placeholder="Dimensiones del replanteo"
-                        style={{ ...inputBase, textAlign: "left", minWidth: "220px" }}
-                      />
-                    </td>
-                    <td style={celda}>
+                      {grupos.length > 1 && (
+                        <span style={subtotalNivel}>
+                          {g.filas.length} · {cantidadAR.format(
+                            totalDeMedicion(g.filas.map(comoElemento))
+                          )}{" "}
+                          {unidadTarea}
+                        </span>
+                      )}
                       <button
                         type="button"
-                        onClick={() => quitar(f.clave)}
-                        style={botonQuitar}
-                        aria-label="Quitar elemento"
-                        title="Quitar elemento"
+                        onClick={() => agregarEn(g.clave)}
+                        style={botonEnNivel}
                       >
-                        ×
+                        + Elemento
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <datalist id="niveles-medicion">
-            {nivelesUsados.map((n) => (
-              <option key={n} value={n} />
+                    </span>
+                  </td>
+                </tr>
+                {g.filas.map((f) => {
+                  const usa = medidasDe(f.forma);
+                  const cantidad = cantidadDeElemento(comoElemento(f));
+                  return (
+                    <tr key={f.clave}>
+                      <td style={celda}>
+                        <input
+                          type="text"
+                          value={f.etiqueta}
+                          onChange={(e) => aplicar(f.clave, { etiqueta: e.target.value })}
+                          placeholder="V-201"
+                          style={{ ...inputBase, textAlign: "left", width: "110px" }}
+                        />
+                      </td>
+                      <td style={celda}>
+                        <select
+                          value={f.forma}
+                          onChange={(e) =>
+                            aplicar(f.clave, { forma: e.target.value as Forma })
+                          }
+                          style={{ ...inputBase, textAlign: "left", width: "195px" }}
+                        >
+                          {FORMAS.map((x) => (
+                            <option key={x.valor} value={x.valor} title={x.cuenta}>
+                              {x.nombre}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      {(["a", "b", "c"] as const).map((cual) => (
+                        <td key={cual} style={celdaCentro}>
+                          <input
+                            type="number"
+                            value={f[cual]}
+                            min={0}
+                            step="any"
+                            disabled={!usa.includes(cual)}
+                            placeholder={usa.includes(cual) ? "0" : "—"}
+                            onChange={(e) => aplicar(f.clave, { [cual]: e.target.value })}
+                            style={
+                              usa.includes(cual)
+                                ? { ...inputBase, width: "92px" }
+                                : { ...inputBase, width: "92px", ...apagado }
+                            }
+                          />
+                        </td>
+                      ))}
+                      <td style={celdaCentro}>
+                        <input
+                          type="number"
+                          value={f.unidades}
+                          min={0}
+                          step="any"
+                          placeholder="1"
+                          onChange={(e) => aplicar(f.clave, { unidades: e.target.value })}
+                          style={{ ...inputBase, width: "64px" }}
+                        />
+                      </td>
+                      <td style={cantidad > 0 ? celdaTotal : celdaFalta}>
+                        {cantidad > 0 ? cantidadAR.format(cantidad) : "—"}
+                      </td>
+                      <td style={celda}>
+                        <button
+                          type="button"
+                          onClick={() => quitar(f.clave)}
+                          style={botonQuitar}
+                          aria-label="Quitar elemento"
+                          title="Quitar elemento"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
             ))}
-          </datalist>
+          </table>
         </div>
       )}
 
@@ -426,7 +413,8 @@ export default function MedicionTarea({
           <p style={ui.note}>
             Copiá las filas de tu planilla y pegalas acá, con las columnas en el orden en
             que están: tipo, ID, ancho, alto, largo, unidades, volumen, estado, fuente y
-            nivel. Los títulos, los subtotales y el resumen del final se saltean solos.
+            nivel. Se usan el tipo, el ID, las tres medidas, las unidades y el nivel; los
+            títulos, los subtotales y el resumen del final se saltean solos.
           </p>
           <textarea
             value={pegado}
@@ -451,8 +439,8 @@ export default function MedicionTarea({
 
       <div style={pie}>
         <div style={agregarFila}>
-          <button type="button" onClick={agregar} style={botonAgregar}>
-            + Agregar elemento
+          <button type="button" onClick={agregarNivel} style={botonAgregar}>
+            + Agregar nivel
           </button>
           {pegado === null && (
             <button type="button" onClick={() => setPegado("")} style={botonAgregar}>
@@ -470,6 +458,41 @@ export default function MedicionTarea({
       {error && <p style={textoError}>{error}</p>}
     </div>
   );
+}
+
+/**
+ * Reparte una lista de elementos en bloques por nivel.
+ *
+ * Un nivel que ya apareció recupera su bloque aunque entre otro en el medio:
+ * una planilla pegada puede traer las vigas de planta baja, las del primero y
+ * de nuevo algo de planta baja, y lo que se quiere ver son dos bloques, no
+ * tres.
+ */
+function agrupar(elementos: ElementoInicial[]) {
+  const porNivel = new Map<string, string>();
+  const niveles: Record<string, string> = {};
+
+  const filas = elementos.map((e) => {
+    const nivel = (e.nivel ?? "").trim();
+    let grupo = porNivel.get(nivel);
+    if (!grupo) {
+      grupo = nuevaClave();
+      porNivel.set(nivel, grupo);
+      niveles[grupo] = nivel;
+    }
+    return {
+      clave: nuevaClave(),
+      grupo,
+      etiqueta: texto(e.etiqueta),
+      forma: e.forma,
+      a: numero(e.a),
+      b: numero(e.b),
+      c: numero(e.c),
+      unidades: String(e.unidades),
+    };
+  });
+
+  return { filas, niveles };
 }
 
 const caja = {
@@ -513,7 +536,7 @@ const scroll = {
 
 const tabla = {
   ...ui.table,
-  minWidth: "1420px",
+  minWidth: "900px",
 };
 
 const celda = {
@@ -540,6 +563,44 @@ const celdaFalta = {
   ...celdaTotal,
   color: "#bbbbbb",
   fontWeight: 400,
+};
+
+// El encabezado de un bloque: el nivel, lo que suma y cómo agregarle uno más.
+const celdaNivel = {
+  borderBottom: "1px solid #e4e4e4",
+  padding: "14px 8px 6px",
+};
+
+const filaNivel = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap" as const,
+};
+
+const inputNivel = {
+  ...ui.input,
+  padding: "5px 8px",
+  width: "200px",
+  fontSize: "13px",
+  fontWeight: 600,
+  background: "transparent",
+  borderColor: "transparent",
+};
+
+const subtotalNivel = {
+  fontSize: "12px",
+  color: "#888888",
+  whiteSpace: "nowrap" as const,
+};
+
+const botonEnNivel = {
+  background: "none",
+  border: "none",
+  color: "#777777",
+  fontSize: "12px",
+  cursor: "pointer",
+  padding: "2px 4px",
 };
 
 const thIzq = {

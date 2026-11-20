@@ -15,9 +15,6 @@
 /** Qué se multiplica en un elemento. */
 export type Forma = "prisma" | "superficie" | "directo";
 
-/** Qué tan firme es la medida. */
-export type EstadoMedida = "firme" | "estimado" | "hipotesis" | "pendiente";
-
 export type Elemento = {
   forma: Forma;
   /** Ancho o base, alto o espesor, largo o área. Cuáles se usan lo dice `forma`. */
@@ -65,13 +62,6 @@ export const FORMAS: {
   },
 ];
 
-export const ESTADOS: { valor: EstadoMedida; nombre: string; corto: string }[] = [
-  { valor: "firme", nombre: "Firme", corto: "" },
-  { valor: "estimado", nombre: "Estimada", corto: "est." },
-  { valor: "hipotesis", nombre: "Hipótesis previa", corto: "hip." },
-  { valor: "pendiente", nombre: "Pendiente", corto: "pend." },
-];
-
 /** Qué medidas pide una forma. */
 export function medidasDe(forma: Forma): ("a" | "b" | "c")[] {
   return FORMAS.find((f) => f.valor === forma)?.usa ?? ["a", "b", "c"];
@@ -111,44 +101,10 @@ export function totalDeMedicion(elementos: Elemento[]): number {
   return elementos.reduce((a, e) => a + cantidadDeElemento(e), 0);
 }
 
-export type TotalDeNivel = {
-  /** "" cuando el elemento no declaró nivel: se muestra como "Sin nivel". */
-  nivel: string;
-  cantidad: number;
-  elementos: number;
-  /** Cuántos no suman todavía porque les falta una medida. */
-  pendientes: number;
-};
-
-/**
- * Los totales por nivel, en el orden en que aparecen los elementos.
- *
- * Por orden de aparición y no alfabético: "Sobre 1.º" y "Sobre planta baja" se
- * ordenarían al revés de como se construye el edificio, y el orden de la
- * planilla es el que el que la cargó eligió.
- */
-export function totalesPorNivel(
-  elementos: (Elemento & { nivel: string | null })[]
-): TotalDeNivel[] {
-  const porNivel = new Map<string, TotalDeNivel>();
-
-  for (const e of elementos) {
-    const nivel = (e.nivel ?? "").trim();
-    const fila = porNivel.get(nivel) ?? { nivel, cantidad: 0, elementos: 0, pendientes: 0 };
-    fila.cantidad += cantidadDeElemento(e);
-    fila.elementos += 1;
-    if (leFaltaMedida(e)) fila.pendientes += 1;
-    porNivel.set(nivel, fila);
-  }
-
-  return [...porNivel.values()];
-}
 
 export type ElementoPegado = Elemento & {
   nivel: string | null;
   etiqueta: string | null;
-  estado: EstadoMedida;
-  fuente: string | null;
 };
 
 /**
@@ -160,13 +116,15 @@ export type ElementoPegado = Elemento & {
  *
  *   tipo · ID · ancho · alto · largo · unidades · volumen · estado · fuente · nivel
  *
+ * De esas diez se usan seis: el tipo para saber qué forma tiene, el ID, las
+ * tres medidas y las unidades, más el nivel del final. El volumen se descarta
+ * —es el resultado, y el resultado lo rehace la app—, y el estado y la
+ * aclaración no tienen dónde ir: la medición guarda las medidas, no los
+ * comentarios sobre ellas.
+ *
  * Por posición y no adivinando: una planilla de cómputo no trae encabezados
  * fiables —se repiten por nivel, cambian de mayúsculas— y errarle a una
  * columna de dimensiones es peor que no importar nada.
- *
- * La columna de volumen se lee y se descarta: es el resultado, y el resultado
- * lo rehace la app a partir de las medidas. Si no coincidiera, es que la
- * planilla tenía una fórmula distinta y conviene que se note.
  *
  * Las filas que no son elementos —el encabezado, los títulos de grupo, los
  * subtotales, el nombre del nivel, el resumen del final— se saltean solas: un
@@ -211,8 +169,6 @@ export function leerPegado(texto: string): ElementoPegado[] {
       c: usa.includes("c") ? c : null,
       unidades: unidades && unidades > 0 ? unidades : 1,
       etiqueta: col[1] || null,
-      estado: estadoDe(col[7] ?? ""),
-      fuente: col[8] || null,
       nivel: col[9] || null,
     });
   }
@@ -244,14 +200,6 @@ function formaDe(tipo: string, a: number | null, b: number | null, c: number | n
   if (/losa|pa[ñn]o/i.test(tipo)) return "superficie";
   if (medidas >= 3) return "prisma";
   return a === null ? "superficie" : "prisma";
-}
-
-/** El estado, de como lo escriba la planilla: "ALTURA ESTIMADA", "PENDIENTE". */
-function estadoDe(texto: string): EstadoMedida {
-  if (/pendiente/i.test(texto)) return "pendiente";
-  if (/hip[oó]tesis|provisor|provisional/i.test(texto)) return "hipotesis";
-  if (/estimad/i.test(texto)) return "estimado";
-  return "firme";
 }
 
 /**

@@ -5,11 +5,9 @@ import { redirect } from "next/navigation";
 import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
 import {
   cantidadDeElemento,
-  ESTADOS,
   FORMAS,
   medidasDe,
   totalDeMedicion,
-  type EstadoMedida,
   type Forma,
 } from "@/lib/medicion";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
@@ -1042,8 +1040,6 @@ export type ElementoParaGuardar = {
   b: number | null;
   c: number | null;
   unidades: number;
-  estado: string;
-  fuente: string | null;
 };
 
 export type ElementoGuardado = {
@@ -1055,8 +1051,6 @@ export type ElementoGuardado = {
   c: number | null;
   unidades: number;
   cantidad: number;
-  estado: EstadoMedida;
-  fuente: string | null;
 };
 
 /**
@@ -1073,7 +1067,7 @@ export async function leerMedicionDe(
 
   const { data, error } = await supabase
     .from("computo_item_medicion")
-    .select("nivel, etiqueta, forma, a, b, c, unidades, cantidad, estado, fuente, orden")
+    .select("nivel, etiqueta, forma, a, b, c, unidades, cantidad, orden")
     .eq("item_id", itemId)
     .order("orden");
 
@@ -1089,8 +1083,6 @@ export async function leerMedicionDe(
       c: e.c === null ? null : Number(e.c),
       unidades: Number(e.unidades),
       cantidad: Number(e.cantidad),
-      estado: e.estado as EstadoMedida,
-      fuente: e.fuente,
     })),
   };
 }
@@ -1130,8 +1122,6 @@ export async function guardarMedicionDe(
         b: medida("b"),
         c: medida("c"),
         unidades: Number.isFinite(unidades) && unidades > 0 ? unidades : 1,
-        estado: (ESTADOS.some((x) => x.valor === e.estado) ? e.estado : "firme") as EstadoMedida,
-        fuente: texto(e.fuente),
       };
     })
     // Un elemento sin ninguna medida y sin nombre es una fila que se agregó y
