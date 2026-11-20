@@ -130,7 +130,9 @@ export default async function ComputoPage({
     // obra ya se tocó, que es lo que el catálogo avisa antes de destildar.
     supabase
       .from("tarea_desglose")
-      .select("tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, material_id, orden")
+      .select(
+        "tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, consumo, consumo_unidad, material_id, orden"
+      )
       .in("tarea_id", elegidas)
       .order("orden"),
   ]);
@@ -184,6 +186,8 @@ export default async function ComputoPage({
       cantidad: Number(m.cantidad),
       precio: Number(m.precio_unitario),
       materialId: m.material_id,
+      consumo: m.consumo === null ? null : Number(m.consumo),
+      consumoUnidad: m.consumo_unidad,
     });
     renglonesDeModelo.set(m.tarea_id, lista);
   }

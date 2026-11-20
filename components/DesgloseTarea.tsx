@@ -3,6 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import InputMonto from "@/components/InputMonto";
+import {
+  cantidadDesdeConsumo,
+  consumoDesdeCantidad,
+  envaseDelRenglon,
+  mismaUnidad,
+  unidadesDeConsumo,
+  type Envase,
+} from "@/lib/consumo";
 import SelectorMaterial, { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
@@ -24,6 +32,9 @@ export type RenglonInicial = {
   cantidad: number;
   precio: number;
   materialId: string | null;
+  /** El consumo enunciado (18, de 18 kg por m²), si se cargó así. */
+  consumo: number | null;
+  consumoUnidad: string | null;
   presupuestoId: string | null;
   usarCotizado: boolean;
   cotizacion: CotizacionDelRenglon | null;
@@ -39,6 +50,14 @@ type Renglon = {
   precio: string;
   /** El material del catálogo, cuando el renglón es uno. */
   materialId: string | null;
+  /**
+   * El consumo enunciado y su unidad: 18 y "kg", de 18 kg por m². Mientras
+   * estén puestos, `cantidad` es el resultado de dividirlos por lo que trae
+   * el envase, y se mantiene al día en cada tecla: todo lo demás —subtotales,
+   * cotizaciones, lo que se guarda— sigue leyendo la cantidad y nada más.
+   */
+  consumo: string;
+  consumoUnidad: string;
   /** Sólo para la pantalla: si la subtarea se escribe en vez de elegirse. */
   aMano: boolean;
   presupuestoId: string | null;
@@ -57,6 +76,8 @@ export type GuardarDesglose = (
     cantidad: number;
     precio: number;
     materialId: string | null;
+    consumo: number | null;
+    consumoUnidad: string | null;
     presupuestoId: string | null;
     cotizar: boolean;
     usarCotizado: boolean;
@@ -70,6 +91,11 @@ const num = (v: string) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+
+const cantidadAR = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 4 });
+
+/** Los decimales que la base guarda de una cantidad: más no se escriben. */
+const cuatroDecimales = (n: number) => Math.round(n * 10000) / 10000;
 
 /** Ya tiene proveedor y precio: no es un pedido ni se descartó. */
 const conPrecio = (c: CotizacionDelRenglon | null): c is CotizacionDelRenglon =>
@@ -127,6 +153,8 @@ export default function DesgloseTarea({
       cantidad: String(r.cantidad),
       precio: String(r.precio),
       materialId: r.materialId,
+      consumo: r.consumo === null ? "" : String(r.consumo),
+      consumoUnidad: r.consumoUnidad ?? "",
       // Lo que ya estaba escrito y no apunta al catálogo arranca a mano: si no,
       // se vería "Elegí el material" encima de un renglón que ya tiene nombre.
       aMano: r.materialId === null,
@@ -140,10 +168,13 @@ export default function DesgloseTarea({
   const [error, setError] = useState("");
   const [guardando, iniciar] = useTransition();
 
-  const cambiar = (clave: string, campo: keyof Renglon, valor: string | boolean) =>
+  const aplicar = (clave: string, cambios: Partial<Renglon>) =>
     setRenglones((antes) =>
-      antes.map((r) => (r.clave === clave ? { ...r, [campo]: valor } : r))
+      antes.map((r) => (r.clave === clave ? { ...r, ...cambios } : r))
     );
+
+  const cambiar = (clave: string, campo: keyof Renglon, valor: string | boolean) =>
+    aplicar(clave, { [campo]: valor } as Partial<Renglon>);
 
   // Una sola forma de agregar: el tipo se elige en la fila, como cualquier
   // otro dato de la subtarea.
@@ -158,6 +189,8 @@ export default function DesgloseTarea({
         cantidad: "",
         precio: "",
         materialId: null,
+        consumo: "",
+        consumoUnidad: "",
         aMano: false,
         presupuestoId: null,
         cotizar: false,
@@ -178,7 +211,16 @@ export default function DesgloseTarea({
     setRenglones((antes) =>
       antes.map((r) =>
         r.clave === clave
-          ? { ...r, materialId: m.id, descripcion: m.nombre, unidad: m.unidad }
+          ? {
+              ...r,
+              materialId: m.id,
+              descripcion: m.nombre,
+              unidad: m.unidad,
+              // Otro material es otro envase: un consumo en kg de la bolsa
+              // anterior no quiere decir nada acá.
+              consumo: "",
+              consumoUnidad: "",
+            }
           : r
       )
     );
@@ -190,9 +232,40 @@ export default function DesgloseTarea({
   const alternarModo = (clave: string) =>
     setRenglones((antes) =>
       antes.map((r) =>
-        r.clave === clave ? { ...r, aMano: !r.aMano, materialId: null } : r
+        r.clave === clave
+          ? { ...r, aMano: !r.aMano, materialId: null, consumo: "", consumoUnidad: "" }
+          : r
       )
     );
+
+  // El envase que se le puede aplicar a un renglón, buscado en el catálogo.
+  // Sin material —o con la unidad del renglón cambiada a otra cosa— no hay
+  // envase, y la celda de cantidad es la de siempre.
+  const envaseDe = (r: Renglon): Envase | null => {
+    const m = r.materialId ? materiales.find((x) => x.id === r.materialId) : undefined;
+    return envaseDelRenglon(
+      r.unidad,
+      m
+        ? {
+            unidad: m.unidad,
+            contenido: m.contenido ?? null,
+            contenidoUnidad: m.contenidoUnidad ?? null,
+          }
+        : null
+    );
+  };
+
+  // Lo que se guarda del consumo. Sólo cuenta si hay envase y la unidad
+  // elegida no es la del renglón: si es la misma, el número de la celda es la
+  // cantidad a secas y no hay nada que explicar.
+  const declarado = (r: Renglon) => {
+    const envase = envaseDe(r);
+    const unidades = envase ? unidadesDeConsumo(envase) : [];
+    const elegida = unidades.find((u) => mismaUnidad(u, r.consumoUnidad));
+    return unidades.length > 1 && elegida && !mismaUnidad(elegida, r.unidad)
+      ? { consumo: num(r.consumo), consumoUnidad: elegida }
+      : { consumo: null, consumoUnidad: null };
+  };
 
   const computado = (r: Renglon) => num(r.cantidad) * num(r.precio);
   // Lo que suma por unidad de la tarea. Si se eligió lo cotizado, la
@@ -216,6 +289,7 @@ export default function DesgloseTarea({
           cantidad: num(x.cantidad),
           precio: num(x.precio),
           materialId: x.materialId,
+          ...declarado(x),
           presupuestoId: x.presupuestoId,
           cotizar: x.cotizar,
           usarCotizado: x.usarCotizado,
@@ -354,14 +428,10 @@ export default function DesgloseTarea({
                     />
                   </td>
                   <td style={celdaCentro}>
-                    <input
-                      type="number"
-                      value={r.cantidad}
-                      min={0}
-                      step="any"
-                      placeholder="0"
-                      onChange={(e) => cambiar(r.clave, "cantidad", e.target.value)}
-                      style={{ ...inputBase, width: "100px" }}
+                    <CeldaCantidad
+                      renglon={r}
+                      envase={envaseDe(r)}
+                      aplicar={(cambios) => aplicar(r.clave, cambios)}
                     />
                   </td>
                   <td style={celdaCentro}>
@@ -497,6 +567,109 @@ function CeldaCotizacion({
   );
 }
 
+/**
+ * El número que entra por unidad de la tarea.
+ *
+ * Cuando el renglón apunta a un material que declara su envase hay dos formas
+ * de decir lo mismo, y la celda deja elegir con qué unidad se carga: **0,6
+ * bolsa** o **18 kg**. En kg se guarda el 18 y la cantidad en bolsas se
+ * deriva: acá para mostrarla, y otra vez en el servidor, que es el que decide.
+ * Así el renglón se puede verificar contra la ficha del producto —que habla en
+ * kg— y el día que la bolsa pase a 25 kg se rehace solo.
+ *
+ * Sin envase que aplicar es el campo de cantidad de siempre.
+ */
+function CeldaCantidad({
+  renglon: r,
+  envase,
+  aplicar,
+}: {
+  renglon: Renglon;
+  envase: Envase | null;
+  aplicar: (cambios: Partial<Renglon>) => void;
+}) {
+  const unidades = envase ? unidadesDeConsumo(envase) : [];
+
+  if (!envase || unidades.length < 2) {
+    return (
+      <input
+        type="number"
+        value={r.cantidad}
+        min={0}
+        step="any"
+        placeholder="0"
+        onChange={(e) =>
+          aplicar({ cantidad: e.target.value, consumo: "", consumoUnidad: "" })
+        }
+        style={{ ...inputBase, width: "100px" }}
+      />
+    );
+  }
+
+  const elegida = unidades.find((u) => mismaUnidad(u, r.consumoUnidad)) ?? r.unidad;
+  const enConsumo = !mismaUnidad(elegida, r.unidad);
+  const derivada = enConsumo ? cantidadDesdeConsumo(num(r.consumo), elegida, envase) : null;
+
+  // En kg se guarda el 18 y la cantidad derivada queda al día en cada tecla:
+  // el subtotal de la fila, lo que suma en la obra y lo que se manda al
+  // guardar siguen leyendo la cantidad y nada más.
+  const escribir = (valor: string) => {
+    if (!enConsumo) {
+      aplicar({ cantidad: valor, consumo: "", consumoUnidad: "" });
+      return;
+    }
+    const cantidad = cantidadDesdeConsumo(num(valor), elegida, envase);
+    aplicar({
+      consumo: valor,
+      consumoUnidad: elegida,
+      cantidad: valor.trim() === "" || cantidad === null ? "" : String(cantidad),
+    });
+  };
+
+  // Cambiar de unidad no pierde lo escrito: 0,6 bolsa pasa a 18 kg y al revés,
+  // en vez de quedar como 0,6 kg.
+  const cambiarUnidad = (u: string) => {
+    if (mismaUnidad(u, r.unidad)) {
+      aplicar({ consumo: "", consumoUnidad: "" });
+      return;
+    }
+    const c = consumoDesdeCantidad(num(r.cantidad), u, envase);
+    aplicar({ consumoUnidad: u, consumo: c === null ? "" : String(cuatroDecimales(c)) });
+  };
+
+  return (
+    <span style={celdaConsumo}>
+      <input
+        type="number"
+        value={enConsumo ? r.consumo : r.cantidad}
+        min={0}
+        step="any"
+        placeholder="0"
+        onChange={(e) => escribir(e.target.value)}
+        style={{ ...inputBase, width: "72px" }}
+      />
+      <select
+        value={elegida}
+        onChange={(e) => cambiarUnidad(e.target.value)}
+        style={selectUnidadConsumo}
+        aria-label="Unidad en la que se carga el consumo"
+        title={`El envase trae ${envase.contenido} ${envase.contenidoUnidad}`}
+      >
+        {unidades.map((u) => (
+          <option key={u} value={u}>
+            {u}
+          </option>
+        ))}
+      </select>
+      {enConsumo && (
+        <span style={notaDerivada}>
+          {derivada === null ? "—" : `= ${cantidadAR.format(derivada)} ${r.unidad}`}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ejemplo(tipo: TipoRenglon) {
   if (tipo === "Materiales") return "Ej: Ladrillo hueco 12x18x33";
   if (tipo === "Mano de obra") return "Ej: Oficial albañil";
@@ -535,7 +708,10 @@ const scroll = {
 
 const tabla = {
   ...ui.table,
-  minWidth: "1060px",
+  // Más ancha que antes: la columna de cantidad lleva su unidad al lado y, en
+  // kg, la cantidad derivada. Todo en una línea, para que la fila mida lo
+  // mismo que las vecinas.
+  minWidth: "1180px",
 };
 
 const celda = {
@@ -726,4 +902,25 @@ const botonModo = {
   fontSize: "14px",
   color: "#777777",
   lineHeight: 1,
+};
+
+// El número, su unidad y la cantidad que sale de convertirlo, en una línea.
+const celdaConsumo = {
+  display: "inline-flex",
+  gap: "6px",
+  alignItems: "center",
+  whiteSpace: "nowrap" as const,
+};
+
+const selectUnidadConsumo = {
+  ...inputBase,
+  width: "76px",
+  textAlign: "left" as const,
+  padding: "7px 4px",
+};
+
+const notaDerivada = {
+  fontSize: "12px",
+  color: "#888888",
+  whiteSpace: "nowrap" as const,
 };

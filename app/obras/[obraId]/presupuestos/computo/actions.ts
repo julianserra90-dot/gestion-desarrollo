@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -67,6 +68,10 @@ type RenglonDesglose = {
   precio: number;
   /** El material del catálogo, cuando el renglón es uno. */
   materialId?: string | null;
+  /** El consumo tal como se enunció: 18, de 18 kg por m². */
+  consumo?: number | null;
+  /** La unidad del consumo (kg). Siempre junto con `consumo`. */
+  consumoUnidad?: string | null;
   /** La cotización pedida para esta subtarea, si se tildó "Cotización". */
   presupuestoId?: string | null;
   /** Si el cómputo toma lo cotizado en vez de lo computado. */
@@ -74,6 +79,69 @@ type RenglonDesglose = {
 };
 
 const TIPOS_DESGLOSE = ["Materiales", "Mano de obra", "Integrado"] as const;
+
+/**
+ * El consumo que llegó del navegador, o nada.
+ *
+ * La base exige que el número y la unidad vayan juntos y que el número sea
+ * mayor que cero: media declaración no se puede convertir, así que un consumo
+ * incompleto se descarta entero en vez de hacer fallar el guardado.
+ */
+function consumoDe(
+  consumo: unknown,
+  unidad: unknown
+): { consumo: number | null; consumoUnidad: string | null } {
+  const n = Number(consumo);
+  const u = String(unidad ?? "").trim();
+  if (!Number.isFinite(n) || n <= 0 || u === "") {
+    return { consumo: null, consumoUnidad: null };
+  }
+  return { consumo: n, consumoUnidad: u };
+}
+
+/**
+ * Rehace la cantidad de los renglones que declararon su consumo.
+ *
+ * La pantalla ya hizo esta cuenta para mostrarla, pero la cantidad es la que
+ * manda en el precio de la tarea, y de ahí en el estimado de la obra y en el
+ * peso de su avance físico. Así que la decide el servidor contra el catálogo y
+ * no lo que llegó del navegador.
+ *
+ * Si el consumo no se puede convertir —el material perdió su envase, o alguien
+ * le cambió la unidad al renglón— se borra en vez de quedar guardado diciendo
+ * algo que no se puede verificar, y manda la cantidad que vino.
+ */
+async function derivarCantidades(supabase: Supabase, renglones: RenglonDesglose[]) {
+  const conConsumo = renglones.filter((r) => r.consumo != null && r.materialId);
+  if (conConsumo.length === 0) return;
+
+  const { data } = await supabase
+    .from("materiales")
+    .select("id, unidad, contenido, contenido_unidad")
+    .in("id", [...new Set(conConsumo.map((r) => r.materialId!))]);
+
+  const porId = new Map(
+    (data ?? []).map((m) => [
+      m.id,
+      {
+        unidad: m.unidad,
+        contenido: m.contenido === null ? null : Number(m.contenido),
+        contenidoUnidad: m.contenido_unidad,
+      },
+    ])
+  );
+
+  for (const r of conConsumo) {
+    const envase = envaseDelRenglon(r.unidad, porId.get(r.materialId!) ?? null);
+    const cantidad = cantidadDesdeConsumo(r.consumo!, r.consumoUnidad ?? null, envase);
+    if (cantidad === null) {
+      r.consumo = null;
+      r.consumoUnidad = null;
+    } else {
+      r.cantidad = cantidad;
+    }
+  }
+}
 
 /**
  * Reemplaza el desglose de una tarea y rehace sus precios.
@@ -109,6 +177,8 @@ async function aplicarDesglose(
         cantidad: r.cantidad,
         precio_unitario: r.precio,
         material_id: r.materialId ?? null,
+        consumo: r.consumo ?? null,
+        consumo_unidad: r.consumo ? (r.consumoUnidad ?? null) : null,
         presupuesto_id: r.presupuestoId ?? null,
         usar_cotizado: Boolean(r.presupuestoId && r.usarCotizado),
         orden,
@@ -267,7 +337,9 @@ export async function guardarTareas(formData: FormData) {
     // Cada tarea nueva recibe su desglose de modelo.
     const { data: modelos } = await supabase
       .from("tarea_desglose")
-      .select("tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, material_id, orden")
+      .select(
+        "tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, consumo, consumo_unidad, material_id, orden"
+      )
       .in(
         "tarea_id",
         nuevas.map((t) => t.id)
@@ -284,6 +356,8 @@ export async function guardarTareas(formData: FormData) {
           cantidad: Number(m.cantidad),
           precio: Number(m.precio_unitario),
           materialId: m.material_id,
+          consumo: m.consumo === null ? null : Number(m.consumo),
+          consumoUnidad: m.consumo_unidad,
         }));
       if (renglones.length === 0) continue;
 
@@ -479,6 +553,7 @@ function leerRenglones(formData: FormData): RenglonDesglose[] | null {
         cantidad: Math.max(Number(r.cantidad) || 0, 0),
         precio: Math.max(Number(r.precio) || 0, 0),
         materialId: typeof r.materialId === "string" && r.materialId ? r.materialId : null,
+        ...consumoDe(r.consumo, r.consumoUnidad),
       }))
       // Un renglón sin nombre es uno que se agregó y no se usó.
       .filter((r) => r.descripcion !== "");
@@ -514,6 +589,8 @@ export async function guardarDesglose(formData: FormData) {
 
   if (!item) volver(base(slug), "La tarea ya no está en el cómputo.");
 
+  await derivarCantidades(supabase, renglones!);
+
   const error = await aplicarDesglose(supabase, item!.id, item!.rubro_id, renglones!);
   if (error) volver(destino, error);
 
@@ -534,6 +611,8 @@ export async function guardarDesglose(formData: FormData) {
           cantidad: r.cantidad,
           precio_unitario: r.precio,
           material_id: r.materialId ?? null,
+          consumo: r.consumo ?? null,
+          consumo_unidad: r.consumo ? (r.consumoUnidad ?? null) : null,
           orden,
         }))
       );
@@ -657,7 +736,9 @@ export async function alternarTarea(
     supabase.from("rubros").select("id, nombre, activo").eq("obra_id", obraId),
     supabase
       .from("tarea_desglose")
-      .select("tipo, descripcion, unidad, cantidad, precio_unitario, material_id, orden")
+      .select(
+        "tipo, descripcion, unidad, cantidad, precio_unitario, consumo, consumo_unidad, material_id, orden"
+      )
       .eq("tarea_id", tareaId)
       .order("orden"),
   ]);
@@ -698,6 +779,8 @@ export async function alternarTarea(
     cantidad: Number(m.cantidad),
     precio: Number(m.precio_unitario),
     materialId: m.material_id,
+    consumo: m.consumo === null ? null : Number(m.consumo),
+    consumoUnidad: m.consumo_unidad,
   }));
   if (renglones.length > 0) {
     const errorDesglose = await aplicarDesglose(supabase, item.id, rubro.id, renglones);
@@ -762,6 +845,8 @@ export type RenglonParaGuardar = {
   cantidad: number;
   precio: number;
   materialId?: string | null;
+  consumo?: number | null;
+  consumoUnidad?: string | null;
   presupuestoId?: string | null;
   /** Tildada la casilla "Cotización". */
   cotizar?: boolean;
@@ -879,6 +964,7 @@ export async function guardarDesgloseDe(
       cantidad: Math.max(Number(r.cantidad) || 0, 0),
       precio: Math.max(Number(r.precio) || 0, 0),
       materialId: r.materialId || null,
+      ...consumoDe(r.consumo, r.consumoUnidad),
       presupuestoId: r.presupuestoId || null,
       cotizar: Boolean(r.cotizar),
       usarCotizado: Boolean(r.usarCotizado),
@@ -893,6 +979,9 @@ export async function guardarDesgloseDe(
     .eq("id", itemId)
     .maybeSingle();
   if (!item) return { error: "La tarea ya no está en el cómputo." };
+
+  // Antes de las cotizaciones: el monto del pedido sale de la cantidad.
+  await derivarCantidades(supabase, renglones);
 
   const errorCotizar = await sincronizarCotizaciones(
     supabase,
@@ -921,6 +1010,8 @@ export async function guardarDesgloseDe(
           cantidad: r.cantidad,
           precio_unitario: r.precio,
           material_id: r.materialId ?? null,
+          consumo: r.consumo ?? null,
+          consumo_unidad: r.consumo ? (r.consumoUnidad ?? null) : null,
           orden,
         }))
       );

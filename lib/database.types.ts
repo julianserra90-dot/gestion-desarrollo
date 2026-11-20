@@ -198,6 +198,8 @@ export type Database = {
       computo_item_desglose: {
         Row: {
           cantidad: number
+          consumo: number | null
+          consumo_unidad: string | null
           creado_en: string
           descripcion: string
           id: string
@@ -212,6 +214,8 @@ export type Database = {
         }
         Insert: {
           cantidad?: number
+          consumo?: number | null
+          consumo_unidad?: string | null
           creado_en?: string
           descripcion: string
           id?: string
@@ -226,6 +230,8 @@ export type Database = {
         }
         Update: {
           cantidad?: number
+          consumo?: number | null
+          consumo_unidad?: string | null
           creado_en?: string
           descripcion?: string
           id?: string
@@ -2127,6 +2133,8 @@ export type Database = {
       tarea_desglose: {
         Row: {
           cantidad: number
+          consumo: number | null
+          consumo_unidad: string | null
           creado_en: string
           descripcion: string
           id: string
@@ -2139,6 +2147,8 @@ export type Database = {
         }
         Insert: {
           cantidad?: number
+          consumo?: number | null
+          consumo_unidad?: string | null
           creado_en?: string
           descripcion: string
           id?: string
@@ -2151,6 +2161,8 @@ export type Database = {
         }
         Update: {
           cantidad?: number
+          consumo?: number | null
+          consumo_unidad?: string | null
           creado_en?: string
           descripcion?: string
           id?: string

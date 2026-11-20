@@ -9,6 +9,15 @@ export type MaterialOpcion = {
   unidad: string;
   /** El rubro del catálogo, por nombre: es lo que comparte con el de la obra. */
   rubroNombre: string | null;
+  /**
+   * Cuánto trae el envase (30, de una bolsa de 30 kg) y en qué unidad.
+   *
+   * Opcionales porque este selector no los usa: viajan con el material para
+   * que el desglose del cómputo pueda convertir un consumo enunciado en kg a
+   * la cantidad de bolsas que el precio unitario necesita.
+   */
+  contenido?: number | null;
+  contenidoUnidad?: string | null;
 };
 
 const SIN_RUBRO = "Sin rubro";

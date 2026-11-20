@@ -11,6 +11,7 @@
  */
 
 import { factorCac, mesDeFecha, type IndiceCac } from "@/lib/cac";
+import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -84,6 +85,14 @@ export type RenglonItem = {
   precio: number;
   /** El material del catálogo, cuando el renglón es uno. */
   materialId: string | null;
+  /**
+   * El consumo tal como se enunció: 18, de 18 kg por m². Null cuando se cargó
+   * la cantidad directo. Con él puesto, `cantidad` sale de dividirlo por lo
+   * que trae el envase del material.
+   */
+  consumo: number | null;
+  /** La unidad del consumo (kg). Siempre junto con `consumo`. */
+  consumoUnidad: string | null;
   presupuestoId: string | null;
   usarCotizado: boolean;
   /** La cotización enlazada, si se pidió. */
@@ -133,7 +142,7 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
     supabase
       .from("computo_items")
       .select(
-        "id, rubro_id, tarea_id, subrubro, nombre, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado, usa_materiales, usa_mano_obra, usa_integrado, orden, computo_item_desglose(tipo, descripcion, unidad, cantidad, precio_unitario, orden, presupuesto_id, usar_cotizado, material_id, presupuestos(estado, monto, proveedores(nombre)))"
+        "id, rubro_id, tarea_id, subrubro, nombre, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado, usa_materiales, usa_mano_obra, usa_integrado, orden, computo_item_desglose(tipo, descripcion, unidad, cantidad, precio_unitario, consumo, consumo_unidad, orden, presupuesto_id, usar_cotizado, material_id, materiales(unidad, contenido, contenido_unidad), presupuestos(estado, monto, proveedores(nombre)))"
       )
       .eq("obra_id", obraId)
       .order("orden"),
@@ -149,23 +158,47 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
       // frágil que hacerlo con la lista ya traída.
       const renglones: RenglonItem[] = [...(i.computo_item_desglose ?? [])]
         .sort((a, b) => a.orden - b.orden)
-        .map((r) => ({
-          tipo: r.tipo as RenglonItem["tipo"],
-          descripcion: r.descripcion,
-          unidad: r.unidad,
-          cantidad: Number(r.cantidad),
-          precio: Number(r.precio_unitario),
-          materialId: r.material_id,
-          presupuestoId: r.presupuesto_id,
-          usarCotizado: r.usar_cotizado,
-          cotizacion: r.presupuestos
-            ? {
-                estado: r.presupuestos.estado,
-                monto: Number(r.presupuestos.monto),
-                proveedor: r.presupuestos.proveedores?.nombre ?? null,
-              }
-            : null,
-        }));
+        .map((r) => {
+          // La cantidad se rehace acá cuando el renglón declaró su consumo:
+          // 18 kg por m² sobre una bolsa de 30 kg son 0,6 bolsas. Así, cambiar
+          // el envase en el catálogo corrige de una vez todas las tareas que
+          // usan ese material, en vez de dejarlas con el cociente viejo. Sin
+          // consumo declarado —o con una unidad que el envase no convierte—
+          // vale la cantidad guardada, que es la que siempre mandó.
+          const consumo = r.consumo === null ? null : Number(r.consumo);
+          const envase = envaseDelRenglon(
+            r.unidad,
+            r.materiales
+              ? {
+                  unidad: r.materiales.unidad,
+                  contenido:
+                    r.materiales.contenido === null ? null : Number(r.materiales.contenido),
+                  contenidoUnidad: r.materiales.contenido_unidad,
+                }
+              : null
+          );
+          const derivada = cantidadDesdeConsumo(consumo, r.consumo_unidad, envase);
+
+          return {
+            tipo: r.tipo as RenglonItem["tipo"],
+            descripcion: r.descripcion,
+            unidad: r.unidad,
+            cantidad: derivada ?? Number(r.cantidad),
+            precio: Number(r.precio_unitario),
+            materialId: r.material_id,
+            consumo,
+            consumoUnidad: r.consumo_unidad,
+            presupuestoId: r.presupuesto_id,
+            usarCotizado: r.usar_cotizado,
+            cotizacion: r.presupuestos
+              ? {
+                  estado: r.presupuestos.estado,
+                  monto: Number(r.presupuestos.monto),
+                  proveedor: r.presupuestos.proveedores?.nombre ?? null,
+                }
+              : null,
+          };
+        });
 
       // Los precios salen del desglose al leer, no de lo guardado en la
       // tarea: una cotización puede cambiar en su solapa sin pasar por acá.
@@ -219,19 +252,28 @@ export function firmaDeDesglose(
     cantidad: number;
     precio: number;
     materialId?: string | null;
+    consumo?: number | null;
+    consumoUnidad?: string | null;
   }[]
 ): string {
   // JSON y no un separador propio: no hay que elegir un carácter que no
   // aparezca en una descripción.
   //
   // El material entra en la firma: atar un renglón al catálogo es trabajo de
-  // la obra, aunque la descripción haya quedado igual.
+  // la obra, aunque la descripción haya quedado igual. El consumo también, y
+  // en lugar de la cantidad: ver abajo por qué.
   return JSON.stringify(
     renglones.map((r) => [
       r.tipo,
       r.descripcion,
       r.unidad,
-      r.cantidad,
+      // La cantidad entra sólo cuando no hay consumo declarado. Si lo hay, la
+      // cantidad se deriva del envase, y entonces dos lados que la derivan con
+      // envases distintos la tendrían distinta sin que nadie haya tocado el
+      // desglose. Lo que se compara es lo que se cargó, no lo que se calcula.
+      r.consumo == null ? r.cantidad : null,
+      r.consumo ?? null,
+      r.consumoUnidad ?? null,
       r.precio,
       r.materialId ?? null,
     ])
