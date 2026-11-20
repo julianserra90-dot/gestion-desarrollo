@@ -49,8 +49,11 @@ export const FORMAS: {
     usa: ["a", "b", "c"],
   },
   {
+    // Nombrada por sus columnas y no "espesor × área": eso es una losa, pero
+    // la misma forma mide un paño de mampostería por alto y largo, y un
+    // nombre de hormigón ahí adentro confunde más de lo que explica.
     valor: "superficie",
-    nombre: "Espesor × Área",
+    nombre: "Alto/esp. × Largo/área",
     cuenta: "b × c × unidades",
     usa: ["b", "c"],
   },

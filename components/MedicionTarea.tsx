@@ -332,7 +332,7 @@ export default function MedicionTarea({
                       <select
                         value={f.forma}
                         onChange={(e) => aplicar(f.clave, { forma: e.target.value as Forma })}
-                        style={{ ...inputBase, textAlign: "left", width: "165px" }}
+                        style={{ ...inputBase, textAlign: "left", width: "195px" }}
                       >
                         {FORMAS.map((x) => (
                           <option key={x.valor} value={x.valor} title={x.cuenta}>
