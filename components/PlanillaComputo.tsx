@@ -136,6 +136,10 @@ export default function PlanillaComputo({
   }
 
   const [cambios, setCambios] = useState(false);
+  // Qué rubro se está mirando. Las filas de los demás no se sacan: se
+  // esconden. Siguen adentro del formulario, así que una cantidad escrita en
+  // un rubro y después filtrada se guarda igual en vez de perderse sin aviso.
+  const [filtro, setFiltro] = useState("");
   const [editando, setEditando] = useState<Set<string>>(() => new Set());
   const [abiertos, setAbiertos] = useState<Set<string>>(
     () => new Set(abrirInicial ? [abrirInicial] : [])
@@ -229,6 +233,24 @@ export default function PlanillaComputo({
           />
         </label>
 
+        {rubros.length > 1 && (
+          <label style={campoMes}>
+            <span style={ui.label}>Rubro</span>
+            <select
+              value={filtro}
+              onChange={(e) => setFiltro(e.target.value)}
+              style={{ ...ui.input, width: "260px" }}
+            >
+              <option value="">Todos ({rubros.length})</option>
+              {rubros.map((r) => (
+                <option key={r.rubroId} value={r.rubroId}>
+                  {r.rubro} ({r.filas.length})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <button type="submit" style={cambios ? ui.button : ui.secondaryButton}>
           {cambios ? "Guardar cantidades" : "Guardar"}
         </button>
@@ -248,8 +270,15 @@ export default function PlanillaComputo({
           const conIntegrado = r.filas.some((f) => f.precioIntegrado > 0);
           const columnas = 3 + 4 + (conIntegrado ? 2 : 0) + 2;
 
+          // Escondido y no sacado: ver el filtro, arriba.
+          const oculto = filtro !== "" && r.rubroId !== filtro;
+
           return (
-            <details key={r.rubroId} open style={panelRubro}>
+            <details
+              key={r.rubroId}
+              open
+              style={oculto ? { ...panelRubro, display: "none" } : panelRubro}
+            >
               <summary style={resumen}>
                 <span style={tituloRubro}>{r.rubro}</span>
                 <span style={totalResumen}>{formatMoney(totalDe(t))}</span>
