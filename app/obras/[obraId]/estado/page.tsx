@@ -7,6 +7,7 @@ import {
   avanceGeneral,
   getAvancePorRubro,
   getUltimaActividad,
+  origenDelPeso,
 } from "@/lib/avances";
 import { formatDate, formatUSD } from "@/lib/format";
 import { getLote, incidenciaPorM2 } from "@/lib/lote";
@@ -18,6 +19,13 @@ import {
 } from "@/lib/superficies";
 import { calcularPlazo, leerDesvio } from "@/lib/plazo";
 import { getTotalesUsd } from "@/lib/totales-usd";
+
+// La versión corta de la leyenda de Avances: al pie de la barra entra una línea.
+const COMO_PESA = {
+  cotizacion: "Cada rubro pesa su cotización aprobada.",
+  mixto: "Cada rubro pesa su cotización aprobada, o el cómputo donde todavía no hay.",
+  computo: "Cada rubro pesa su cómputo estimado, que es lo que hay por ahora.",
+} as const;
 
 export default async function EstadoDeObraPage({
   params,
@@ -111,7 +119,7 @@ export default async function EstadoDeObraPage({
   const enEjecucion = rubros.filter((r) => r.estado === "En ejecución").length;
   const finalizados = rubros.filter((r) => r.estado === "Finalizado").length;
   const sinIniciar = rubros.filter((r) => r.estado === "Sin iniciar").length;
-  const ponderado = rubros.some((r) => r.peso > 0);
+  const pondera = origenDelPeso(rubros);
 
   return (
     <AppShell
@@ -152,9 +160,9 @@ export default async function EstadoDeObraPage({
               />
             </div>
             <p style={pieBarra}>
-              {ponderado
-                ? "Cada rubro pesa su cotización aprobada."
-                : "Promedio simple: todavía no hay cotizaciones aprobadas."}
+              {pondera
+                ? COMO_PESA[pondera]
+                : "Promedio simple: todavía no hay cotizaciones ni cómputo."}
             </p>
           </div>
 

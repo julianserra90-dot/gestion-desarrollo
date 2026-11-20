@@ -20,8 +20,10 @@ export type RubroConAvance = {
   cantCargas: number;
   /** El último día cubierto por una carga. */
   ultimaFecha: string | null;
-  /** La cotización aprobada: lo que el rubro pesa en el avance general. */
+  /** Lo que el rubro pesa en el avance general: su mejor costo conocido. */
   peso: number;
+  /** De dónde salió el peso, para poder explicarlo en pantalla. */
+  pesoDe: "cotizacion" | "computo" | null;
 };
 
 export type CargaDeAvance = {
@@ -44,7 +46,7 @@ export async function getAvancePorRubro(
 ): Promise<RubroConAvance[]> {
   const supabase = await createClient();
 
-  const [{ data: rubros }, { data: cargas }, { data: cotizaciones }] =
+  const [{ data: rubros }, { data: cargas }, { data: cotizaciones }, { data: items }] =
     await Promise.all([
       supabase
         .from("rubros")
@@ -61,6 +63,10 @@ export async function getAvancePorRubro(
         .select("rubro_id, monto")
         .eq("obra_id", obraId)
         .eq("estado", "Aprobado"),
+      supabase
+        .from("computo_items")
+        .select("rubro_id, cantidad, precio_materiales, precio_mano_obra, precio_integrado")
+        .eq("obra_id", obraId),
     ]);
 
   const acumulados = new Map<string, number>();
@@ -78,13 +84,36 @@ export async function getAvancePorRubro(
     }
   }
 
-  const pesos = new Map<string, number>();
+  const cotizado = new Map<string, number>();
   for (const cot of cotizaciones ?? []) {
-    pesos.set(cot.rubro_id, (pesos.get(cot.rubro_id) ?? 0) + Number(cot.monto));
+    cotizado.set(cot.rubro_id, (cotizado.get(cot.rubro_id) ?? 0) + Number(cot.monto));
+  }
+
+  // Lo estimado por rubro, como en la pantalla de incidencia: cantidad ×
+  // precio, los tres tipos juntos —el que la tarea no lleva ya está en cero—.
+  // Sin ajuste por CAC a propósito: el cómputo entero está en los precios de
+  // un mes, así que el factor sería el mismo para todos los rubros y no
+  // cambia cuánto pesa cada uno.
+  const estimado = new Map<string, number>();
+  for (const i of items ?? []) {
+    const unitario =
+      Number(i.precio_materiales) +
+      Number(i.precio_mano_obra) +
+      Number(i.precio_integrado);
+    estimado.set(
+      i.rubro_id,
+      (estimado.get(i.rubro_id) ?? 0) + Number(i.cantidad) * unitario
+    );
   }
 
   return (rubros ?? []).map((r) => {
     const acumulado = acumulados.get(r.id) ?? 0;
+    const cot = cotizado.get(r.id) ?? 0;
+    const est = estimado.get(r.id) ?? 0;
+    // El mejor costo conocido del rubro. Un rubro sin ninguna de las dos cosas
+    // pesa cero, que es lo que lo deja afuera del ponderado en vez de meterlo
+    // con un peso inventado.
+    const peso = cot > 0 ? cot : est;
 
     return {
       rubroId: r.id,
@@ -93,7 +122,8 @@ export async function getAvancePorRubro(
       estado: estadoDe(acumulado),
       cantCargas: cantidades.get(r.id) ?? 0,
       ultimaFecha: ultimas.get(r.id) ?? null,
-      peso: pesos.get(r.id) ?? 0,
+      peso,
+      pesoDe: peso > 0 ? (cot > 0 ? "cotizacion" : "computo") : null,
     };
   });
 }
@@ -102,8 +132,14 @@ export async function getAvancePorRubro(
  * El avance general de la obra: cada rubro pesa lo que cuesta.
  *
  * Demoler al 100% mueve mucho menos que albañilería al 50%, y el promedio
- * simple no lo veía. Sin cotizaciones aprobadas no hay con qué ponderar, y ahí
- * cae al promedio simple para que una obra recién arrancada muestre algo.
+ * simple no lo veía. Cada rubro pesa su mejor costo conocido: la cotización
+ * aprobada si ya la hay, y si no el cómputo estimado (ver `getAvancePorRubro`).
+ *
+ * Sólo cae al promedio simple la obra que no tiene ninguna de las dos cosas,
+ * que es el caso para el que se había elegido: una obra recién arrancada tiene
+ * que mostrar algo igual. Que el cómputo también pese importa porque armarlo
+ * marca los rubros de la obra: con el peso en cero, tildar treinta tareas
+ * desplomaba el avance de una obra que no se había movido.
  *
  * Misma fórmula que `obra_resumen.avance_fisico` en la base, que es la que
  * alimenta el listado de obras.
@@ -233,4 +269,21 @@ export async function getCarga(
     cargadoPor: data.actualizado_por_nombre,
     acumulado: 0,
   };
+}
+
+/**
+ * Con qué se terminó ponderando el avance general, para poder decirlo en
+ * pantalla sin que cada una lo deduzca a su manera. `null` es el promedio
+ * simple: la obra no tiene ni cotizaciones aprobadas ni cómputo.
+ */
+export function origenDelPeso(
+  rubros: RubroConAvance[]
+): "cotizacion" | "computo" | "mixto" | null {
+  const hayCotizacion = rubros.some((r) => r.pesoDe === "cotizacion");
+  const hayComputo = rubros.some((r) => r.pesoDe === "computo");
+
+  if (hayCotizacion && hayComputo) return "mixto";
+  if (hayCotizacion) return "cotizacion";
+  if (hayComputo) return "computo";
+  return null;
 }

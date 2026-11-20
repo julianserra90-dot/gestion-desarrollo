@@ -3,9 +3,21 @@ import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import { avanceGeneral, getAvancePorRubro } from "@/lib/avances";
+import { avanceGeneral, getAvancePorRubro, origenDelPeso } from "@/lib/avances";
 import { formatDate } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
+
+// Cada rubro pesa su mejor costo conocido, y de dónde salió cambia lo que hay
+// que decir: una obra con el cómputo armado y sin cotizar también está
+// ponderada, y conviene que se sepa con qué.
+const COMO_PESA = {
+  cotizacion:
+    "Cada rubro pesa lo que cuesta, según las cotizaciones aprobadas en Presupuestos.",
+  mixto:
+    "Cada rubro pesa lo que cuesta: la cotización aprobada donde ya la hay, y el cómputo estimado donde todavía no.",
+  computo:
+    "Cada rubro pesa lo que cuesta, según el cómputo estimado: todavía no hay cotizaciones aprobadas.",
+} as const;
 
 export default async function AvancesPage({
   params,
@@ -25,7 +37,7 @@ export default async function AvancesPage({
   const enEjecucion = rubros.filter((r) => r.estado === "En ejecución").length;
   const finalizados = rubros.filter((r) => r.estado === "Finalizado").length;
   const sinIniciar = rubros.filter((r) => r.estado === "Sin iniciar").length;
-  const ponderado = rubros.some((r) => r.peso > 0);
+  const pondera = origenDelPeso(rubros);
 
   return (
     <AppShell
@@ -63,9 +75,9 @@ export default async function AvancesPage({
           {general}% ejecutado
         </h3>
         <p style={ui.subtitle}>
-          {ponderado
-            ? "Cada rubro pesa lo que cuesta, según las cotizaciones aprobadas en Presupuestos."
-            : "Promedio simple de los rubros: todavía no hay cotizaciones aprobadas con qué ponderar."}
+          {pondera
+            ? COMO_PESA[pondera]
+            : "Promedio simple de los rubros: todavía no hay cotizaciones aprobadas ni cómputo con qué ponderar."}
         </p>
 
         <div style={{ ...ui.progressBackground, marginTop: "20px" }}>
