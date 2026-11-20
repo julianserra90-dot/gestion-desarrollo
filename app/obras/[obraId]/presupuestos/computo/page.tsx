@@ -20,6 +20,7 @@ import {
 } from "@/lib/computo";
 import { formatMoney } from "@/lib/format";
 import { nombreMes } from "@/lib/meses";
+import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -112,6 +113,9 @@ export default async function ComputoPage({
   }
 
   const ajustar = pesos !== "1";
+  // "catálogo" en el nombre porque más abajo hay otro `materiales`: el listado
+  // de lo que lleva la obra, que es la suma de los desgloses y no el catálogo.
+  const catalogoMateriales = await getMaterialesCatalogo();
   const indices = await getIndicesCac();
   const referencia = mesDeReferencia(indices);
   const comparacion = await getComparacion(obra.id, computo, indices, ajustar);
@@ -126,7 +130,7 @@ export default async function ComputoPage({
     // obra ya se tocó, que es lo que el catálogo avisa antes de destildar.
     supabase
       .from("tarea_desglose")
-      .select("tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, orden")
+      .select("tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, material_id, orden")
       .in("tarea_id", elegidas)
       .order("orden"),
   ]);
@@ -179,6 +183,7 @@ export default async function ComputoPage({
       unidad: m.unidad,
       cantidad: Number(m.cantidad),
       precio: Number(m.precio_unitario),
+      materialId: m.material_id,
     });
     renglonesDeModelo.set(m.tarea_id, lista);
   }
@@ -298,6 +303,7 @@ export default async function ComputoPage({
               rubros={planilla}
               superficie={obra.sup_construccion_m2 ? Number(obra.sup_construccion_m2) : null}
               abrirInicial={abrir}
+              materiales={catalogoMateriales}
               guardar={guardarPlanilla}
               editarTarea={editarTareaDelComputo}
               guardarDesglose={guardarDesgloseDe}

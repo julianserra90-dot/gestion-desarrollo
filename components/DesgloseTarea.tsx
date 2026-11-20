@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import InputMonto from "@/components/InputMonto";
+import SelectorMaterial, { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
 import { formatMoney } from "@/lib/format";
@@ -22,6 +23,7 @@ export type RenglonInicial = {
   unidad: string;
   cantidad: number;
   precio: number;
+  materialId: string | null;
   presupuestoId: string | null;
   usarCotizado: boolean;
   cotizacion: CotizacionDelRenglon | null;
@@ -35,6 +37,8 @@ type Renglon = {
   unidad: string;
   cantidad: string;
   precio: string;
+  /** El material del catálogo, cuando el renglón es uno. */
+  materialId: string | null;
   presupuestoId: string | null;
   /** La casilla "Cotización". */
   cotizar: boolean;
@@ -50,6 +54,7 @@ export type GuardarDesglose = (
     unidad: string;
     cantidad: number;
     precio: number;
+    materialId: string | null;
     presupuestoId: string | null;
     cotizar: boolean;
     usarCotizado: boolean;
@@ -91,7 +96,13 @@ export default function DesgloseTarea({
   guardar,
   alGuardar,
   unidadesUsadas = [],
+  materiales = [],
+  rubroNombre = "",
 }: {
+  /** El catálogo, para atar un renglón de materiales a su ficha. */
+  materiales?: MaterialOpcion[];
+  /** El rubro de la tarea: el selector lo abre primero. */
+  rubroNombre?: string;
   /** Las unidades ya usadas en la obra, para ofrecer las agregadas a mano. */
   unidadesUsadas?: string[];
   itemId: string;
@@ -113,6 +124,7 @@ export default function DesgloseTarea({
       unidad: r.unidad,
       cantidad: String(r.cantidad),
       precio: String(r.precio),
+      materialId: r.materialId,
       presupuestoId: r.presupuestoId,
       cotizar: r.presupuestoId !== null,
       usarCotizado: r.usarCotizado,
@@ -140,6 +152,7 @@ export default function DesgloseTarea({
         unidad: "un",
         cantidad: "",
         precio: "",
+        materialId: null,
         presupuestoId: null,
         cotizar: false,
         usarCotizado: false,
@@ -149,6 +162,28 @@ export default function DesgloseTarea({
 
   const quitar = (clave: string) =>
     setRenglones((antes) => antes.filter((r) => r.clave !== clave));
+
+  // Atar un renglón al catálogo le pone también el nombre y la unidad del
+  // material: que los dos digan lo mismo es el punto de atarlo, y es lo que
+  // deja que el listado de materiales sume el mismo ladrillo una sola vez.
+  const elegirMaterial = (clave: string, id: string) => {
+    const m = materiales.find((x) => x.id === id);
+    if (!m) return;
+    setRenglones((antes) =>
+      antes.map((r) =>
+        r.clave === clave
+          ? { ...r, materialId: m.id, descripcion: m.nombre, unidad: m.unidad }
+          : r
+      )
+    );
+  };
+
+  // Soltarlo deja el nombre puesto y sólo corta el enlace: no todo lo que
+  // entra en un desglose merece una ficha en el catálogo.
+  const soltarMaterial = (clave: string) =>
+    setRenglones((antes) =>
+      antes.map((r) => (r.clave === clave ? { ...r, materialId: null } : r))
+    );
 
   const computado = (r: Renglon) => num(r.cantidad) * num(r.precio);
   // Lo que suma por unidad de la tarea. Si se eligió lo cotizado, la
@@ -171,6 +206,7 @@ export default function DesgloseTarea({
           unidad: x.unidad,
           cantidad: num(x.cantidad),
           precio: num(x.precio),
+          materialId: x.materialId,
           presupuestoId: x.presupuestoId,
           cotizar: x.cotizar,
           usarCotizado: x.usarCotizado,
@@ -244,13 +280,45 @@ export default function DesgloseTarea({
                     </select>
                   </td>
                   <td style={celda}>
-                    <input
-                      type="text"
-                      value={r.descripcion}
-                      onChange={(e) => cambiar(r.clave, "descripcion", e.target.value)}
-                      placeholder={ejemplo(r.tipo)}
-                      style={{ ...inputBase, textAlign: "left", minWidth: "220px" }}
-                    />
+                    {r.tipo === "Materiales" && materiales.length > 0 ? (
+                      // Un renglón de materiales se elige del catálogo, y
+                      // sólo si no está ahí se escribe a mano: el campo libre
+                      // aparece recién cuando no hay material atado.
+                      <div style={celdaMaterial}>
+                        <SelectorMaterial
+                          name={`material_${r.clave}`}
+                          materiales={materiales}
+                          rubroNombre={rubroNombre}
+                          value={r.materialId ?? ""}
+                          onChange={(id) => elegirMaterial(r.clave, id)}
+                        />
+                        {r.materialId ? (
+                          <button
+                            type="button"
+                            onClick={() => soltarMaterial(r.clave)}
+                            style={soltarMaterialBoton}
+                          >
+                            Escribirlo a mano
+                          </button>
+                        ) : (
+                          <input
+                            type="text"
+                            value={r.descripcion}
+                            onChange={(e) => cambiar(r.clave, "descripcion", e.target.value)}
+                            placeholder={ejemplo(r.tipo)}
+                            style={{ ...inputBase, textAlign: "left", minWidth: "220px" }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        value={r.descripcion}
+                        onChange={(e) => cambiar(r.clave, "descripcion", e.target.value)}
+                        placeholder={ejemplo(r.tipo)}
+                        style={{ ...inputBase, textAlign: "left", minWidth: "220px" }}
+                      />
+                    )}
                   </td>
                   <td style={celdaCentro}>
                     <SelectorUnidad
@@ -612,4 +680,23 @@ const opcionElegida = {
   borderColor: "#111111",
   color: "#ffffff",
   fontWeight: 600,
+};
+
+// El selector y, debajo, lo que haga falta: el campo libre mientras no haya
+// material, o la salida para soltarlo cuando sí lo hay.
+const celdaMaterial = {
+  display: "grid",
+  gap: "4px",
+  minWidth: "220px",
+};
+
+const soltarMaterialBoton = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  fontSize: "12px",
+  color: "#777777",
+  textAlign: "left" as const,
+  textDecoration: "underline",
 };

@@ -82,6 +82,8 @@ export type RenglonItem = {
   unidad: string;
   cantidad: number;
   precio: number;
+  /** El material del catálogo, cuando el renglón es uno. */
+  materialId: string | null;
   presupuestoId: string | null;
   usarCotizado: boolean;
   /** La cotización enlazada, si se pidió. */
@@ -131,7 +133,7 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
     supabase
       .from("computo_items")
       .select(
-        "id, rubro_id, tarea_id, subrubro, nombre, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado, usa_materiales, usa_mano_obra, usa_integrado, orden, computo_item_desglose(tipo, descripcion, unidad, cantidad, precio_unitario, orden, presupuesto_id, usar_cotizado, presupuestos(estado, monto, proveedores(nombre)))"
+        "id, rubro_id, tarea_id, subrubro, nombre, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado, usa_materiales, usa_mano_obra, usa_integrado, orden, computo_item_desglose(tipo, descripcion, unidad, cantidad, precio_unitario, orden, presupuesto_id, usar_cotizado, material_id, presupuestos(estado, monto, proveedores(nombre)))"
       )
       .eq("obra_id", obraId)
       .order("orden"),
@@ -153,6 +155,7 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
           unidad: r.unidad,
           cantidad: Number(r.cantidad),
           precio: Number(r.precio_unitario),
+          materialId: r.material_id,
           presupuestoId: r.presupuesto_id,
           usarCotizado: r.usar_cotizado,
           cotizacion: r.presupuestos
@@ -215,12 +218,23 @@ export function firmaDeDesglose(
     unidad: string;
     cantidad: number;
     precio: number;
+    materialId?: string | null;
   }[]
 ): string {
   // JSON y no un separador propio: no hay que elegir un carácter que no
   // aparezca en una descripción.
+  //
+  // El material entra en la firma: atar un renglón al catálogo es trabajo de
+  // la obra, aunque la descripción haya quedado igual.
   return JSON.stringify(
-    renglones.map((r) => [r.tipo, r.descripcion, r.unidad, r.cantidad, r.precio])
+    renglones.map((r) => [
+      r.tipo,
+      r.descripcion,
+      r.unidad,
+      r.cantidad,
+      r.precio,
+      r.materialId ?? null,
+    ])
   );
 }
 
@@ -434,7 +448,13 @@ export function listadoDeMateriales(items: ItemComputo[]): MaterialListado[] {
 
       const generico = /referencia cifras/i.test(r.descripcion) || r.descripcion === "Materiales";
       const descripcion = generico ? `${item.nombre} (sin desglosar)` : r.descripcion;
-      const clave = `${descripcion.toLowerCase()}|${r.unidad}`;
+      // Dos renglones son el mismo material si apuntan al mismo del catálogo,
+      // aunque uno diga "Bolsa cemento 25kg" y el otro "Bolsa Cemento 25 kg".
+      // Sin enlace no queda más remedio que confiar en el texto, que es lo
+      // que se hacía siempre.
+      const clave = r.materialId
+        ? `material:${r.materialId}`
+        : `texto:${descripcion.toLowerCase()}|${r.unidad}`;
 
       const actual = porClave.get(clave) ?? {
         descripcion,

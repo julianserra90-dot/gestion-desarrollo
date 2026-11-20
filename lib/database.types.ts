@@ -202,6 +202,7 @@ export type Database = {
           descripcion: string
           id: string
           item_id: string
+          material_id: string | null
           orden: number
           precio_unitario: number
           presupuesto_id: string | null
@@ -215,6 +216,7 @@ export type Database = {
           descripcion: string
           id?: string
           item_id: string
+          material_id?: string | null
           orden?: number
           precio_unitario?: number
           presupuesto_id?: string | null
@@ -228,6 +230,7 @@ export type Database = {
           descripcion?: string
           id?: string
           item_id?: string
+          material_id?: string | null
           orden?: number
           precio_unitario?: number
           presupuesto_id?: string | null
@@ -241,6 +244,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "computo_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "computo_item_desglose_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
             referencedColumns: ["id"]
           },
           {
@@ -2114,6 +2124,7 @@ export type Database = {
           creado_en: string
           descripcion: string
           id: string
+          material_id: string | null
           orden: number
           precio_unitario: number
           tarea_id: string
@@ -2125,6 +2136,7 @@ export type Database = {
           creado_en?: string
           descripcion: string
           id?: string
+          material_id?: string | null
           orden?: number
           precio_unitario?: number
           tarea_id: string
@@ -2136,6 +2148,7 @@ export type Database = {
           creado_en?: string
           descripcion?: string
           id?: string
+          material_id?: string | null
           orden?: number
           precio_unitario?: number
           tarea_id?: string
@@ -2143,6 +2156,13 @@ export type Database = {
           unidad?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tarea_desglose_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tarea_desglose_tarea_id_fkey"
             columns: ["tarea_id"]
@@ -2316,6 +2336,7 @@ export type Database = {
     Functions: {
       auth_empresa_id: { Args: never; Returns: string }
       auth_es_admin: { Args: never; Returns: boolean }
+      puede_escribir_gasto: { Args: { p_gasto: string }; Returns: boolean }
       puede_ver_obra: { Args: { p_obra: string }; Returns: boolean }
       set_obra_socios: {
         Args: { p_obra: string; p_socios: Json }

@@ -6,6 +6,7 @@ import DesgloseTarea, {
   type GuardarDesglose,
   type RenglonInicial,
 } from "@/components/DesgloseTarea";
+import { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
 import { formatMoney } from "@/lib/format";
@@ -78,7 +79,10 @@ export default function PlanillaComputo({
   editarTarea,
   guardarDesglose,
   quitarItem,
+  materiales = [],
 }: {
+  /** El catálogo de materiales, para el desglose de cada tarea. */
+  materiales?: MaterialOpcion[];
   slug: string;
   obraId: string;
   mesPrecios: string;
@@ -424,6 +428,8 @@ export default function PlanillaComputo({
                                   cantidadTarea={num(v.cantidad)}
                                   iniciales={f.renglones}
                                   unidadesUsadas={unidadesUsadas}
+                                  materiales={materiales}
+                                  rubroNombre={r.rubro}
                                   puedeSerModelo={f.tareaId !== null}
                                   guardar={guardarDesglose}
                                   alGuardar={() => conmutar(setAbiertos, f.id, false)}
