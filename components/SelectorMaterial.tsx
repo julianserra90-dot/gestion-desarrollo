@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as ui from "@/components/ui";
 
 export type MaterialOpcion = {
@@ -47,6 +47,59 @@ export default function SelectorMaterial({
     () => new Set(rubroNombre ? [rubroNombre] : [])
   );
   const contenedor = useRef<HTMLDivElement>(null);
+  const disparadorRef = useRef<HTMLButtonElement>(null);
+
+  // Dónde dibujar el panel. Va `fixed` y no `absolute` porque el selector
+  // puede vivir dentro de algo que scrollea —el desglose del cómputo es una
+  // tabla con scroll horizontal— y un contenedor con scroll recorta también
+  // para abajo: el desplegable aparecía cortado a la mitad. Posicionado
+  // contra la ventana no lo recorta nadie, pero hay que calcularle el lugar.
+  const [caja, setCaja] = useState<{
+    izquierda: number;
+    ancho: number;
+    arriba: boolean;
+    y: number;
+    alto: number;
+  } | null>(null);
+
+  const ubicar = () => {
+    const d = disparadorRef.current;
+    if (!d) return;
+    const r = d.getBoundingClientRect();
+    const margen = 8;
+    const libreAbajo = window.innerHeight - r.bottom - margen;
+    const libreArriba = r.top - margen;
+    // Se da vuelta sólo si abajo no entra y arriba entra mejor: en una
+    // pantalla corta, el selector de la última fila queda contra el borde.
+    const arriba = libreAbajo < 240 && libreArriba > libreAbajo;
+
+    setCaja({
+      izquierda: r.left,
+      ancho: r.width,
+      arriba,
+      y: arriba ? window.innerHeight - r.top + 4 : r.bottom + 4,
+      alto: Math.max(180, (arriba ? libreArriba : libreAbajo) - 4),
+    });
+  };
+
+  // Antes de pintar, para que no se vea saltar de una posición a la otra.
+  useLayoutEffect(() => {
+    if (abierto) ubicar();
+  }, [abierto]);
+
+  // Mientras está abierto sigue al disparador: la página o la tabla de al
+  // lado pueden scrollear debajo. El `true` es para enterarse también del
+  // scroll de los contenedores de adentro, que no burbujea.
+  useEffect(() => {
+    if (!abierto) return;
+    const seguir = () => ubicar();
+    window.addEventListener("scroll", seguir, true);
+    window.addEventListener("resize", seguir);
+    return () => {
+      window.removeEventListener("scroll", seguir, true);
+      window.removeEventListener("resize", seguir);
+    };
+  }, [abierto]);
 
   // Ajuste durante el render, no en un efecto: al cambiar el rubro arriba se
   // vuelve a arrancar con ése abierto y los demás cerrados.
@@ -127,6 +180,7 @@ export default function SelectorMaterial({
       <input type="hidden" name={name} value={value} />
 
       <button
+        ref={disparadorRef}
         type="button"
         onClick={() => setAbierto((a) => !a)}
         style={{ ...disparador, color: elegido ? "#111111" : "#777777" }}
@@ -137,8 +191,15 @@ export default function SelectorMaterial({
         <span style={flecha}>{abierto ? "▴" : "▾"}</span>
       </button>
 
-      {abierto && (
-        <div style={panel}>
+      {abierto && caja && (
+        <div
+          style={{
+            ...panel,
+            left: caja.izquierda,
+            minWidth: caja.ancho,
+            ...(caja.arriba ? { bottom: caja.y } : { top: caja.y }),
+          }}
+        >
           <input
             type="text"
             value={busqueda}
@@ -152,7 +213,7 @@ export default function SelectorMaterial({
             style={buscador}
           />
 
-          <div style={lista}>
+          <div style={{ ...lista, maxHeight: Math.min(320, caja.alto - 72) }}>
             {visibles.length === 0 && (
               <p style={vacio}>
                 {buscando ? "Ningún material con ese nombre." : "El catálogo está vacío."}
@@ -229,12 +290,10 @@ const flecha = {
 };
 
 const panel = {
-  position: "absolute" as const,
-  top: "calc(100% + 4px)",
-  left: 0,
+  // `fixed`: el lugar lo calcula `ubicar()`. Ver el porqué allá arriba.
+  position: "fixed" as const,
   // Más ancho que el campo: los nombres de materiales no entran en la columna
   // del renglón y acá hay lugar para leerlos enteros.
-  minWidth: "100%",
   width: "360px",
   maxWidth: "80vw",
   background: "#ffffff",
