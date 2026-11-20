@@ -29,6 +29,8 @@ import {
   crearTareaPropia,
   editarTareaDelComputo,
   guardarDesgloseDe,
+  guardarMedicionDe,
+  leerMedicionDe,
   guardarPlanilla,
   quitarItem,
 } from "./actions";
@@ -159,6 +161,7 @@ export default async function ComputoPage({
       precioManoObra: i.precioManoObra,
       precioIntegrado: i.precioIntegrado,
       renglones: i.renglones,
+      elementosMedidos: i.elementosMedidos,
     });
   }
   const planilla = [...porRubro.values()].sort(
@@ -311,6 +314,8 @@ export default async function ComputoPage({
               guardar={guardarPlanilla}
               editarTarea={editarTareaDelComputo}
               guardarDesglose={guardarDesgloseDe}
+              leerMedicion={leerMedicionDe}
+              guardarMedicion={guardarMedicionDe}
               quitarItem={quitarItem}
             />
           </div>

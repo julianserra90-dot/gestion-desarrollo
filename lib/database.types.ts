@@ -268,6 +268,65 @@ export type Database = {
           },
         ]
       }
+      computo_item_medicion: {
+        Row: {
+          a: number | null
+          b: number | null
+          c: number | null
+          cantidad: number
+          creado_en: string
+          estado: string
+          etiqueta: string | null
+          forma: string
+          fuente: string | null
+          id: string
+          item_id: string
+          nivel: string | null
+          orden: number
+          unidades: number
+        }
+        Insert: {
+          a?: number | null
+          b?: number | null
+          c?: number | null
+          cantidad?: number
+          creado_en?: string
+          estado?: string
+          etiqueta?: string | null
+          forma?: string
+          fuente?: string | null
+          id?: string
+          item_id: string
+          nivel?: string | null
+          orden?: number
+          unidades?: number
+        }
+        Update: {
+          a?: number | null
+          b?: number | null
+          c?: number | null
+          cantidad?: number
+          creado_en?: string
+          estado?: string
+          etiqueta?: string | null
+          forma?: string
+          fuente?: string | null
+          id?: string
+          item_id?: string
+          nivel?: string | null
+          orden?: number
+          unidades?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "computo_item_medicion_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "computo_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       computo_items: {
         Row: {
           cantidad: number

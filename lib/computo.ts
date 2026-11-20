@@ -75,6 +75,17 @@ export type ItemComputo = {
   tipos: { mat: boolean; mo: boolean; int: boolean };
   /** Su desglose, por unidad de la tarea. De ahí salen los precios. */
   renglones: RenglonItem[];
+  /**
+   * Cuántos elementos se midieron para llegar a `cantidad`.
+   *
+   * Sólo el número: los elementos en sí se piden cuando se abre la medición.
+   * Una tarea puede tener doscientos cincuenta y pico —ciento treinta y dos
+   * vigas, una por una— y traerlos todos en cada carga de la planilla para
+   * mostrar un botón sería pagar el cómputo entero para no mirarlo.
+   *
+   * En cero, la cantidad de la tarea se escribe a mano como siempre.
+   */
+  elementosMedidos: number;
 };
 
 export type RenglonItem = {
@@ -150,6 +161,18 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
 
   if (!computo) return null;
 
+  // Cuántos elementos midió cada tarea. Va aparte y después de los items
+  // porque necesita sus ids, y trae sólo el id: es un conteo, no la medición.
+  const ids = (items ?? []).map((i) => i.id);
+  const { data: medidos } = ids.length
+    ? await supabase.from("computo_item_medicion").select("item_id").in("item_id", ids)
+    : { data: [] as { item_id: string }[] };
+
+  const elementosPorItem = new Map<string, number>();
+  for (const m of medidos ?? []) {
+    elementosPorItem.set(m.item_id, (elementosPorItem.get(m.item_id) ?? 0) + 1);
+  }
+
   return {
     mesPrecios: mesDeFecha(computo.mes_precios),
     items: (items ?? []).map((i) => {
@@ -218,6 +241,7 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
         precioIntegrado: renglones.length ? suma("Integrado") : Number(i.precio_integrado),
         tipos: { mat: i.usa_materiales, mo: i.usa_mano_obra, int: i.usa_integrado },
         renglones,
+        elementosMedidos: elementosPorItem.get(i.id) ?? 0,
       };
     }),
   };

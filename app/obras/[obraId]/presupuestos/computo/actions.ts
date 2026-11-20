@@ -3,6 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
+import {
+  cantidadDeElemento,
+  ESTADOS,
+  FORMAS,
+  medidasDe,
+  totalDeMedicion,
+  type EstadoMedida,
+  type Forma,
+} from "@/lib/medicion";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -1021,4 +1030,165 @@ export async function guardarDesgloseDe(
 
   revalidarComputo();
   return {};
+}
+
+/* ========================== La medición de una tarea ======================= */
+
+export type ElementoParaGuardar = {
+  nivel: string | null;
+  etiqueta: string | null;
+  forma: string;
+  a: number | null;
+  b: number | null;
+  c: number | null;
+  unidades: number;
+  estado: string;
+  fuente: string | null;
+};
+
+export type ElementoGuardado = {
+  nivel: string | null;
+  etiqueta: string | null;
+  forma: Forma;
+  a: number | null;
+  b: number | null;
+  c: number | null;
+  unidades: number;
+  cantidad: number;
+  estado: EstadoMedida;
+  fuente: string | null;
+};
+
+/**
+ * Los elementos medidos de una tarea.
+ *
+ * Se piden al abrir la medición y no con la planilla: son muchos y casi nunca
+ * se miran. Devuelve el error en vez de redirigir porque la llama la pantalla
+ * y sigue en el mismo lugar.
+ */
+export async function leerMedicionDe(
+  itemId: string
+): Promise<{ elementos?: ElementoGuardado[]; error?: string }> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("computo_item_medicion")
+    .select("nivel, etiqueta, forma, a, b, c, unidades, cantidad, estado, fuente, orden")
+    .eq("item_id", itemId)
+    .order("orden");
+
+  if (error) return { error: error.message };
+
+  return {
+    elementos: (data ?? []).map((e) => ({
+      nivel: e.nivel,
+      etiqueta: e.etiqueta,
+      forma: e.forma as Forma,
+      a: e.a === null ? null : Number(e.a),
+      b: e.b === null ? null : Number(e.b),
+      c: e.c === null ? null : Number(e.c),
+      unidades: Number(e.unidades),
+      cantidad: Number(e.cantidad),
+      estado: e.estado as EstadoMedida,
+      fuente: e.fuente,
+    })),
+  };
+}
+
+/**
+ * Guarda la medición de una tarea y le rehace la cantidad.
+ *
+ * La lista se reemplaza entera, igual que el desglose. La cantidad de la
+ * tarea pasa a ser la suma de los elementos y la calcula el servidor: es la
+ * que multiplica todos los precios del cómputo y de ahí sale el peso del
+ * avance físico de la obra, así que no se toma la que vino del navegador.
+ *
+ * Una medición vacía borra los elementos pero **deja la cantidad como está**.
+ * Abrir la medición de una tarea que tiene su cantidad escrita a mano, mirarla
+ * y cerrarla no tiene por qué ponerla en cero: para eso está el campo.
+ */
+export async function guardarMedicionDe(
+  itemId: string,
+  crudos: ElementoParaGuardar[]
+): Promise<Resultado> {
+  const elementos = crudos
+    .map((e) => {
+      const forma = (FORMAS.some((f) => f.valor === e.forma) ? e.forma : "prisma") as Forma;
+      const usa = medidasDe(forma);
+      const medida = (cual: "a" | "b" | "c") => {
+        if (!usa.includes(cual)) return null;
+        const n = Number(e[cual]);
+        return e[cual] === null || !Number.isFinite(n) || n <= 0 ? null : n;
+      };
+      const unidades = Number(e.unidades);
+
+      return {
+        nivel: texto(e.nivel),
+        etiqueta: texto(e.etiqueta),
+        forma,
+        a: medida("a"),
+        b: medida("b"),
+        c: medida("c"),
+        unidades: Number.isFinite(unidades) && unidades > 0 ? unidades : 1,
+        estado: (ESTADOS.some((x) => x.valor === e.estado) ? e.estado : "firme") as EstadoMedida,
+        fuente: texto(e.fuente),
+      };
+    })
+    // Un elemento sin ninguna medida y sin nombre es una fila que se agregó y
+    // no se usó. Con nombre se queda, aunque no mida: es lo que falta medir.
+    .filter((e) => e.etiqueta !== null || e.a !== null || e.b !== null || e.c !== null);
+
+  const supabase = await createClient();
+
+  const { data: item } = await supabase
+    .from("computo_items")
+    .select("id")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!item) return { error: "La tarea ya no está en el cómputo." };
+
+  const { error: errorBorrado } = await supabase
+    .from("computo_item_medicion")
+    .delete()
+    .eq("item_id", itemId);
+  if (errorBorrado) return { error: errorBorrado.message };
+
+  if (elementos.length === 0) return cerrar();
+
+  const { data: guardados, error } = await supabase
+    .from("computo_item_medicion")
+    .insert(
+      elementos.map((e, orden) => ({
+        item_id: itemId,
+        ...e,
+        cantidad: cantidadDeElemento(e),
+        orden,
+      }))
+    )
+    .select("id");
+  if (error) return { error: error.message };
+  if (noTocoNada(guardados)) return { error: sinPermisoPara("guardar la medición") };
+
+  // La cantidad de la tarea, con los tres decimales que guarda su columna.
+  const total = Math.round(totalDeMedicion(elementos) * 1000) / 1000;
+  const { data: actualizado, error: errorCantidad } = await supabase
+    .from("computo_items")
+    .update({ cantidad: total })
+    .eq("id", itemId)
+    .select("id");
+  if (errorCantidad) return { error: errorCantidad.message };
+  if (noTocoNada(actualizado)) return { error: sinPermisoPara("guardar la medición") };
+
+  return cerrar();
+
+  function cerrar(): Resultado {
+    revalidarComputo();
+    return {};
+  }
+}
+
+/** Lo que llega vacío de un campo de texto es nada, no una cadena vacía. */
+function texto(valor: string | null | undefined): string | null {
+  const limpio = String(valor ?? "").trim();
+  return limpio === "" ? null : limpio;
 }

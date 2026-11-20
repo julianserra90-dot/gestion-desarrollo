@@ -6,6 +6,10 @@ import DesgloseTarea, {
   type GuardarDesglose,
   type RenglonInicial,
 } from "@/components/DesgloseTarea";
+import MedicionTarea, {
+  type GuardarMedicion,
+  type LeerMedicion,
+} from "@/components/MedicionTarea";
 import { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
@@ -23,6 +27,8 @@ export type FilaPlanilla = {
   precioManoObra: number;
   precioIntegrado: number;
   renglones: RenglonInicial[];
+  /** Cuántos elementos se midieron para llegar a la cantidad. */
+  elementosMedidos: number;
 };
 
 export type RubroPlanilla = {
@@ -78,6 +84,8 @@ export default function PlanillaComputo({
   guardar,
   editarTarea,
   guardarDesglose,
+  leerMedicion,
+  guardarMedicion,
   quitarItem,
   materiales = [],
 }: {
@@ -94,6 +102,8 @@ export default function PlanillaComputo({
   guardar: (formData: FormData) => void;
   editarTarea: (id: string, nombre: string, unidad: string) => Promise<{ error?: string }>;
   guardarDesglose: GuardarDesglose;
+  leerMedicion: LeerMedicion;
+  guardarMedicion: GuardarMedicion;
   quitarItem: (id: string) => Promise<{ error?: string }>;
 }) {
   const router = useRouter();
@@ -130,6 +140,10 @@ export default function PlanillaComputo({
   const [abiertos, setAbiertos] = useState<Set<string>>(
     () => new Set(abrirInicial ? [abrirInicial] : [])
   );
+  // Las mediciones abiertas van aparte de los desgloses: son dos cosas
+  // distintas de la misma tarea y se miran juntas, la de dónde salen los m³ y
+  // la de qué lleva cada m³.
+  const [midiendo, setMidiendo] = useState<Set<string>>(() => new Set());
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [ocupado, iniciar] = useTransition();
 
@@ -290,6 +304,8 @@ export default function PlanillaComputo({
                       const nuevoSub =
                         f.subrubro && f.subrubro !== r.filas[i - 1]?.subrubro;
                       const abierto = abiertos.has(f.id);
+                      const midiendoEsta = midiendo.has(f.id);
+                      const medida = f.elementosMedidos > 0;
 
                       return (
                         <Fragment key={f.id}>
@@ -366,16 +382,31 @@ export default function PlanillaComputo({
                               </>
                             )}
                             <td style={celdaInput}>
-                              <input
-                                type="number"
-                                name={`cantidad:${f.id}`}
-                                value={v.cantidad}
-                                min={0}
-                                step="any"
-                                placeholder="0"
-                                onChange={(e) => cambiar(f.id, "cantidad", e.target.value)}
-                                style={inputCantidad}
-                              />
+                              {medida ? (
+                                // Medida, la cantidad no se escribe: es la suma de
+                                // sus elementos, y escribirla encima la haría mentir
+                                // sobre una medición que sigue abajo. Se cambia
+                                // midiendo, que es donde se puede ver por qué.
+                                <button
+                                  type="button"
+                                  onClick={() => conmutar(setMidiendo, f.id)}
+                                  style={cantidadMedida}
+                                  title={`Sale de ${f.elementosMedidos} elementos medidos`}
+                                >
+                                  {v.cantidad || "0"}
+                                </button>
+                              ) : (
+                                <input
+                                  type="number"
+                                  name={`cantidad:${f.id}`}
+                                  value={v.cantidad}
+                                  min={0}
+                                  step="any"
+                                  placeholder="0"
+                                  onChange={(e) => cambiar(f.id, "cantidad", e.target.value)}
+                                  style={inputCantidad}
+                                />
+                              )}
                             </td>
                             <td style={celdaUnit}>{monto(f.precioMateriales)}</td>
                             <td style={celdaNumero}>{monto(s.mat)}</td>
@@ -389,6 +420,15 @@ export default function PlanillaComputo({
                             )}
                             <td style={celdaTotal}>{formatMoney(totalDe(s))}</td>
                             <td style={celdaAcciones}>
+                              <button
+                                type="button"
+                                onClick={() => conmutar(setMidiendo, f.id)}
+                                style={medida ? botonDesglose : botonDesglosar}
+                                aria-expanded={midiendoEsta}
+                              >
+                                {medida ? `Medición (${f.elementosMedidos})` : "Medir"}{" "}
+                                {midiendoEsta ? "▴" : "▾"}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => conmutar(setAbiertos, f.id)}
@@ -416,6 +456,20 @@ export default function PlanillaComputo({
                             <tr>
                               <td colSpan={columnas} style={celdaError}>
                                 {errores[f.id]}
+                              </td>
+                            </tr>
+                          )}
+                          {midiendoEsta && (
+                            <tr>
+                              <td colSpan={columnas} style={celdaDesplegada}>
+                                <MedicionTarea
+                                  itemId={f.id}
+                                  unidadTarea={v.unidad}
+                                  cantidadTarea={num(v.cantidad)}
+                                  leer={leerMedicion}
+                                  guardar={guardarMedicion}
+                                  alGuardar={() => conmutar(setMidiendo, f.id, false)}
+                                />
                               </td>
                             </tr>
                           )}
@@ -783,4 +837,15 @@ const totalFinal = {
   fontSize: "22px",
   fontWeight: 600,
   marginTop: "4px",
+};
+
+// La cantidad de una tarea medida: se ve como el número que es, no como un
+// campo, y clickearla abre la medición de la que sale.
+const cantidadMedida = {
+  ...inputCantidad,
+  background: "#f4f4f4",
+  borderStyle: "dashed" as const,
+  color: "#111111",
+  cursor: "pointer",
+  textAlign: "right" as const,
 };
