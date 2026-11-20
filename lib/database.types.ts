@@ -275,10 +275,8 @@ export type Database = {
           c: number | null
           cantidad: number
           creado_en: string
-          estado: string
           etiqueta: string | null
           forma: string
-          fuente: string | null
           id: string
           item_id: string
           nivel: string | null
@@ -291,10 +289,8 @@ export type Database = {
           c?: number | null
           cantidad?: number
           creado_en?: string
-          estado?: string
           etiqueta?: string | null
           forma?: string
-          fuente?: string | null
           id?: string
           item_id: string
           nivel?: string | null
@@ -307,10 +303,8 @@ export type Database = {
           c?: number | null
           cantidad?: number
           creado_en?: string
-          estado?: string
           etiqueta?: string | null
           forma?: string
-          fuente?: string | null
           id?: string
           item_id?: string
           nivel?: string | null
