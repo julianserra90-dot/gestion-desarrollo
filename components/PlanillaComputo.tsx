@@ -498,7 +498,22 @@ export default function PlanillaComputo({
                                     cantidadTarea={num(v.cantidad)}
                                     leer={leerMedicion}
                                     guardar={guardarMedicion}
-                                    alGuardar={() => conmutar(setMidiendo, f.id, false)}
+                                    alGuardar={(cantidad) => {
+                                      // La planilla no se entera sola: su
+                                      // estado se armó al abrirse y la
+                                      // medición cambió la cantidad en el
+                                      // servidor.
+                                      const texto = String(cantidad);
+                                      setValores((antes) => ({
+                                        ...antes,
+                                        [f.id]: { ...antes[f.id], cantidad: texto },
+                                      }));
+                                      setConfirmados((antes) => ({
+                                        ...antes,
+                                        [f.id]: { ...antes[f.id], cantidad: texto },
+                                      }));
+                                      conmutar(setMidiendo, f.id, false);
+                                    }}
                                   />
                                 </div>
                               </td>

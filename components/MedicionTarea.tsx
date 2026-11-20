@@ -40,7 +40,7 @@ export type LeerMedicion = (
 export type GuardarMedicion = (
   itemId: string,
   elementos: ElementoAGuardar[]
-) => Promise<{ error?: string }>;
+) => Promise<{ error?: string; cantidad?: number }>;
 
 type Fila = {
   /** Sólo para React: las filas no tienen id de la base mientras se editan. */
@@ -86,6 +86,9 @@ const comoElemento = (f: Fila) => ({
 
 const cantidadAR = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 });
 
+/** A partir de acá la lista no entra en una pantalla y conviene plegarla. */
+const MUCHOS = 24;
+
 /**
  * La medición de una tarea, desplegada dentro de su fila de la planilla.
  *
@@ -120,11 +123,22 @@ export default function MedicionTarea({
   cantidadTarea: number;
   leer: LeerMedicion;
   guardar: GuardarMedicion;
-  alGuardar?: () => void;
+  /** Con la cantidad que quedó, para que la planilla la muestre sin recargar. */
+  alGuardar?: (cantidad: number) => void;
 }) {
   const router = useRouter();
   const [filas, setFilas] = useState<Fila[] | null>(null);
   const [niveles, setNiveles] = useState<Record<string, string>>({});
+  /**
+   * Los bloques plegados.
+   *
+   * Una medición de verdad es grande: las ciento treinta y dos vigas de este
+   * edificio ocupan ocho pantallas y ochocientos campos, y abajo de todo eso
+   * siguen las demás tareas de la planilla. Plegados, los cinco pisos entran
+   * en uno y se ve lo que uno quiere ver —cuánto lleva cada nivel— sin tener
+   * que recorrer nada.
+   */
+  const [plegados, setPlegados] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
   const [pegado, setPegado] = useState<string | null>(null);
   const [aviso, setAviso] = useState("");
@@ -142,6 +156,9 @@ export default function MedicionTarea({
       const { filas, niveles } = agrupar(r.elementos ?? []);
       setFilas(filas);
       setNiveles(niveles);
+      // Una medición cargada llega plegada; una que se está armando, no. El
+      // corte está en lo que entra en una pantalla.
+      if (filas.length > MUCHOS) setPlegados(new Set(filas.map((f) => f.grupo)));
     });
     return () => {
       vigente = false;
@@ -176,7 +193,25 @@ export default function MedicionTarea({
    * Un elemento va al final de su bloque, no al final de todo: si no, al
    * agregarle una viga a planta baja aparecería abajo de la terraza.
    */
-  const agregarEn = (grupo: string) =>
+  const desplegar = (grupo: string) =>
+    setPlegados((antes) => {
+      const nuevo = new Set(antes);
+      nuevo.delete(grupo);
+      return nuevo;
+    });
+
+  const alternarPlegado = (grupo: string) =>
+    setPlegados((antes) => {
+      const nuevo = new Set(antes);
+      if (nuevo.has(grupo)) nuevo.delete(grupo);
+      else nuevo.add(grupo);
+      return nuevo;
+    });
+
+  const agregarEn = (grupo: string) => {
+    // Agregarle un elemento a un bloque plegado y no mostrárselo sería
+    // agregarlo en ningún lado.
+    desplegar(grupo);
     setFilas((antes) => {
       const lista = [...(antes ?? [])];
       let ultimo = -1;
@@ -186,6 +221,7 @@ export default function MedicionTarea({
       lista.splice(ultimo + 1, 0, filaNueva(grupo));
       return lista;
     });
+  };
 
   const agregarNivel = () => {
     const grupo = nuevaClave();
@@ -209,6 +245,10 @@ export default function MedicionTarea({
     const nuevo = agrupar(leidas);
     setFilas((antes) => (reemplazar ? nuevo.filas : [...(antes ?? []), ...nuevo.filas]));
     setNiveles((antes) => (reemplazar ? nuevo.niveles : { ...antes, ...nuevo.niveles }));
+    if (nuevo.filas.length > MUCHOS) {
+      const recien = new Set(nuevo.filas.map((f) => f.grupo));
+      setPlegados((antes) => (reemplazar ? recien : new Set([...antes, ...recien])));
+    }
     setAviso(leidas.length === 1 ? "Leí 1 elemento." : `Leí ${leidas.length} elementos.`);
     setPegado(null);
   };
@@ -246,7 +286,7 @@ export default function MedicionTarea({
       }
       setError("");
       router.refresh();
-      alGuardar?.();
+      alGuardar?.(r.cantidad ?? total);
     });
 
   return (
@@ -296,11 +336,22 @@ export default function MedicionTarea({
                 <th style={thIzq} />
               </tr>
             </thead>
-            {grupos.map((g) => (
+            {grupos.map((g) => {
+              const plegado = plegados.has(g.clave);
+              return (
               <tbody key={g.clave}>
                 <tr>
                   <td colSpan={8} style={celdaNivel}>
                     <span style={filaNivel}>
+                      <button
+                        type="button"
+                        onClick={() => alternarPlegado(g.clave)}
+                        style={botonPlegar}
+                        aria-expanded={!plegado}
+                        title={plegado ? "Mostrar los elementos" : "Plegar el nivel"}
+                      >
+                        {plegado ? "▸" : "▾"}
+                      </button>
                       <input
                         type="text"
                         value={g.nivel}
@@ -309,14 +360,11 @@ export default function MedicionTarea({
                         style={inputNivel}
                         aria-label="Nombre del nivel"
                       />
-                      {grupos.length > 1 && (
-                        <span style={subtotalNivel}>
-                          {g.filas.length} · {cantidadAR.format(
-                            totalDeMedicion(g.filas.map(comoElemento))
-                          )}{" "}
-                          {unidadTarea}
-                        </span>
-                      )}
+                      <span style={subtotalNivel}>
+                        {g.filas.length} ·{" "}
+                        {cantidadAR.format(totalDeMedicion(g.filas.map(comoElemento)))}{" "}
+                        {unidadTarea}
+                      </span>
                       <button
                         type="button"
                         onClick={() => agregarEn(g.clave)}
@@ -327,7 +375,8 @@ export default function MedicionTarea({
                     </span>
                   </td>
                 </tr>
-                {g.filas.map((f) => {
+                {!plegado &&
+                  g.filas.map((f) => {
                   const usa = medidasDe(f.forma);
                   const cantidad = cantidadDeElemento(comoElemento(f));
                   return (
@@ -403,7 +452,8 @@ export default function MedicionTarea({
                   );
                 })}
               </tbody>
-            ))}
+              );
+            })}
           </table>
         </div>
       )}
@@ -710,4 +760,17 @@ const textoError = {
   color: ui.ROJO,
   fontSize: "13px",
   margin: "10px 0 0",
+};
+
+// El triangulito que pliega un nivel. Aparte del nombre, que es un campo de
+// texto: hacer clickeable la fila entera haría que escribir el nivel lo
+// plegara.
+const botonPlegar = {
+  background: "none",
+  border: "none",
+  color: "#777777",
+  fontSize: "13px",
+  cursor: "pointer",
+  padding: "2px 2px",
+  lineHeight: 1,
 };

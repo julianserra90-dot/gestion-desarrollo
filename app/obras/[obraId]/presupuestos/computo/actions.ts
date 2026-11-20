@@ -1098,11 +1098,15 @@ export async function leerMedicionDe(
  * Una medición vacía borra los elementos pero **deja la cantidad como está**.
  * Abrir la medición de una tarea que tiene su cantidad escrita a mano, mirarla
  * y cerrarla no tiene por qué ponerla en cero: para eso está el campo.
+ *
+ * Devuelve la cantidad que quedó. La planilla la escribió una vez en su estado
+ * al abrirse y no se entera sola de que cambió: sin esto, guardar la medición
+ * de una tarea dejaba su celda en el número viejo hasta recargar la página.
  */
 export async function guardarMedicionDe(
   itemId: string,
   crudos: ElementoParaGuardar[]
-): Promise<Resultado> {
+): Promise<Resultado & { cantidad?: number }> {
   const elementos = crudos
     .map((e) => {
       const forma = (FORMAS.some((f) => f.valor === e.forma) ? e.forma : "prisma") as Forma;
@@ -1132,7 +1136,7 @@ export async function guardarMedicionDe(
 
   const { data: item } = await supabase
     .from("computo_items")
-    .select("id")
+    .select("id, cantidad")
     .eq("id", itemId)
     .maybeSingle();
   if (!item) return { error: "La tarea ya no está en el cómputo." };
@@ -1143,7 +1147,8 @@ export async function guardarMedicionDe(
     .eq("item_id", itemId);
   if (errorBorrado) return { error: errorBorrado.message };
 
-  if (elementos.length === 0) return cerrar();
+  // Sin elementos la cantidad se queda como estaba, y es la que se devuelve.
+  if (elementos.length === 0) return cerrar(Number(item.cantidad));
 
   const { data: guardados, error } = await supabase
     .from("computo_item_medicion")
@@ -1169,11 +1174,11 @@ export async function guardarMedicionDe(
   if (errorCantidad) return { error: errorCantidad.message };
   if (noTocoNada(actualizado)) return { error: sinPermisoPara("guardar la medición") };
 
-  return cerrar();
+  return cerrar(total);
 
-  function cerrar(): Resultado {
+  function cerrar(cantidad: number) {
     revalidarComputo();
-    return {};
+    return { cantidad };
   }
 }
 
