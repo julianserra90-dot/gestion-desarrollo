@@ -462,32 +462,36 @@ export default function PlanillaComputo({
                           {midiendoEsta && (
                             <tr>
                               <td colSpan={columnas} style={celdaDesplegada}>
-                                <MedicionTarea
-                                  itemId={f.id}
-                                  unidadTarea={v.unidad}
-                                  cantidadTarea={num(v.cantidad)}
-                                  leer={leerMedicion}
-                                  guardar={guardarMedicion}
-                                  alGuardar={() => conmutar(setMidiendo, f.id, false)}
-                                />
+                                <div style={aLaVista}>
+                                  <MedicionTarea
+                                    itemId={f.id}
+                                    unidadTarea={v.unidad}
+                                    cantidadTarea={num(v.cantidad)}
+                                    leer={leerMedicion}
+                                    guardar={guardarMedicion}
+                                    alGuardar={() => conmutar(setMidiendo, f.id, false)}
+                                  />
+                                </div>
                               </td>
                             </tr>
                           )}
                           {abierto && (
                             <tr>
                               <td colSpan={columnas} style={celdaDesplegada}>
-                                <DesgloseTarea
-                                  itemId={f.id}
-                                  unidadTarea={v.unidad}
-                                  cantidadTarea={num(v.cantidad)}
-                                  iniciales={f.renglones}
-                                  unidadesUsadas={unidadesUsadas}
-                                  materiales={materiales}
-                                  rubroNombre={r.rubro}
-                                  puedeSerModelo={f.tareaId !== null}
-                                  guardar={guardarDesglose}
-                                  alGuardar={() => conmutar(setAbiertos, f.id, false)}
-                                />
+                                <div style={aLaVista}>
+                                  <DesgloseTarea
+                                    itemId={f.id}
+                                    unidadTarea={v.unidad}
+                                    cantidadTarea={num(v.cantidad)}
+                                    iniciales={f.renglones}
+                                    unidadesUsadas={unidadesUsadas}
+                                    materiales={materiales}
+                                    rubroNombre={r.rubro}
+                                    puedeSerModelo={f.tareaId !== null}
+                                    guardar={guardarDesglose}
+                                    alGuardar={() => conmutar(setAbiertos, f.id, false)}
+                                  />
+                                </div>
                               </td>
                             </tr>
                           )}
@@ -594,6 +598,9 @@ const totalResumen = {
 const scroll = {
   overflowX: "auto" as const,
   marginTop: "12px",
+  // Lo que se despliega adentro de una fila mide su ancho contra esto y no
+  // contra la tabla, que es mucho más ancha que la pantalla. Ver `aLaVista`.
+  containerType: "inline-size" as const,
 };
 
 const tabla = {
@@ -699,6 +706,29 @@ const celdaSubrubro = {
 
 const celdaDesplegada = {
   padding: "0 8px",
+};
+
+/**
+ * Lo que se despliega dentro de una fila, del ancho de lo que se ve.
+ *
+ * La planilla es más ancha que la pantalla y scrollea de costado. Un panel
+ * metido en una de sus filas heredaba ese ancho: la medición medía 1420 px
+ * adentro de una ventana de 700 y sus últimas columnas quedaban fuera de la
+ * vista, cortadas, sin barra propia para llegar a ellas. Había que arrastrar
+ * la planilla entera hasta el final, y ahí ya no se veía de qué tarea era.
+ *
+ * Con `100cqw` el panel mide lo que mide la parte visible de la planilla, y
+ * `sticky` lo deja quieto ahí aunque la tabla de atrás se corra. Scrollea por
+ * su cuenta, que es lo que uno espera de una tabla adentro de otra.
+ *
+ * Si el navegador no entendiera `cqw`, el ancho queda en automático y se
+ * vuelve a lo de antes: se ve todo, hay que scrollear más.
+ */
+const aLaVista = {
+  position: "sticky" as const,
+  left: 0,
+  width: "100cqw",
+  boxSizing: "border-box" as const,
 };
 
 const celdaError = {
