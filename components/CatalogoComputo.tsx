@@ -24,11 +24,18 @@ export type RubroCatalogo = {
  * modelo— y destildar la saca: no hay "guardar selección" ni otra pantalla.
  * La casilla cambia enseguida y la planilla se refresca cuando la base
  * confirma; si falla, la casilla vuelve a como estaba.
+ *
+ * Destildar se lleva la cantidad computada, el desglose y los pedidos a
+ * cotizar de esa tarea, igual que el tacho de la planilla. Por eso pregunta
+ * igual que el tacho, pero sólo cuando hay algo que perder: una tarea recién
+ * tildada está en cero y con la copia del desglose de modelo, así que
+ * destildarla es deshacer el clic y preguntar ahí sólo estorbaría.
  */
 export default function CatalogoComputo({
   obraId,
   rubros,
   elegidas,
+  cargadas,
   rubrosObra,
   alternar,
   crearPropia,
@@ -36,6 +43,8 @@ export default function CatalogoComputo({
   obraId: string;
   rubros: RubroCatalogo[];
   elegidas: string[];
+  /** Por tarea elegida, qué tiene cargado que se perdería al sacarla. */
+  cargadas: Record<string, string>;
   /** Los rubros de la obra, para una tarea propia. */
   rubrosObra: { id: string; nombre: string }[];
   alternar: (obraId: string, tareaId: string, incluir: boolean) => Promise<{ error?: string }>;
@@ -67,7 +76,33 @@ export default function CatalogoComputo({
   const termino = buscar.trim().toLowerCase();
   const coincide = (texto: string) => !termino || texto.toLowerCase().includes(termino);
 
+  // El nombre de cada tarea, para poder nombrarla en la pregunta.
+  const nombreDeTarea = new Map(
+    rubros.flatMap((r) => r.tareas.map((t) => [t.id, t.nombre] as const))
+  );
+
+  /** Falso si hay datos cargados y el usuario no quiere perderlos. */
+  const sePuedeSacar = (ids: string[]) => {
+    const conDatos = ids.filter((id) => cargadas[id]);
+    if (conDatos.length === 0) return true;
+
+    if (conDatos.length === 1) {
+      const id = conDatos[0];
+      const nombre = nombreDeTarea.get(id) ?? "esta tarea";
+      return window.confirm(`¿Sacar "${nombre}" del cómputo? Se borra ${cargadas[id]}.`);
+    }
+
+    // "Quitar todas" puede llevarse un rubro entero: se nombra lo que tiene
+    // algo cargado, que es lo único que no se recupera volviendo a tildar.
+    const nombres = conDatos.map((id) => nombreDeTarea.get(id) ?? "—").join("; ");
+    return window.confirm(
+      `¿Sacar ${ids.length} tareas del cómputo? Se borra lo cargado en ${conDatos.length}: ${nombres}.`
+    );
+  };
+
   const marcar = (ids: string[], incluir: boolean) => {
+    if (!incluir && !sePuedeSacar(ids)) return;
+
     setTildadas((antes) => {
       const nuevo = new Set(antes);
       for (const id of ids) {

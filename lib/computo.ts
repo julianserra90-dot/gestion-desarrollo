@@ -201,6 +201,82 @@ export async function getIndicesCac(): Promise<IndiceCac[]> {
   }));
 }
 
+/**
+ * La firma de un desglose: sirve para saber si el de una tarea del cómputo
+ * sigue siendo la copia del de modelo o si ya se tocó en la obra. Se comparan
+ * los números, no sólo cuántos renglones hay, porque cambiar un precio o una
+ * cantidad del desglose es justamente el trabajo que no se puede perder sin
+ * avisar.
+ */
+export function firmaDeDesglose(
+  renglones: {
+    tipo: string;
+    descripcion: string;
+    unidad: string;
+    cantidad: number;
+    precio: number;
+  }[]
+): string {
+  // JSON y no un separador propio: no hay que elegir un carácter que no
+  // aparezca en una descripción.
+  return JSON.stringify(
+    renglones.map((r) => [r.tipo, r.descripcion, r.unidad, r.cantidad, r.precio])
+  );
+}
+
+/**
+ * Qué tiene cargado cada tarea del cómputo, en palabras, para poder avisarlo
+ * antes de sacarla.
+ *
+ * Sólo entran las tareas que tienen algo que se perdería: la cantidad
+ * computada, un desglose que ya no es el de modelo, o un pedido a cotizar.
+ * Una tarea recién tildada no tiene nada de eso —entra con cantidad cero y
+ * con una copia del desglose de modelo—, así que destildarla es deshacer el
+ * clic y no hace falta preguntar.
+ *
+ * `modelos` es la firma del desglose de modelo de cada tarea del catálogo.
+ * Una tarea propia de la obra no está en el catálogo y no tiene modelo: ahí
+ * cualquier desglose es trabajo de la obra.
+ */
+export function loCargadoPorTarea(
+  items: ItemComputo[],
+  modelos: Map<string, string>
+): Record<string, string> {
+  const numero = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
+  const cargado: Record<string, string> = {};
+
+  for (const i of items) {
+    if (!i.tareaId) continue;
+
+    const partes: string[] = [];
+
+    if (i.cantidad > 0) {
+      partes.push(`la cantidad computada (${numero.format(i.cantidad)} ${i.unidad})`);
+    }
+
+    const modelo = modelos.get(i.tareaId) ?? "";
+    if (i.renglones.length > 0 && firmaDeDesglose(i.renglones) !== modelo) {
+      partes.push(
+        i.renglones.length === 1
+          ? "el desglose (1 renglón)"
+          : `el desglose (${i.renglones.length} renglones)`
+      );
+    }
+
+    const pedidos = i.renglones.filter((r) => r.cotizacion?.estado === "A cotizar").length;
+    if (pedidos > 0) {
+      partes.push(pedidos === 1 ? "1 pedido a cotizar" : `${pedidos} pedidos a cotizar`);
+    }
+
+    if (partes.length === 0) continue;
+
+    const ultima = partes.pop()!;
+    cargado[i.tareaId] = partes.length > 0 ? `${partes.join(", ")} y ${ultima}` : ultima;
+  }
+
+  return cargado;
+}
+
 export type ComparacionRubro = {
   rubroId: string;
   rubro: string;

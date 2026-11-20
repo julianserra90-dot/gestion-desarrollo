@@ -9,11 +9,13 @@ import PresupuestosNav from "@/components/PresupuestosNav";
 import * as ui from "@/components/ui";
 import { desvio, mesDeReferencia } from "@/lib/cac";
 import {
+  firmaDeDesglose,
   getComparacion,
   getComputo,
   getIndicesCac,
   incidenciaPorRubro,
   listadoDeMateriales,
+  loCargadoPorTarea,
   ordenDeRubro,
 } from "@/lib/computo";
 import { formatMoney } from "@/lib/format";
@@ -114,10 +116,19 @@ export default async function ComputoPage({
   const referencia = mesDeReferencia(indices);
   const comparacion = await getComparacion(obra.id, computo, indices, ajustar);
 
+  const elegidas = computo.items.map((i) => i.tareaId).filter(Boolean) as string[];
+
   const supabase = await createClient();
-  const [{ data: rubros }, { data: tareas }] = await Promise.all([
+  const [{ data: rubros }, { data: tareas }, { data: modelo }] = await Promise.all([
     supabase.from("rubros").select("id, nombre").eq("obra_id", obra.id),
     supabase.from("tareas").select("id, rubro, subrubro, nombre, unidad, orden").order("orden"),
+    // El desglose de modelo de las tareas elegidas: con él se sabe si el de la
+    // obra ya se tocó, que es lo que el catálogo avisa antes de destildar.
+    supabase
+      .from("tarea_desglose")
+      .select("tarea_id, tipo, descripcion, unidad, cantidad, precio_unitario, orden")
+      .in("tarea_id", elegidas)
+      .order("orden"),
   ]);
   const nombreDeRubro = new Map((rubros ?? []).map((r) => [r.id, r.nombre]));
   const porOrden = <T extends { nombre: string }>(a: T, b: T) =>
@@ -157,8 +168,24 @@ export default async function ComputoPage({
     catalogoPorRubro.set(clave, g);
   }
   const catalogo = [...catalogoPorRubro.values()].sort(porOrden);
-  const elegidas = computo.items.map((i) => i.tareaId).filter(Boolean) as string[];
   const rubrosParaPropias = [...(rubros ?? [])].sort(porOrden);
+
+  const renglonesDeModelo = new Map<string, Parameters<typeof firmaDeDesglose>[0]>();
+  for (const m of modelo ?? []) {
+    const lista = renglonesDeModelo.get(m.tarea_id) ?? [];
+    lista.push({
+      tipo: m.tipo,
+      descripcion: m.descripcion,
+      unidad: m.unidad,
+      cantidad: Number(m.cantidad),
+      precio: Number(m.precio_unitario),
+    });
+    renglonesDeModelo.set(m.tarea_id, lista);
+  }
+  const cargadas = loCargadoPorTarea(
+    computo.items,
+    new Map([...renglonesDeModelo].map(([id, rs]) => [id, firmaDeDesglose(rs)]))
+  );
 
   const sumar = (campo: "estimado" | "cotizado" | "gastado") =>
     comparacion.filas.reduce((acc, f) => acc + f[campo], 0);
@@ -257,6 +284,7 @@ export default async function ComputoPage({
             obraId={obra.id}
             rubros={catalogo}
             elegidas={elegidas}
+            cargadas={cargadas}
             rubrosObra={rubrosParaPropias}
             alternar={alternarTarea}
             crearPropia={crearTareaPropia}
