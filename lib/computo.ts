@@ -229,14 +229,20 @@ export function firmaDeDesglose(
  * antes de sacarla.
  *
  * Sólo entran las tareas que tienen algo que se perdería: la cantidad
- * computada, un desglose que ya no es el de modelo, o un pedido a cotizar.
- * Una tarea recién tildada no tiene nada de eso —entra con cantidad cero y
- * con una copia del desglose de modelo—, así que destildarla es deshacer el
- * clic y no hace falta preguntar.
+ * computada, un desglose que no se recupera volviendo a tildar, o un pedido a
+ * cotizar. Una tarea recién tildada no tiene nada de eso —entra con cantidad
+ * cero y con lo que le dé su modelo—, así que destildarla es deshacer el clic
+ * y no hace falta preguntar.
  *
  * `modelos` es la firma del desglose de modelo de cada tarea del catálogo.
- * Una tarea propia de la obra no está en el catálogo y no tiene modelo: ahí
- * cualquier desglose es trabajo de la obra.
+ * **Sin entrada quiere decir que la tarea no tiene modelo**, y entonces su
+ * desglose es irrecuperable: volver a tildarla la trae vacía. Ese es hoy el
+ * caso de la mayoría del catálogo, porque la migración del 07/10
+ * (`computo_sin_precios_de_referencia`) borró los modelos de arranque de
+ * Cifras mientras las copias que ya vivían en las obras se quedaron. Así que
+ * un desglose igualito al de Cifras sí se avisa, y está bien: no hay de dónde
+ * volver a sacarlo. Una tarea propia de la obra tampoco tiene modelo, por el
+ * mismo camino.
  */
 export function loCargadoPorTarea(
   items: ItemComputo[],

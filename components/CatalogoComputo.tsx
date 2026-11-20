@@ -28,8 +28,10 @@ export type RubroCatalogo = {
  * Destildar se lleva la cantidad computada, el desglose y los pedidos a
  * cotizar de esa tarea, igual que el tacho de la planilla. Por eso pregunta
  * igual que el tacho, pero sólo cuando hay algo que perder: una tarea recién
- * tildada está en cero y con la copia del desglose de modelo, así que
- * destildarla es deshacer el clic y preguntar ahí sólo estorbaría.
+ * tildada está en cero y con lo que le dio su modelo, así que destildarla es
+ * deshacer el clic y preguntar ahí sólo estorbaría. Qué cuenta como "algo que
+ * perder" lo decide el servidor en `loCargadoPorTarea`, que es donde está
+ * escrito el porqué de cada caso.
  */
 export default function CatalogoComputo({
   obraId,
