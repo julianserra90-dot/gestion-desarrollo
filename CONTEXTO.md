@@ -1315,7 +1315,12 @@ porque del que se está por comprar es justamente del que todavía no se aprobó
 ### Avances (hechos en la otra máquina)
 Historial por período: se carga cuánto se avanzó en esos días, no el total; el
 acumulado lo arma la suma. El estado sale del acumulado (no se elige). El avance
-general pondera cada rubro por lo que cuesta (cotizaciones aprobadas).
+general pondera cada rubro por lo que cuesta: su **mejor costo conocido**, que
+es la cotización aprobada si ya la hay y si no el estimado del cómputo, rubro
+por rubro (20/11/2026). Un rubro sin ninguna de las dos pesa cero y queda
+afuera del ponderado, en vez de entrar con peso inventado; sólo la obra que no
+tiene ni cotizaciones ni cómputo cae al promedio simple. La fórmula está en
+`lib/avances.ts` y, igual, en la vista `obra_resumen` de la base.
 
 ### Documentos (hechos en la otra máquina)
 Se clasifican por dos ejes: **ámbito** (de obra / de proyecto / administrativa
@@ -1757,7 +1762,8 @@ acción de borrar el pago del lote viaja como prop.
   (a) cómo se ata un usuario a su ficha de `inversores` —hoy la agenda no tiene
   usuario—; (b) si ven una obra sola o la lista de las obras donde pusieron
   plata; (c) qué avance ven, porque el ponderado sale de las cotizaciones
-  aprobadas y eso es información de costos. El RLS es lo primero: hoy no ven
+  aprobadas —o del cómputo estimado donde todavía no hay— y las dos cosas son
+  información de costos. El RLS es lo primero: hoy no ven
   nada porque no tienen empresa, y abrirles la obra por `puede_ver_obra()` les
   abriría todo.
 - **Si un desarrollador tiene que cargar más que gastos.** Hoy sólo tiene la
@@ -1873,7 +1879,40 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (08/10/2026)**: lo administrativo también se cotiza —cuarto tipo,
+**Lo último (20/11/2026)**: los dos hallazgos que quedaban de la revisión del
+cómputo del 07/10 de los que podían costar datos. Armar el cómputo ya no
+desploma el avance de la obra: el peso de un rubro pasa a ser su mejor costo
+conocido —la cotización aprobada, y si no el estimado del cómputo— en
+`lib/avances.ts` y en la vista `obra_resumen`, con la migración
+`20261120120000_el_avance_pesa_el_computo` aplicada. Y destildar una tarea
+del catálogo pregunta antes, como el tacho de la planilla, pero sólo cuando
+hay algo que perder: la cantidad computada, un desglose que ya no es el de
+modelo, o pedidos a cotizar; la pregunta nombra qué se borra.
+
+De esa revisión quedan abiertos los once hallazgos de cálculo (el ajuste por
+CAC aplicado en unos lugares y no en otros, cantidades que se descartan en
+silencio, totales que no coinciden entre pantalla y Excel). El detalle no
+quedó escrito: para retomarlos hay que volver a revisar el cómputo.
+
+**Antes (22 y 23/10/2026)**: la revisión general de obra, gastos y economía,
+con sus nueve hallazgos arreglados y desplegados —está entera en
+`REVISION-2026-10-22.md`, que vale la pena leer porque explica qué quedó
+bien resuelto y no hay que tocar—. Lo más grueso: el candado del borrado de
+obra cuenta las ocho tablas que cuelgan, `gasto_facturas.monto` pasa a ser
+pesos siempre con lo que dice el papel en `monto_usd`, ninguna action se
+cree un guardado que el RLS frenó (`lib/permisos.ts`), un desarrollador
+puede cargar la pantalla de gastos entera, y el login distingue una contraseña
+mal puesta de un servicio que no responde. Las migraciones de esos días están
+todas aplicadas.
+
+**Antes, los mismos días**: un gasto que vuelve todos los meses se carga
+repitiendo el anterior (el ↻ de la fila y de la ficha abre el alta precargada,
+sin relación con el gasto que se repitió), un pago del lote puede llevar la
+cotización con la que se hizo, un gasto puede agregarle a la obra un rubro que
+no estaba marcado, y la fila del bloque con "Quitar" dejó de correr los montos
+del rubro.
+
+**Antes (08/10/2026)**: lo administrativo también se cotiza —cuarto tipo,
 con `rubros.usa_administrativo` y migración `20261008120000`—, y las tres
 casillas del encabezado del rubro se reemplazaron por un desplegable
 "+ Agregar bloque" más un "Quitar" en cada bloque vacío (`BloquesDeRubro.tsx`).
