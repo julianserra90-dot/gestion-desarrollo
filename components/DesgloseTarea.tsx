@@ -39,6 +39,8 @@ type Renglon = {
   precio: string;
   /** El material del catálogo, cuando el renglón es uno. */
   materialId: string | null;
+  /** Sólo para la pantalla: si la subtarea se escribe en vez de elegirse. */
+  aMano: boolean;
   presupuestoId: string | null;
   /** La casilla "Cotización". */
   cotizar: boolean;
@@ -125,6 +127,9 @@ export default function DesgloseTarea({
       cantidad: String(r.cantidad),
       precio: String(r.precio),
       materialId: r.materialId,
+      // Lo que ya estaba escrito y no apunta al catálogo arranca a mano: si no,
+      // se vería "Elegí el material" encima de un renglón que ya tiene nombre.
+      aMano: r.materialId === null,
       presupuestoId: r.presupuestoId,
       cotizar: r.presupuestoId !== null,
       usarCotizado: r.usarCotizado,
@@ -153,6 +158,7 @@ export default function DesgloseTarea({
         cantidad: "",
         precio: "",
         materialId: null,
+        aMano: false,
         presupuestoId: null,
         cotizar: false,
         usarCotizado: false,
@@ -178,11 +184,14 @@ export default function DesgloseTarea({
     );
   };
 
-  // Soltarlo deja el nombre puesto y sólo corta el enlace: no todo lo que
-  // entra en un desglose merece una ficha en el catálogo.
-  const soltarMaterial = (clave: string) =>
+// Pasar a mano suelta el material y deja el nombre puesto: no todo lo que
+  // entra en un desglose merece una ficha en el catálogo. Volver al catálogo
+  // no borra nada; lo que se escribió se pisa recién al elegir un material.
+  const alternarModo = (clave: string) =>
     setRenglones((antes) =>
-      antes.map((r) => (r.clave === clave ? { ...r, materialId: null } : r))
+      antes.map((r) =>
+        r.clave === clave ? { ...r, aMano: !r.aMano, materialId: null } : r
+      )
     );
 
   const computado = (r: Renglon) => num(r.cantidad) * num(r.precio);
@@ -281,34 +290,49 @@ export default function DesgloseTarea({
                   </td>
                   <td style={celda}>
                     {r.tipo === "Materiales" && materiales.length > 0 ? (
-                      // Un renglón de materiales se elige del catálogo, y
-                      // sólo si no está ahí se escribe a mano: el campo libre
-                      // aparece recién cuando no hay material atado.
+                      // Un solo control, del alto de los demás: o se elige del
+                      // catálogo o se escribe, y el botón de al lado cambia de
+                      // uno a otro. Apilar los dos hacía la fila el doble de
+                      // alta que las vecinas y se leía peor.
                       <div style={celdaMaterial}>
-                        <SelectorMaterial
-                          name={`material_${r.clave}`}
-                          materiales={materiales}
-                          rubroNombre={rubroNombre}
-                          value={r.materialId ?? ""}
-                          onChange={(id) => elegirMaterial(r.clave, id)}
-                        />
-                        {r.materialId ? (
-                          <button
-                            type="button"
-                            onClick={() => soltarMaterial(r.clave)}
-                            style={soltarMaterialBoton}
-                          >
-                            Escribirlo a mano
-                          </button>
-                        ) : (
-                          <input
-                            type="text"
-                            value={r.descripcion}
-                            onChange={(e) => cambiar(r.clave, "descripcion", e.target.value)}
-                            placeholder={ejemplo(r.tipo)}
-                            style={{ ...inputBase, textAlign: "left", minWidth: "220px" }}
-                          />
-                        )}
+                        <div style={{ flex: 1, minWidth: "180px" }}>
+                          {r.aMano ? (
+                            <input
+                              type="text"
+                              value={r.descripcion}
+                              onChange={(e) =>
+                                cambiar(r.clave, "descripcion", e.target.value)
+                              }
+                              placeholder={ejemplo(r.tipo)}
+                              style={{ ...inputBase, textAlign: "left", width: "100%" }}
+                            />
+                          ) : (
+                            <SelectorMaterial
+                              name={`material_${r.clave}`}
+                              materiales={materiales}
+                              rubroNombre={rubroNombre}
+                              value={r.materialId ?? ""}
+                              onChange={(id) => elegirMaterial(r.clave, id)}
+                            />
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => alternarModo(r.clave)}
+                          style={botonModo}
+                          title={
+                            r.aMano
+                              ? "Elegirlo del catálogo de materiales"
+                              : "Escribirlo a mano"
+                          }
+                          aria-label={
+                            r.aMano
+                              ? "Elegirlo del catálogo de materiales"
+                              : "Escribirlo a mano"
+                          }
+                        >
+                          {r.aMano ? "⌕" : "✎"}
+                        </button>
                       </div>
                     ) : (
                       <input
@@ -682,21 +706,24 @@ const opcionElegida = {
   fontWeight: 600,
 };
 
-// El selector y, debajo, lo que haga falta: el campo libre mientras no haya
-// material, o la salida para soltarlo cuando sí lo hay.
+// El control y, al lado, el botón que cambia de modo. En fila y no apilados:
+// la celda tiene que medir lo mismo que las vecinas.
 const celdaMaterial = {
-  display: "grid",
-  gap: "4px",
+  display: "flex",
+  gap: "6px",
+  alignItems: "center",
   minWidth: "220px",
 };
 
-const soltarMaterialBoton = {
+const botonModo = {
   background: "none",
-  border: "none",
-  padding: 0,
+  border: "1px solid #dddddd",
+  borderRadius: "6px",
+  width: "30px",
+  height: "30px",
+  flexShrink: 0,
   cursor: "pointer",
-  fontSize: "12px",
+  fontSize: "14px",
   color: "#777777",
-  textAlign: "left" as const,
-  textDecoration: "underline",
+  lineHeight: 1,
 };
