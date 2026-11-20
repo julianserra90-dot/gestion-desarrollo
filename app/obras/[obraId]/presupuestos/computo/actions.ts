@@ -353,7 +353,8 @@ export async function guardarPlanilla(formData: FormData) {
       .from("computos")
       .update({ mes_precios: `${mes}-01` })
       .eq("obra_id", obraId)
-      .select("id");
+      // obra_id y no id: el cómputo se identifica por su obra y no tiene id.
+      .select("obra_id");
     if (error) volver(base(slug), error.message);
     if (noTocoNada(data)) {
       volver(base(slug), sinPermisoPara("modificar el cómputo de esta obra"));

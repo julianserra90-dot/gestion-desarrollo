@@ -18,6 +18,13 @@
  * frenar una escritura buena —y así el agujero queda abierto igual—. Sin el
  * `select` no hay `data`, y el chequeo de al lado salta a la vista.
  *
+ * Cuál columna da igual, mientras **exista en esa tabla**: lo único que se
+ * mira es si volvió alguna fila. No todas tienen `id` —`computos` se
+ * identifica por `obra_id` e `indices_cac` por `mes`—, y pedirles una
+ * que no tienen hace fallar la escritura entera con un "column X.id does not
+ * exist" que en pantalla se lee como un problema del usuario. Pasó: desde el
+ * 23/10 hasta el 20/11 no se pudo guardar la planilla del cómputo por eso.
+ *
  * Ojo con una suposición que esto se come: `.select()` después de escribir
  * devuelve las filas **que además se pueden leer**. Acá vale porque las policies
  * de lectura son más anchas que las de escritura —quien puede ver la obra ve sus
