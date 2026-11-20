@@ -38,6 +38,7 @@ export async function crearMaterial(formData: FormData) {
     nombre,
     unidad,
     rubro_id: opcional(formData.get("rubro_id")),
+    ...envaseDe(formData, volver),
   });
 
   if (error) volverCon(volver, mensajeDeError(error, nombre));
@@ -144,6 +145,7 @@ export async function actualizarMaterial(formData: FormData) {
       nombre,
       unidad,
       rubro_id: opcional(formData.get("rubro_id")),
+      ...envaseDe(formData, volver),
     })
     .eq("id", id)
     .select("id");
@@ -196,6 +198,30 @@ function rutaDeVuelta(formData: FormData) {
 }
 
 /** "Sin rubro" manda cadena vacía, y como uuid la base la rechazaría. */
+/**
+ * El envase del material: cuánto trae y en qué unidad.
+ *
+ * O van las dos cosas o no va ninguna, que es lo que la base exige: un "30"
+ * sin unidad no convierte nada, y una unidad sin número tampoco. Vacío es lo
+ * normal —el ladrillo se cuenta de a uno— y por eso no es un error.
+ */
+function envaseDe(formData: FormData, volver: string) {
+  const crudo = String(formData.get("contenido") ?? "").trim();
+  const unidad = String(formData.get("contenido_unidad") ?? "");
+
+  if (crudo === "") return { contenido: null, contenido_unidad: null };
+
+  const cuanto = Number(crudo.replace(",", "."));
+  if (!Number.isFinite(cuanto) || cuanto <= 0) {
+    volverCon(volver, "Lo que trae el envase tiene que ser un número mayor que cero.");
+  }
+  if (!UNIDADES.some((u) => u === unidad)) {
+    volverCon(volver, "Elegí la unidad de lo que trae el envase.");
+  }
+
+  return { contenido: cuanto, contenido_unidad: unidad };
+}
+
 function opcional(valor: FormDataEntryValue | null) {
   const texto = String(valor ?? "").trim();
   return texto === "" ? null : texto;

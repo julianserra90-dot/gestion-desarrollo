@@ -17,6 +17,10 @@ export type MaterialCatalogo = {
   nombre: string;
   unidad: string;
   rubroNombre: string | null;
+  /** Cuánto trae el envase (30, de una bolsa de 30 kg). Null si no declara. */
+  contenido: number | null;
+  /** La unidad de lo que trae (kg). Siempre junto con `contenido`. */
+  contenidoUnidad: string | null;
 };
 
 export async function getMaterialesCatalogo(): Promise<MaterialCatalogo[]> {
@@ -24,7 +28,7 @@ export async function getMaterialesCatalogo(): Promise<MaterialCatalogo[]> {
 
   const { data } = await supabase
     .from("materiales")
-    .select("id, nombre, unidad, rubros(nombre)")
+    .select("id, nombre, unidad, contenido, contenido_unidad, rubros(nombre)")
     .order("nombre");
 
   return (data ?? []).map((m) => ({
@@ -32,5 +36,7 @@ export async function getMaterialesCatalogo(): Promise<MaterialCatalogo[]> {
     nombre: m.nombre,
     unidad: m.unidad,
     rubroNombre: m.rubros?.nombre ?? null,
+    contenido: m.contenido === null ? null : Number(m.contenido),
+    contenidoUnidad: m.contenido_unidad,
   }));
 }

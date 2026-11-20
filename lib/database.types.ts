@@ -1504,6 +1504,8 @@ export type Database = {
       }
       materiales: {
         Row: {
+          contenido: number | null
+          contenido_unidad: string | null
           creado_en: string
           id: string
           nombre: string
@@ -1511,6 +1513,8 @@ export type Database = {
           unidad: string
         }
         Insert: {
+          contenido?: number | null
+          contenido_unidad?: string | null
           creado_en?: string
           id?: string
           nombre: string
@@ -1518,6 +1522,8 @@ export type Database = {
           unidad: string
         }
         Update: {
+          contenido?: number | null
+          contenido_unidad?: string | null
           creado_en?: string
           id?: string
           nombre?: string

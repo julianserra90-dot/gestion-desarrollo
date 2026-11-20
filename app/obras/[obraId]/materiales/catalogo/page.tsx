@@ -49,7 +49,7 @@ export default async function CatalogoMaterialesPage({
     await Promise.all([
       supabase
         .from("materiales")
-        .select("id, nombre, unidad, rubro_id")
+        .select("id, nombre, unidad, contenido, contenido_unidad, rubro_id")
         .order("nombre"),
       // Alfabético y no por el orden del catálogo (que es la secuencia de obra:
       // preliminares, demoliciones, excavaciones…): acá no se sigue la obra, se
@@ -157,6 +157,33 @@ export default async function CatalogoMaterialesPage({
           </label>
 
           <label style={campo}>
+            <span style={etiqueta}>Contenido</span>
+            <div style={parEnvase}>
+              <input
+                type="number"
+                name="contenido"
+                min={0}
+                step="any"
+                placeholder="30"
+                aria-label="Cuánto trae el envase"
+                style={{ ...ui.input, flex: "1 1 80px" }}
+              />
+              <select
+                name="contenido_unidad"
+                defaultValue="kg"
+                aria-label="Unidad de lo que trae"
+                style={{ ...ui.input, flex: "0 0 100px" }}
+              >
+                {UNIDADES.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+
+          <label style={campo}>
             <span style={etiqueta}>Rubro</span>
             <select name="rubro_id" defaultValue="" style={ui.input}>
               <option value="">Sin rubro</option>
@@ -223,6 +250,38 @@ export default async function CatalogoMaterialesPage({
                         {!UNIDADES.some((u) => u === m.unidad) && (
                           <option value={m.unidad}>{m.unidad}</option>
                         )}
+                        {UNIDADES.map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="number"
+                        name="contenido"
+                        defaultValue={m.contenido ?? ""}
+                        min={0}
+                        step="any"
+                        placeholder="Trae"
+                        aria-label="Cuánto trae el envase"
+                        disabled={!esAdmin}
+                        style={{ ...ui.input, flex: "0 0 90px" }}
+                      />
+
+                      <select
+                        name="contenido_unidad"
+                        defaultValue={m.contenido_unidad ?? "kg"}
+                        aria-label="Unidad de lo que trae"
+                        disabled={!esAdmin}
+                        style={{ ...ui.input, flex: "0 0 100px" }}
+                      >
+                        {m.contenido_unidad &&
+                          !UNIDADES.some((u) => u === m.contenido_unidad) && (
+                            <option value={m.contenido_unidad}>
+                              {m.contenido_unidad}
+                            </option>
+                          )}
                         {UNIDADES.map((u) => (
                           <option key={u} value={u}>
                             {u}
@@ -376,4 +435,10 @@ const avisoBox = {
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",
+};
+
+// El número y su unidad, en línea: "trae 30 kg" se lee de una.
+const parEnvase = {
+  display: "flex",
+  gap: "6px",
 };
