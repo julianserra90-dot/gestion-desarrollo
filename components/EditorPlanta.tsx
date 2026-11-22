@@ -105,6 +105,15 @@ const HERRAMIENTAS: { valor: Herramienta; nombre: string }[] = [
 const IMAN = 10;
 
 /**
+ * Cuánto hay que mover el puntero, en píxeles de pantalla, para que agarrar
+ * algo sea arrastrarlo. Menos que eso es un clic con pulso: sin el umbral,
+ * seleccionar un lado lo corría un píxel, y un doble clic nunca era doble.
+ */
+const UMBRAL_DE_ARRASTRE = 3;
+/** Dentro de cuántos milisegundos dos toques en lo mismo son un doble clic. */
+const DOBLE_TOQUE = 400;
+
+/**
  * El editor de una planta: el plano de fondo y, encima, lo que se calca.
  *
  * Todo lo dibujado está en píxeles de la imagen. Los metros salen de la escala
@@ -204,6 +213,10 @@ export default function EditorPlanta({
   /** El dibujo de antes del arrastre, hasta que algo se mueve de verdad: un
    *  clic que sólo selecciona no tiene que dejar un "deshacer" que no hace nada. */
   const antesDeArrastrar = useRef<Trazo | null>(null);
+  /** Dónde estaba el puntero al agarrar, para saber si ya es un arrastre. */
+  const dondeSeAgarro = useRef<{ x: number; y: number } | null>(null);
+  /** El último toque sobre un lado o un punto: dos seguidos son un doble clic. */
+  const ultimoToque = useRef<{ clave: string; cuando: number } | null>(null);
 
   const v = vista ?? (tamano ? encuadrar(tamano, imagen) : { x: 0, y: 0, k: 1 });
   /** Un píxel de pantalla, en unidades del plano: para que los trazos y las
@@ -642,9 +655,19 @@ export default function EditorPlanta({
 
     const agarrado = arrastre.current;
     if (agarrado) {
-      // Recién acá, con el primer movimiento, el arrastre entra al historial.
+      // Recién acá, con el primer movimiento de verdad, el arrastre empieza y
+      // entra al historial.
       const inicio = antesDeArrastrar.current;
       if (inicio) {
+        const desde = dondeSeAgarro.current;
+        if (
+          desde &&
+          Math.hypot(e.clientX - desde.x, e.clientY - desde.y) < UMBRAL_DE_ARRASTRE
+        ) {
+          return;
+        }
+        // Lo que se arrastró no es la primera mitad de un doble clic.
+        ultimoToque.current = null;
         setPasado((p) => [...p.slice(-99), inicio]);
         antesDeArrastrar.current = null;
       }
@@ -698,17 +721,17 @@ export default function EditorPlanta({
           if (alineadoCon) cuanto = (alineadoCon.x - a.x) * nx + (alineadoCon.y - a.y) * ny;
         }
 
-        const corridos = moverLado(puntos, indice, cuanto);
+        const corrido = moverLado(puntos, indice, cuanto);
         setTrazo({
           escala,
           dibujo: {
             ...dibujo,
             ambientes: dibujo.ambientes.map((amb) =>
-              amb.id === agarrado.id ? { ...amb, puntos: corridos } : amb
+              amb.id === agarrado.id ? { ...amb, puntos: corrido.puntos } : amb
             ),
           },
         });
-        setGuias(alineadoCon ? [{ desde: alineadoCon, hasta: corridos[indice] }] : []);
+        setGuias(alineadoCon ? [{ desde: alineadoCon, hasta: corrido.a }] : []);
         setSucio(true);
         return;
       }
@@ -804,7 +827,83 @@ export default function EditorPlanta({
     // Una sola entrada en el historial por arrastre, no una por píxel movido,
     // y recién cuando se mueve (`alMover`).
     antesDeArrastrar.current = trazo;
+    dondeSeAgarro.current = { x: e.clientX, y: e.clientY };
     arrastre.current = cual;
+  };
+
+  /**
+   * Si este toque es el segundo de un doble clic sobre lo mismo. La hora es la
+   * del evento, no la del reloj: es la del toque, y no cambia si se vuelve a
+   * preguntar.
+   */
+  const esDobleToque = (clave: string, ahora: number) => {
+    const anterior = ultimoToque.current;
+    if (anterior && anterior.clave === clave && ahora - anterior.cuando < DOBLE_TOQUE) {
+      ultimoToque.current = null;
+      return true;
+    }
+    ultimoToque.current = { clave, cuando: ahora };
+    return false;
+  };
+
+  /**
+   * Suma un punto a un ambiente, sobre uno de sus lados.
+   *
+   * El punto cae **sobre el lado**, no donde se hizo clic: agregarlo no puede
+   * cambiar la forma, eso viene después, al moverlo. A lo largo del lado sí
+   * se acomoda —se pega a un vértice cercano o se alinea con otra esquina—,
+   * porque casi siempre se lo quiere a la altura de algo: donde arranca un
+   * placard, donde termina un muro.
+   */
+  const agregarPunto = (amb: { id: string; puntos: Punto[] }, indice: number, crudo: Punto) => {
+    const a = amb.puntos[indice];
+    const b = amb.puntos[(indice + 1) % amb.puntos.length];
+    const acomodado = ajustar(crudo, {
+      previo: null,
+      ortogonal: false,
+      tolerancia: IMAN * u,
+      vertices: verticesMenos(),
+      muros: [],
+      guias: conGuias,
+    }).punto;
+    const nuevo = proyectar(acomodado, a, b);
+    // Sobre una esquina no hay nada que agregar.
+    if (mismoPunto(nuevo, a) || mismoPunto(nuevo, b)) return;
+
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        ambientes: dibujo.ambientes.map((otro) =>
+          otro.id === amb.id
+            ? {
+                ...otro,
+                puntos: [
+                  ...otro.puntos.slice(0, indice + 1),
+                  nuevo,
+                  ...otro.puntos.slice(indice + 1),
+                ],
+              }
+            : otro
+        ),
+      },
+    });
+  };
+
+  /** Saca un punto de un ambiente. Con tres ya no: dos puntos no encierran nada. */
+  const quitarPunto = (amb: { id: string; puntos: Punto[] }, indice: number) => {
+    if (amb.puntos.length <= 3) return;
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        ambientes: dibujo.ambientes.map((otro) =>
+          otro.id === amb.id
+            ? { ...otro, puntos: otro.puntos.filter((_, k) => k !== indice) }
+            : otro
+        ),
+      },
+    });
   };
 
   /**
@@ -1318,15 +1417,23 @@ export default function EditorPlanta({
                     stroke="transparent"
                     strokeWidth={12 * u}
                     style={{ cursor: "move", pointerEvents: "stroke" }}
-                    onPointerDown={(e) =>
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      // Doble clic: un punto nuevo ahí. Un clic solo agarra
+                      // el lado para correrlo.
+                      if (esDobleToque(`lado-${ambienteElegido.id}-${i}`, e.timeStamp)) {
+                        e.stopPropagation();
+                        agregarPunto(ambienteElegido, i, aPlano(e));
+                        return;
+                      }
                       agarrar(e, {
                         tipo: "lado",
                         id: ambienteElegido.id,
                         indice: i,
                         inicio: aPlano(e),
                         puntos: ambienteElegido.puntos,
-                      })
-                    }
+                      });
+                    }}
                   />
                 );
               })}
@@ -1341,9 +1448,16 @@ export default function EditorPlanta({
                   stroke={ACENTO}
                   strokeWidth={2 * u}
                   style={{ cursor: "move" }}
-                  onPointerDown={(e) =>
-                    agarrar(e, { tipo: "ambiente", id: ambienteElegido.id, indice: i })
-                  }
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    // Doble clic sobre un punto lo saca.
+                    if (esDobleToque(`punto-${ambienteElegido.id}-${i}`, e.timeStamp)) {
+                      e.stopPropagation();
+                      quitarPunto(ambienteElegido, i);
+                      return;
+                    }
+                    agarrar(e, { tipo: "ambiente", id: ambienteElegido.id, indice: i });
+                  }}
                 />
               ))}
 
@@ -2408,7 +2522,7 @@ function encuadrar(
 function pistaDe(herramienta: Herramienta, puntos: number, reglaMarcada: boolean) {
   switch (herramienta) {
     case "seleccionar":
-      return "Clic en algo para verlo y moverlo; un ambiente, por sus puntos o por sus lados. Supr lo borra.";
+      return "Clic en algo para verlo y moverlo. En un ambiente: doble clic en un lado suma un punto, en un punto lo saca. Supr lo borra.";
     case "mover":
       return "Arrastrá para mover el plano. La rueda acerca y aleja en cualquier herramienta.";
     case "escala":

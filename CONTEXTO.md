@@ -572,6 +572,24 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   de serlo y respeta las diagonales hechas a propósito; el botón aparece sólo
   si cambiaría algo. Un muro también se escuadra, girando sobre su primer
   punto.
+- **A un ambiente se le suman y se le sacan puntos**: doble clic sobre un lado
+  agrega uno, doble clic sobre un punto lo saca (con tres ya no). El punto
+  nuevo cae **sobre el lado** —agregarlo no cambia la forma— y a lo largo se
+  acomoda con el imán y las guías, porque casi siempre va a la altura de algo.
+  El doble clic se detecta a mano, por la hora de los dos toques: el primer
+  toque ya agarra el lado para arrastrarlo, y con el puntero capturado el
+  `dblclick` del navegador no llega a la línea.
+- **Correr un tramo arma el saliente** (`moverLado`): si el vecino de un lado
+  sigue en la misma línea —el lado es un tramo de una pared más larga—, esa
+  punta se queda y aparece un punto nuevo, así el tramo sale o entra dejando
+  un escalón a escuadra. Es como se hace un placard o un nicho a partir de un
+  rectángulo: un punto con doble clic y arrastrar el tramo. "En la misma
+  línea" es a menos de 8° (`CASI_PARALELO`): calcado a pulso nunca queda
+  paralelo exacto, y tratarlo como un lado que cruza mandaba la esquina a
+  decenas de metros.
+- **Agarrar no es arrastrar hasta mover 3 px** (`UMBRAL_DE_ARRASTRE`). Sin el
+  umbral, seleccionar un lado con un clic lo corría un píxel y ensuciaba el
+  dibujo, y un doble clic nunca llegaba a ser doble.
 - **Los atajos de teclado se escuchan en la ventana**, no en el lienzo: con el
   foco en el lienzo dejaban de andar apenas se tocaba un botón del panel, y el
   Ctrl+Z de después de Escuadrar no deshacía. Escribiendo en un campo las

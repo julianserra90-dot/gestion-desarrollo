@@ -309,39 +309,70 @@ function cruce(p: Punto, dp: Punto, q: Punto, dq: Punto): Punto | null {
 }
 
 /**
+ * Desde qué inclinación un vecino cuenta como "en la misma línea" que el lado
+ * que se corre: el seno de unos 8°. Calcado a pulso, un tramo que es
+ * continuación de otro nunca queda exactamente paralelo, y tratarlo como un
+ * lado que cruza mandaría la esquina a decenas de metros.
+ */
+const CASI_PARALELO = 0.14;
+
+/**
  * Corre un lado de un polígono en paralelo a sí mismo.
  *
  * El lado es el que va del punto `indice` al siguiente, y `cuanto` la distancia
- * sobre su normal (la misma de los muros). Los dos lados vecinos no cambian de
- * dirección: se alargan o se acortan hasta donde el lado corrido los corta,
- * que es lo que pasa al mover una pared de un cuarto. Si un vecino corre
- * paralelo al lado —no hay dónde cortarlo—, esa punta se corre derecho.
+ * sobre su normal (la misma de los muros). Qué pasa en cada punta depende del
+ * vecino:
+ *
+ *  - Si el vecino cruza al lado —la esquina de un cuarto—, no cambia de
+ *    dirección: se alarga o se acorta hasta donde el lado corrido lo corta.
+ *    Es mover una pared.
+ *  - Si el vecino sigue en la misma línea —el lado es un tramo de una pared
+ *    más larga—, la punta se queda donde está y aparece un punto nuevo: el
+ *    tramo sale o entra y deja un escalón a escuadra. Es como se arma un
+ *    placard, un nicho o un saliente a partir de un rectángulo.
+ *
+ * Devuelve el polígono y las dos puntas del lado ya corrido. Con `cuanto` en
+ * cero devuelve el mismo polígono: un escalón de cero deja puntos repetidos.
  */
-export function moverLado(puntos: Punto[], indice: number, cuanto: number): Punto[] {
+export function moverLado(
+  puntos: Punto[],
+  indice: number,
+  cuanto: number
+): { puntos: Punto[]; a: Punto; b: Punto } {
   const n = puntos.length;
-  if (n < 3) return puntos;
-
-  const i = ((indice % n) + n) % n;
+  const i = (((indice % n) + n) % n) || 0;
   const j = (i + 1) % n;
   const a = puntos[i];
   const b = puntos[j];
-  const largo = distancia(a, b);
-  if (!(largo > 0)) return puntos;
+  const largo = n >= 3 ? distancia(a, b) : 0;
+  if (!(largo > 0) || Math.abs(cuanto) < 1e-9) return { puntos, a, b };
 
   const d = { x: (b.x - a.x) / largo, y: (b.y - a.y) / largo };
-  const corrido = { x: a.x - d.y * cuanto, y: a.y + d.x * cuanto };
+  const corridoA = { x: a.x - d.y * cuanto, y: a.y + d.x * cuanto };
+  const corridoB = { x: b.x - d.y * cuanto, y: b.y + d.x * cuanto };
 
-  const antes = puntos[(i - 1 + n) % n];
-  const despues = puntos[(j + 1) % n];
-
-  const nuevoA =
-    cruce(corrido, d, antes, { x: a.x - antes.x, y: a.y - antes.y }) ?? corrido;
-  const nuevoB = cruce(corrido, d, despues, { x: b.x - despues.x, y: b.y - despues.y }) ?? {
-    x: b.x - d.y * cuanto,
-    y: b.y + d.x * cuanto,
+  /** Dónde el lado corrido corta al vecino, o null si el vecino sigue en línea. */
+  const corte = (esquina: Punto, vecino: Punto): Punto | null => {
+    const v = { x: esquina.x - vecino.x, y: esquina.y - vecino.y };
+    const largoDelVecino = Math.hypot(v.x, v.y);
+    if (largoDelVecino === 0) return null;
+    if (Math.abs(d.x * v.y - d.y * v.x) / largoDelVecino < CASI_PARALELO) return null;
+    return cruce(corridoA, d, vecino, v);
   };
 
-  return puntos.map((p, k) => (k === i ? nuevoA : k === j ? nuevoB : p));
+  const nuevoA = corte(a, puntos[(i - 1 + n) % n]);
+  const nuevoB = corte(b, puntos[(j + 1) % n]);
+
+  const resultado: Punto[] = [];
+  puntos.forEach((p, k) => {
+    // Sin corte, la punta vieja se queda y la corrida se suma del lado del
+    // tramo: antes de ella en `a`, después en `b`.
+    if (k === i) resultado.push(...(nuevoA ? [nuevoA] : [a, corridoA]));
+    else if (k === j) resultado.push(...(nuevoB ? [nuevoB] : [corridoB, b]));
+    else resultado.push(p);
+  });
+
+  return { puntos: resultado, a: nuevoA ?? corridoA, b: nuevoB ?? corridoB };
 }
 
 /**
