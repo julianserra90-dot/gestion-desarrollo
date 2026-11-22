@@ -46,7 +46,7 @@ export default function Volver({
   const volver = () => {
     const anterior = document.referrer;
     const esDeLaApp = anterior.startsWith(window.location.origin);
-    const esFormulario = /\/(nuevo|editar)(\?|$)/.test(anterior);
+    const esFormulario = /\/(nuev[oa]|editar)(\?|$)/.test(anterior);
     if (esDeLaApp && !esFormulario && window.history.length > 1) {
       router.back();
     } else {

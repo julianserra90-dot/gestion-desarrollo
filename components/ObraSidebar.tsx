@@ -22,6 +22,7 @@ const ICONOS: Record<string, NombreIcono> = {
   avances: "avances",
   fotos: "fotos",
   documentos: "documentos",
+  plantas: "plantas",
   rubros: "rubros",
   materiales: "materiales",
 };

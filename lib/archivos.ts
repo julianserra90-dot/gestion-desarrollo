@@ -19,7 +19,7 @@ export async function buscarArchivoVisible(
 ): Promise<ArchivoVisible | null> {
   const supabase = await createClient();
 
-  const [foto, adjunto, gasto, presupuesto, pagoLote, imagenObra, borrador] = await Promise.all([
+  const [foto, adjunto, gasto, presupuesto, pagoLote, imagenObra, borrador, planta] = await Promise.all([
     supabase
       .from("fotos")
       .select("nombre, mime_type")
@@ -55,6 +55,12 @@ export async function buscarArchivoVisible(
       .from("gastos_borradores")
       .select("comprobante_nombre, comprobante_mime")
       .eq("comprobante_drive_id", fileId)
+      .maybeSingle(),
+    // El plano sobre el que se calca una planta.
+    supabase
+      .from("plantas")
+      .select("imagen_nombre, imagen_mime")
+      .eq("imagen_drive_id", fileId)
       .maybeSingle(),
   ]);
 
@@ -106,6 +112,13 @@ export async function buscarArchivoVisible(
     return {
       nombre: borrador.data.comprobante_nombre ?? "comprobante",
       mimeType: borrador.data.comprobante_mime,
+    };
+  }
+
+  if (planta.data) {
+    return {
+      nombre: planta.data.imagen_nombre ?? "plano.jpg",
+      mimeType: planta.data.imagen_mime,
     };
   }
 

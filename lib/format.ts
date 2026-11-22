@@ -56,6 +56,20 @@ export function formatM2(valor: number | null | undefined) {
   return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor)} m²`;
 }
 
+/**
+ * Un largo: "4,50 m". Siempre con dos decimales, al revés que la superficie:
+ * los largos se leen en listas de medidas, una abajo de la otra, y "4,5 m"
+ * arriba de "12,35 m" no deja comparar de un vistazo.
+ */
+export function formatMetros(valor: number | null | undefined) {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+
+  return `${new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(valor)} m`;
+}
+
 /** Un porcentaje: "42,01 %". Hasta dos decimales, y ninguno si es redondo. */
 export function formatPorcentaje(valor: number) {
   return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor)} %`;

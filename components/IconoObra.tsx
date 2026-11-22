@@ -25,6 +25,7 @@ export type NombreIcono =
   | "avances"
   | "fotos"
   | "documentos"
+  | "plantas"
   | "rubros"
   | "materiales"
   | "usuarios"
@@ -162,6 +163,13 @@ const TRAZOS: Record<NombreIcono, React.ReactNode> = {
   ),
   documentos: (
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+  ),
+  // Un plano: el contorno y dos tabiques. Lo que se calca en la solapa.
+  plantas: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="1.2" />
+      <path d="M11 4.5v7.5M3.5 12H14M14 15.5v4" />
+    </>
   ),
   rubros: (
     <>

@@ -1787,6 +1787,79 @@ export type Database = {
           },
         ]
       }
+      plantas: {
+        Row: {
+          altura: number
+          creado_en: string
+          dibujo: Json
+          escala: Json | null
+          id: string
+          imagen_alto: number
+          imagen_ancho: number
+          imagen_drive_id: string
+          imagen_mime: string | null
+          imagen_nombre: string | null
+          nombre: string
+          obra_id: string
+          orden: number
+          repeticiones: number
+        }
+        Insert: {
+          altura?: number
+          creado_en?: string
+          dibujo?: Json
+          escala?: Json | null
+          id?: string
+          imagen_alto: number
+          imagen_ancho: number
+          imagen_drive_id: string
+          imagen_mime?: string | null
+          imagen_nombre?: string | null
+          nombre: string
+          obra_id: string
+          orden?: number
+          repeticiones?: number
+        }
+        Update: {
+          altura?: number
+          creado_en?: string
+          dibujo?: Json
+          escala?: Json | null
+          id?: string
+          imagen_alto?: number
+          imagen_ancho?: number
+          imagen_drive_id?: string
+          imagen_mime?: string | null
+          imagen_nombre?: string | null
+          nombre?: string
+          obra_id?: string
+          orden?: number
+          repeticiones?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plantas_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "plantas_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "plantas_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prefactibilidades: {
         Row: {
           actualizado_en: string

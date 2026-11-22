@@ -54,6 +54,10 @@ export const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
       { key: "avances", label: "Avances", path: "/avances" },
       { key: "fotos", label: "Fotos", path: "/fotos" },
       { key: "documentos", label: "Documentos", path: "/documentos" },
+      // Al lado de Documentos pero no adentro: allá el plano se archiva, acá
+      // se calca para medirlo. "Plantas" y no "Planos" para que no se lean
+      // como la misma cosa.
+      { key: "plantas", label: "Plantas", path: "/plantas" },
       { key: "rubros", label: "Rubros", path: "/rubros" },
       // Qué material entró a la obra. Va en Obra y no en Economía: la plata de
       // esas compras ya está en Gastos; acá interesan las cantidades.

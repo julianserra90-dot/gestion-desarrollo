@@ -448,6 +448,148 @@ números eran correctos y ninguno se podía verificar.
   tabiques— y el cuadro por nivel reproduce el resumen de la planilla original
   fila por fila, con los 6 elementos de altura pendiente marcados donde van.
 
+### Plantas: medir calcando el plano (22/11/2026)
+Solapa **Plantas** del grupo Obra (`/obras/<slug>/plantas`). Una planta es el
+plano de un piso —subido como PDF o imagen— con lo que se calca encima: muros
+y ambientes. De ahí salen los metros de muro, los m² de pared y los m² de cada
+ambiente sin medir a mano. Es el paso previo a que el dibujo le cargue las
+cantidades al cómputo; hoy **todavía no lo hace** (ver Pendientes).
+
+Se llama "Plantas" y no "Planos" para que no se lea como Documentos: allá el
+plano se archiva, acá se mide. Va en solapa propia y no adentro del Cómputo
+porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
+
+- **Tabla `plantas`**: una fila por planta, con `altura` (piso a techo: pasa
+  metros de muro a m² de pared) y `repeticiones` (cuántos pisos son esa misma
+  planta: PB una vez, la tipo de 1.º a 4.º cuatro). Mismo RLS que el cómputo:
+  ve quien ve la obra, escribe el administrador.
+- **El dibujo se guarda en píxeles de la imagen, no en metros** (`dibujo`,
+  jsonb: `{muros, ambientes}`), y la escala son los dos puntos marcados sobre
+  la regla del plano más sus metros (`escala`, jsonb: `{a, b, metros}`). Los
+  metros se derivan. Así corregir la escala rehace todas las medidas sin mover
+  nada, y el calco queda siempre encima del plano. Es jsonb y no una tabla por
+  muro porque el dibujo se edita y se guarda entero; las cantidades las hace
+  la app.
+- **`lib/planta-dibujo.ts`**: la cuenta, pura y sin importar nada, porque la
+  usan el editor y el listado. `medir()` devuelve **null sin escala** —no un
+  dibujo "en píxeles" que parecería un dato—. Los lectores `leerDibujo` /
+  `leerEscala` validan el jsonb al abrir **y** al guardar: un muro roto se
+  pierde, el resto de la planta abre.
+- **"Pared, una cara"** es largo × altura. No se multiplica por dos: qué cara
+  lleva qué terminación es la etapa que sigue, y un total supondría que todas
+  se terminan igual. **"Pared sin vanos"** le resta las aberturas, una vez
+  —es una cara—; quien mida las dos tiene que descontarlas de las dos.
+- **Aberturas** (puertas y ventanas; herramienta Abertura). Van en el mismo
+  jsonb (`dibujo.aberturas`), sin migración: un dibujo viejo que no las trae
+  abre con la lista vacía. Una abertura **no tiene coordenadas**: vive en su
+  muro (`muroId`) a una fracción de su largo (`t`), así se mueve con él y no
+  queda flotando si el muro se corrige; borrar el muro se las lleva. El ancho
+  y el alto son datos de la carpintería, en metros. **El nombre es un tipo**
+  (P1, V2), como en una planilla de carpinterías: cambiarle una medida a una
+  P1 se la cambia a todas, y escribir un nombre que ya existe trae sus
+  medidas. La planilla (`medir().aberturas`) junta por nombre **y** medidas:
+  dos "P1" distintas salen en dos renglones, que es como se ve el error. Se
+  colocan con un clic sobre el muro —no asoman por la punta— y con Seleccionar
+  se deslizan a lo largo.
+- **La mano de la puerta** (`mano`: derecha o izquierda; null en ventanas) y
+  hacia qué lado del muro abre (`lado`: 1 o -1 sobre la normal del muro). La
+  mano **no es parte del tipo**: la misma P1 se pide derecha en un ambiente e
+  izquierda en el de al lado, así que la planilla da un renglón por mano
+  ("P1 der. · 2 u", "P1 izq. · 1 u"), que es lo que hay que pedirle al
+  carpintero. **Convención: de frente y empujando, el lado de las bisagras**
+  (hay quien la nombra tirando, y da lo contrario; por eso la regla está
+  escrita debajo del campo). Con la mano y el lado se dibuja la hoja y su
+  barrido (`barridoDePuerta`), así lo que dice la planilla se puede comparar
+  contra el arco del plano. El lado sale de dónde se hace clic respecto del
+  muro, y se invierte desde la ficha; invertirlo mantiene la mano y cambia la
+  bisagra de jamba. Una puerta guardada sin mano abre como derecha.
+- **El antepecho de la ventana** (`antepecho`, en metros; null en puertas): a
+  qué altura del piso arranca. Va **por ventana y no por tipo**, igual que la
+  mano: la misma V1 se coloca a 0,90 en un dormitorio y a 1,10 sobre una
+  mesada, y la planilla las separa en renglones. **Cero es una ventana hasta
+  el piso; null es "sin cargar"**, y así lo dicen la ficha y la planilla: una
+  ventana guardada antes de este dato no está a ras del piso, no se sabe. Por
+  eso borrar el campo no lo deja en cero. No cambia el vano (ancho × alto);
+  sirve para lo que viene —mampostería bajo ventana, dinteles— y para un
+  control: si antepecho + alto pasa la altura de la planta, la ficha lo avisa
+  en rojo. Una ventana con antepecho cero se lee **"al piso"** en la planilla.
+- **Cómo abre la ventana** (`apertura` y `hojas`; null en puertas). Los ocho
+  sistemas de cualquier fabricante —de abrir, corrediza, paño fijo,
+  guillotina, ventiluz, banderola, desplazable, oscilobatiente— en `APERTURAS`
+  (`lib/planta-dibujo.ts`), y de 1 a 6 hojas. Al revés que la mano y el
+  antepecho, **son parte del tipo**: una V1 es "corrediza de 2 hojas de 1,20 ×
+  1,10", que es lo que se le pide al fabricante, así que cambiarlo en una lo
+  cambia en todas las V1 (`cambiarTipo`). La regla para decidir de qué lado
+  cae un dato nuevo: **lo que define la carpintería es del tipo; lo que define
+  dónde o cómo se coloca es de cada una.** En la planilla van en la segunda
+  línea del renglón ("Corrediza · 2 hojas · antepecho 0,90 m"); un paño fijo
+  cuenta paños, no hojas. Una ventana guardada sin estos datos dice "apertura
+  sin cargar". Las puertas todavía no llevan sistema de apertura (corrediza,
+  plegadiza, doble hoja).
+- **Un PDF se convierte a imagen en el navegador** antes de subir
+  (`NuevaPlantaForm`, pdf.js): lo que va a Drive (carpeta `plantas`) es siempre
+  un JPG, de 4.000 px de lado mayor. El editor calca sobre una imagen y el
+  servidor no necesita leer PDF. El formulario muestra la página elegida antes
+  de subir. `pdfjs-dist` se importa recién al elegir un archivo, y es el build
+  **`legacy`**: el común usa JavaScript que los navegadores de hace un año no
+  tienen.
+- **El editor** (`components/EditorPlanta.tsx`) es SVG puro. Herramientas:
+  Seleccionar, Mover, Escala, Muro, Ambiente. La rueda acerca en cualquiera.
+  Los muros se trazan **por su eje**, encadenados, y se dibujan con su espesor
+  real. Todo punto nuevo se corrige (`ajustar`): se pega a un vértice cercano,
+  y trazando a escuadra se alinea con el anterior y se frena a la altura de
+  otra esquina o donde cruza un muro (el encuentro en T). Arrastrar un extremo
+  mueve todos los muros que comparten esa esquina. Un solo **Guardar** manda
+  datos, escala y dibujo juntos (`guardarPlanta`); hay Deshacer (Ctrl+Z).
+- **La línea de referencia del muro** (`muros[].referencia`: exterior, centro
+  o interior; 22/11/2026). Los dos puntos que se marcan pueden ser el eje del
+  muro o una de sus caras, como en ArchiCAD. Hace falta porque un plano dibuja
+  el muro con dos líneas —las caras— y el eje no está en ningún lado: calcando
+  una cara se pisa una línea que existe. Con una cara el cuerpo crece entero
+  hacia el otro lado; los nombres valen recorriendo el contorno en sentido
+  horario (cara interior → el cuerpo queda afuera), y por eso el editor
+  muestra el cuerpo antes de soltar el punto. **El largo se mide siempre sobre
+  la línea marcada**, no sobre el eje. `cuerpoDeMuro` (`lib/planta-trazo.ts`)
+  dice por dónde va el cuerpo y lo estira en cada esquina lo justo para tapar
+  el espesor del muro vecino —sin eso dos muros por su cara dejan la esquina
+  hueca—; en una esquina entrante no estira, y una punta suelta termina donde
+  se marcó. **Las aberturas van sobre el eje del cuerpo**, no sobre la línea
+  marcada (`murosPorSuCuerpo` en el editor). Un muro guardado sin referencia
+  abre por su eje.
+- **Guías dinámicas** (`ajustar` devuelve `guias`). Al marcar o mover un
+  punto, se alinea con cualquier esquina que tenga en la misma horizontal o
+  vertical y dibuja la línea celeste contra la que se alineó; las dos a la vez
+  dan el cruce exacto. Agarran desde más cerca que el imán de los vértices
+  (0,6 de su alcance): alinearse con una esquina lejana es una ayuda, y si
+  agarrara igual de lejos no dejaría poner un punto cerca de ninguna
+  alineación. Se apagan con la casilla "Guías".
+- **Los lados de un ambiente se corren enteros** (`moverLado`): con el
+  ambiente seleccionado se agarra un lado y se mueve en paralelo; los dos
+  vecinos conservan su dirección y se alargan o acortan hasta donde los corta,
+  como al mover una pared de un cuarto. Se frena a la altura de otras
+  esquinas, así queda en línea con la cara de un muro. **Escuadrar**
+  (`escuadrar`) deja horizontal o vertical cada lado que esté a menos de 15°
+  de serlo y respeta las diagonales hechas a propósito; el botón aparece sólo
+  si cambiaría algo. Un muro también se escuadra, girando sobre su primer
+  punto.
+- **Los atajos de teclado se escuchan en la ventana**, no en el lienzo: con el
+  foco en el lienzo dejaban de andar apenas se tocaba un botón del panel, y el
+  Ctrl+Z de después de Escuadrar no deshacía. Escribiendo en un campo las
+  teclas son del campo.
+- La geometría de dibujar (`ajustar`, `cuerpoDeMuro`, `moverLado`,
+  `escuadrar`) vive en `lib/planta-trazo.ts`, sin React, para poder probarla
+  sola; `lib/planta-dibujo.ts` queda para el modelo y las medidas.
+- **Medir** es la cinta métrica: dos clics y dice cuánto hay entre ellos (y,
+  si es una diagonal, cuánto corre en horizontal y en vertical). **No entra al
+  dibujo**: vive en un estado aparte del editor, no se guarda, no pasa por
+  Deshacer y no enciende el Guardar. Usa el mismo imán y la misma escuadra que
+  las herramientas que dibujan —por eso va con ellas en `dibujando`—, que es
+  lo que la hace exacta de esquina a esquina. Va en violeta, distinto de todo
+  lo que queda.
+- El editor recibe la **dirección** de la imagen, no el id de Drive: la página
+  arma `/archivos/<id>`, que es la ruta que verifica el permiso
+  (`buscarArchivoVisible` conoce la tabla nueva).
+
 ### Contratistas y proveedores (el catálogo)
 Proveedores, contratistas y "varios" viven en una sola tabla (`proveedores`)
 separada por `tipo`, y el catálogo es **uno solo para todas las obras**: el mismo
@@ -1840,6 +1982,28 @@ acción de borrar el pago del lote viaja como prop.
   y las comparaciones "¿cubrió todo?" tienen tolerancia (ver Ingresos).
 
 ## Pendientes / decisiones abiertas
+
+- **Plantas, lo que sigue** (decidido con el usuario el 22/11/2026; hecha sólo
+  la etapa 1: plano, escala, muros, ambientes y sus medidas).
+  **Etapa 2 — terminaciones y cómputo.** Las terminaciones (revoque, revoque
+  con yeso proyectado, pintura, piso, cielorraso, zócalo) se marcan **por
+  ambiente, con excepciones por pared**: se marca el dormitorio entero y se
+  corrige la cara que es distinta. Cada terminación se asocia a una tarea del
+  cómputo, y el dibujo escribe filas en `computo_item_medicion` (`nivel` = el
+  piso, `forma` = superficie, `unidades` = los pisos que repiten la planta).
+  Dos cosas a resolver ahí: marcar el **origen** de cada fila, para que
+  redibujar reemplace sólo las que vinieron del plano y no las cargadas a
+  mano; y los **vanos** —ya se cargan como aberturas y se descuentan del
+  total de la planta—, que hay que restar **cara por cara** antes de escribir
+  porque la tabla no admite cantidades negativas. Las aberturas además son
+  cantidades por sí mismas: las carpinterías se computan por unidad y por
+  tipo, y la planilla ya las da así. Hace falta además saber qué muro
+  limita qué ambiente (hoy muros y ambientes son figuras sueltas).
+  **Etapa 3 — vista 3D y aberturas.** El usuario la quiere **girable con el
+  mouse**, lo que pide sumar una librería 3D (three.js); la isométrica fija
+  en SVG, como `VolumenLote`, se descartó.
+  **No detecta muros solo**: el plano se calca a mano, y es a propósito —la
+  detección automática desde un PDF o un JPG no es confiable—.
 
 - **Las pantallas del inversor y del comprador** (el rol ya existe desde el
   30/09/2026, la vista no). El inversor ve lo que puso y lo que le falta poner

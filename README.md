@@ -30,6 +30,7 @@ app verifica los permisos sobre la obra antes de servir cada archivo.
 | **Dólares** | Todo valuado al dólar de la fecha de cada movimiento |
 | **Avances** | Historial de avance por rubro, período a período |
 | **Documentos** | Planos y papeles, por ámbito y rubro, versionados |
+| **Plantas** | El plano de cada piso, calcado encima: metros de muro y m² de cada ambiente |
 | **Fotos** | Archivos de obra, en Drive |
 | **Rubros** | Qué rubros usa esta obra |
 | **Materiales** | Cuánto material entró a la obra, y el catálogo de lo que se compra |
