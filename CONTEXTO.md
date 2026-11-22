@@ -491,6 +491,19 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   dos "P1" distintas salen en dos renglones, que es como se ve el error. Se
   colocan con un clic sobre el muro —no asoman por la punta— y con Seleccionar
   se deslizan a lo largo.
+- **Una abertura se alinea agarrándola de una esquina.** Seleccionada, muestra
+  sus cuatro esquinas —las dos jambas sobre las dos caras del muro—. Agarrada
+  del medio se desliza libre, como siempre; agarrada de una esquina, **esa
+  esquina** es la que se pega a lo que tenga cerca —la cara de otro muro, un
+  rincón, la jamba de otra abertura, una guía— y la abertura va detrás, sin
+  salirse de su muro. Hace falta porque lo que se quiere alinear de una puerta
+  casi nunca es su centro: es la jamba contra el muro que llega. Sus propias
+  esquinas no la atraen —se perseguiría—.
+- **Hacer clic en el plano no corre la página.** El lienzo toma el foco al
+  tocarlo (para sacarlo del campo donde se escribía), y sin
+  `focus({ preventScroll: true })` el navegador desplazaba la página para
+  mostrarlo entero: el plano saltaba debajo del puntero justo al hacer clic,
+  y el arrastre que seguía caía en otro lado.
 - **La mano de la puerta** (`mano`: derecha o izquierda; null en ventanas) y
   hacia qué lado del muro abre (`lado`: 1 o -1 sobre la normal del muro). La
   mano **no es parte del tipo**: la misma P1 se pide derecha en un ambiente e
@@ -563,6 +576,115 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   (0,6 de su alcance): alinearse con una esquina lejana es una ayuda, y si
   agarrara igual de lejos no dejaría poner un punto cerca de ninguna
   alineación. Se apagan con la casilla "Guías".
+- **Todo se alinea con los bordes de los muros y de las aberturas**, no sólo
+  con los puntos marcados. El contorno de un ambiente va por la **cara** del
+  muro, que no es la línea con la que se lo trazó, así que el imán conoce los
+  bordes de cada muro (`bordes` en el editor): las esquinas de su cuerpo
+  (`esquinasDeCuerpo`), sus dos caras como líneas de apoyo (`carasDeCuerpo`),
+  los **rincones** donde sus caras cortan a las de otro muro (`crucesDeCaras`:
+  el de adentro de una L, los dos de una T —ninguno es un punto que haya
+  marcado nadie—) y las cuatro esquinas de cada puerta y ventana sobre las dos
+  caras. Sin escala no hay bordes: el espesor del trazo es de pantalla.
+  **Lo que está dibujado le gana a lo que sólo está alineado**: `ajustar`
+  busca primero un vértice, después una línea donde apoyarse o cruzar, y
+  recién después una guía. Los bordes de un muro que se está moviendo no
+  atraen a su propia punta —se perseguiría a sí mismo—. Todo esto se calcula
+  con `useMemo`, cuando cambian los muros, las aberturas, la escala o el zoom,
+  y no en cada movimiento del puntero.
+- **Las caras de los muros y sus capas** (22/11/2026). Es la terminación de
+  las paredes, y la unidad es **la cara**: el tramo de un lado de un muro que
+  queda a la vista. `carasVisibles` (`lib/planta-trazo.ts`) desglosa cada muro
+  en sus dos lados y corta cada uno donde otro muro llega contra él —el
+  encuentro en T, la esquina—; lo tapado no lleva nada. "Tapado" se decide
+  mirando **apenas por delante** de la cara: si ahí hay cuerpo de otro muro no
+  se ve. Mirar delante y no sobre la cara es lo que separa la esquina de
+  afuera —el otro muro está detrás y la cara sigue a la vista— de un muro que
+  llega de frente. Cada cara sabe a qué ambiente da (una sonda a 3, 10 y 25 cm
+  de la cara: varias, porque un contorno a pulso puede no llegar hasta ella).
+  - **Una puerta o una ventana parte la cara en partes, no en caras**
+    (`ParteDeCara`, en `medirCaras`). A los costados queda el **paño**, de piso
+    a techo; en el ancho del vano, lo que hay de pared arriba —el **dintel**—
+    y, en una ventana, abajo —el **antepecho**—. Las tres son pared y llevan
+    la terminación de su cara: se separan porque miden distinto y porque es la
+    cuenta que hay que poder revisar ("1,20 m de paño × 2,60 · dintel de P1
+    0,80 × 0,55"). La superficie de la cara es la suma de sus partes. En el
+    plano la línea de la cara va donde hay pared a la altura del piso: entera
+    en los paños, fina bajo una ventana y **cortada en una puerta**. Al
+    principio la cara era un solo tramo con el vano descontado; daba el mismo
+    número, pero el usuario no veía dónde estaba el dintel y tenía razón en
+    desconfiar.
+  - **Cada capa sube hasta donde sube** (`Capa.hasta`). No todas llegan a la
+    misma altura: con un cielorraso suspendido a 2,40 el porcelanato llega al
+    cielorraso, el revoque de abajo lo pasa unos centímetros y la pintura de
+    un muro sin cielorraso va hasta la losa. Por eso la altura es de la capa
+    y no de la pared: `"techo"` (toda la altura del muro), `"cielorraso"` (el
+    del ambiente al que da la cara; si no tiene, la losa) o un número de
+    metros desde el piso. La capa mide, de cada paño, antepecho y dintel, lo
+    que queda por debajo de su altura: de un dintel que arranca a 2,05, un
+    porcelanato hasta 2,40 cuenta 35 cm. Una capa guardada cuando era sólo el
+    id de su tarea se lee como "hasta el techo", que es lo que medía.
+  - **El cielorraso y el piso son del ambiente** y se miden por su
+    superficie: `ambiente.alturaCielorraso` (null = no hay suspendido, el
+    techo es la losa), `ambiente.cielorraso` y `ambiente.piso`, los dos por
+    capas —contrapiso, carpeta, porcelanato— con las mismas tareas del
+    catálogo. No llevan altura: son la tarea sola. Cada desplegable de capas
+    ofrece primero los rubros que tocan (Cielorrasos; Contrapisos y Pisos;
+    Revoques, Revestimientos y Pintura) y después el resto. Medidas los suma
+    en tres bloques —pared, pisos, cielorrasos—, cada uno con lo que falta, y
+    en el total del edificio junta por tarea: la misma en la pared y en el
+    piso es una sola cantidad a cotizar.
+  - **Los cantos también son caras** (`Cara.punta`: "a" o "b"; null en las
+    caras largas). Es la punta del muro, de cara a cara: mide su espesor por
+    su altura y lleva la terminación del ambiente al que da. Casi siempre
+    está tapada y no cuenta; la que queda suelta —un tabique que termina en
+    medio de un dormitorio— es pared a la vista. Para un canto **no alcanza
+    con mirar delante**: en una esquina los dos muros se estiran hasta
+    llenarla y la punta de uno queda sobre la cara de afuera del otro, con
+    aire delante, y sería la misma superficie contada dos veces. Por eso
+    también se mira apenas detrás: si la punta está metida en el cuerpo de
+    otro muro, no es un canto. Su clave lleva la punta donde las otras
+    llevan el lado (`muro|a|ambiente`). Las mochetas de un vano siguen sin
+    contar.
+  - **Copiar** (herramienta) es el pincel de formato: el primer clic toma la
+    terminación de una cara o de un ambiente y los siguientes se la ponen a
+    lo que se toque; Esc o "Tomar otra" la suelta. De una cara se llevan sus
+    capas; de un ambiente, todo —paredes, piso, cielorraso y su altura—. Se
+    cruzan con sentido: lo tomado de un ambiente, sobre una cara le pone sus
+    paredes; lo tomado de una cara, sobre un ambiente le cambia las paredes y
+    le deja el piso y el cielorraso. Con Copiar se ven y se tocan todas las
+    caras, también las que no tienen nada, que son las que hay que pintar.
+    Existe porque terminar una planta cara por cara eran los mismos tres
+    desplegables veinte veces.
+  - **De dónde sale cada altura.** El paño mide la altura de su muro; el
+    antepecho, el de la ventana; el dintel, lo que queda: altura del muro
+    menos antepecho menos alto de la abertura. La altura del muro es la de la
+    planta, salvo que tenga la suya (`muros[].altura`, null = la de la planta):
+    un murete, un antepecho de balcón, una pared que no llega arriba. Se
+    carga en la ficha del muro, y borrarla lo devuelve a la de la planta.
+  - **Las capas son tareas del catálogo del cómputo** (las de m²: azotado,
+    revoque, porcelanato, látex), guardadas por su id y en orden, del muro
+    hacia afuera. No hay una lista de terminaciones aparte: lo que se marca
+    sobre una cara es lo que después se cotiza. Cada capa suma la superficie
+    entera de su cara; repetida en la misma cara cuenta una vez.
+  - **Por ambiente, con excepciones por cara** — lo que el usuario eligió al
+    principio, con la cara como excepción que pidió después. `ambiente.capas`
+    vale para todas las caras que dan a él; `dibujo.caras[clave]` es la de una
+    cara que lleva las suyas, o que no da a ningún ambiente (el frente, una
+    medianera). Una lista vacía es "esta cara no lleva nada", distinto de no
+    tener entrada, que es heredar.
+  - **La clave de una cara dice qué cara es, no dónde está**:
+    `muro|lado|ambiente`. Una posición no aguanta que el muro se mueva o se
+    alargue; "la cara de este muro que da al baño" sí. Dos tramos del mismo
+    lado que no dan a ningún ambiente comparten clave y terminación. Borrar
+    un muro o un ambiente se lleva sus claves, y partir un muro las copia a
+    la mitad nueva.
+  - En el editor: con un muro elegido se listan sus caras (ambiente, largo,
+    m², capas) y se tocan en la ficha o en el plano; con un ambiente elegido,
+    "Paredes". Cada cara terminada se dibuja con una línea del color de su
+    última capa —la que queda a la vista—, el mismo color en el plano, la
+    ficha y las medidas. Medidas suma los m² por capa y dice cuántos m² de
+    cara siguen **sin terminación**: sin eso, un baño terminado y el resto sin
+    tocar se leería como la planta entera.
 - **Los lados de un ambiente se corren enteros** (`moverLado`): con el
   ambiente seleccionado se agarra un lado y se mueve en paralelo; los dos
   vecinos conservan su dirección y se alargan o acortan hasta donde los corta,
@@ -587,6 +709,28 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   línea" es a menos de 8° (`CASI_PARALELO`): calcado a pulso nunca queda
   paralelo exacto, y tratarlo como un lado que cruza mandaba la esquina a
   decenas de metros.
+- **La punta de un muro se mueve sola.** Al principio arrastrar una punta se
+  llevaba todas las que coincidían con ella, para que las esquinas no se
+  desarmaran. Resultó una trampa: dos muros que se tocaban una vez ya no se
+  podían separar nunca, y acortar uno torcía al vecino. Ahora se mueve sólo la
+  del muro elegido, y la casilla "Mover también los muros unidos a la punta"
+  —que aparece si hay alguno— trae lo de antes para correr una esquina entera.
+  De los dos errores posibles se eligió el que se ve: una esquina abierta
+  salta a la vista y el imán la cierra; un vecino torcido pasa desapercibido.
+- **Un muro se parte con doble clic** (`partirMuro`): es su "agregar un
+  punto". Las dos mitades heredan todo y cada abertura queda en la mitad donde
+  estaba, en el mismo lugar —se rehace su fracción—: partir no mueve nada. Para
+  continuar un muro alcanza con la herramienta Muro, que arranca pegada a la
+  punta del que ya está.
+- **Los muros encimados se avisan, no se corrigen** (`solapesDeMuros`). Dos
+  muros uno encima del otro —el mismo trazado dos veces, uno largo sobre uno
+  corto— cuentan ese tramo dos veces. El dibujo no lo impide, pero el editor
+  los pinta de rojo y dice cuántos metros están contados de más, en la ficha
+  del muro, en Medidas y en el listado de plantas. No se descuenta solo porque
+  cuál de los dos sobra lo sabe quien dibuja. Se comparan los **cuerpos**, no
+  las líneas marcadas: uno trazado por su cara y otro por su eje pueden
+  pisarse con las líneas separadas. No cuentan dos en esquina, dos punta con
+  punta ni una pared doble con las caras apoyadas.
 - **Agarrar no es arrastrar hasta mover 3 px** (`UMBRAL_DE_ARRASTRE`). Sin el
   umbral, seleccionar un lado con un clic lo corría un píxel y ensuciaba el
   dibujo, y un doble clic nunca llegaba a ser doble.
@@ -2003,20 +2147,21 @@ acción de borrar el pago del lote viaja como prop.
 
 - **Plantas, lo que sigue** (decidido con el usuario el 22/11/2026; hecha sólo
   la etapa 1: plano, escala, muros, ambientes y sus medidas).
-  **Etapa 2 — terminaciones y cómputo.** Las terminaciones (revoque, revoque
-  con yeso proyectado, pintura, piso, cielorraso, zócalo) se marcan **por
-  ambiente, con excepciones por pared**: se marca el dormitorio entero y se
-  corrige la cara que es distinta. Cada terminación se asocia a una tarea del
-  cómputo, y el dibujo escribe filas en `computo_item_medicion` (`nivel` = el
-  piso, `forma` = superficie, `unidades` = los pisos que repiten la planta).
-  Dos cosas a resolver ahí: marcar el **origen** de cada fila, para que
-  redibujar reemplace sólo las que vinieron del plano y no las cargadas a
-  mano; y los **vanos** —ya se cargan como aberturas y se descuentan del
-  total de la planta—, que hay que restar **cara por cara** antes de escribir
-  porque la tabla no admite cantidades negativas. Las aberturas además son
-  cantidades por sí mismas: las carpinterías se computan por unidad y por
-  tipo, y la planilla ya las da así. Hace falta además saber qué muro
-  limita qué ambiente (hoy muros y ambientes son figuras sueltas).
+  **Etapa 2 — terminaciones y cómputo.** Hecho: las terminaciones de pared,
+  por capas (ver "Las caras de los muros y sus capas"). **Falta mandarlas al
+  cómputo**: por cada capa —que ya es una tarea del catálogo— escribir filas
+  en `computo_item_medicion` (`nivel` = la planta, `forma` = superficie,
+  `unidades` = los pisos que la repiten), tildando la tarea en el cómputo de
+  la obra si no estaba. Lo que hay que resolver ahí es marcar el **origen** de
+  cada fila, para que volver a mandar reemplace sólo las que vinieron del
+  plano y no las cargadas a mano. Los vanos ya vienen descontados cara por
+  cara (`medirCaras`), así que no hay cantidades negativas que escribir.
+  Falta también lo que se mide **por el perímetro del ambiente** —el
+  zócalo, que en el catálogo va en metros lineales—: es el mismo mecanismo de
+  capas, con otra unidad. Y las **mochetas**: los
+  costados de un vano tienen superficie —el espesor del muro por el alto de
+  la abertura, de cada lado— y hoy no cuentan. Las aberturas son cantidades por sí mismas: las carpinterías se
+  computan por unidad y por tipo, y la planilla ya las da así.
   **Etapa 3 — vista 3D y aberturas.** El usuario la quiere **girable con el
   mouse**, lo que pide sumar una librería 3D (three.js); la isométrica fija
   en SVG, como `VolumenLote`, se descartó.

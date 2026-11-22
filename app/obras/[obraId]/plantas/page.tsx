@@ -5,7 +5,8 @@ import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { formatM2, formatMetros } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
-import { medir } from "@/lib/planta-dibujo";
+import { medir, metrosPorPixel } from "@/lib/planta-dibujo";
+import { solapesDeMuros } from "@/lib/planta-trazo";
 import { getPlantas } from "@/lib/plantas";
 
 export default async function PlantasPage({
@@ -31,6 +32,11 @@ export default async function PlantasPage({
   // Los totales son del edificio: cada planta por los pisos que la repiten.
   // Una planta sin escala no mide y no suma; se cuenta aparte para que el
   // total no parezca el edificio entero cuando le falta un piso.
+  // Las que tienen muros encimados: su largo de muros está contado de más, y
+  // el listado no puede mostrarlo como si estuviera bien.
+  const conEncimados = plantas.filter(
+    (p) => solapesDeMuros(p.dibujo.muros, metrosPorPixel(p.escala)).length > 0
+  ).length;
   const pisos = plantas.reduce((t, p) => t + p.repeticiones, 0);
   const sinEscala = plantas.filter((p) => p.medidas === null).length;
   const muros = plantas.reduce(
@@ -137,6 +143,14 @@ export default async function PlantasPage({
               </tbody>
             </table>
 
+            {conEncimados > 0 && (
+              <p style={avisoRojo}>
+                {conEncimados === 1
+                  ? "Una planta tiene muros encimados: ese largo está contado dos veces."
+                  : `${conEncimados} plantas tienen muros encimados: ese largo está contado dos veces.`}
+              </p>
+            )}
+
             {sinEscala > 0 && (
               <p style={aviso}>
                 {sinEscala === 1
@@ -174,6 +188,11 @@ const aviso = {
   ...ui.note,
   marginTop: "16px",
   marginBottom: 0,
+};
+
+const avisoRojo = {
+  ...aviso,
+  color: ui.ROJO,
 };
 
 const errorBox = {

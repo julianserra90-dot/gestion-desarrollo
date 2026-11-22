@@ -43,13 +43,53 @@ export type Muro = {
    * marcada, sea cual sea: es la que se calcó del plano.
    */
   referencia: Referencia;
+  /**
+   * De piso a techo, en metros, si no es la de la planta: un antepecho de
+   * balcón, un murete, una pared que no llega arriba. Null es "la de la
+   * planta", que es lo de casi todos, y así cambiar la altura de la planta
+   * los mueve a todos menos a los que tienen la suya.
+   */
+  altura: number | null;
 };
+
+/**
+ * Una capa de la terminación de una pared: qué tarea es y hasta dónde sube.
+ *
+ * No todas llegan a la misma altura. Con un cielorraso suspendido a 2,40, el
+ * porcelanato llega al cielorraso, el revoque de abajo lo pasa unos
+ * centímetros y la pintura de un muro sin cielorraso va hasta la losa. Por eso
+ * la altura es de cada capa y no de la pared.
+ *
+ *   "techo"       toda la altura del muro, hasta la losa.
+ *   "cielorraso"  hasta el cielorraso del ambiente al que da la cara. Si el
+ *                 ambiente no tiene, hasta la losa.
+ *   un número     esa altura desde el piso, en metros.
+ */
+export type Capa = { tarea: string; hasta: "techo" | "cielorraso" | number };
 
 export type Ambiente = {
   id: string;
   nombre: string;
   /** El contorno, sin repetir el primer punto al final. */
   puntos: Punto[];
+  /**
+   * La terminación de sus paredes, capa por capa desde el muro hacia afuera:
+   * azotado, revoque, revestimiento. Cada capa es una tarea del catálogo del
+   * cómputo, por su id. Vale para todas las caras de muro que dan a este
+   * ambiente, salvo la que tenga la suya (`Dibujo.caras`).
+   */
+  capas: Capa[];
+  /**
+   * A qué altura está el cielorraso, en metros desde el piso. Null: no hay
+   * cielorraso suspendido y el techo es la losa, a la altura de la planta.
+   */
+  alturaCielorraso: number | null;
+  /** De qué es el cielorraso, por capas: placa de yeso, y encima pintura. Se
+   *  miden por la superficie del ambiente. */
+  cielorraso: string[];
+  /** El piso, por capas desde la losa: contrapiso, carpeta, porcelanato. Se
+   *  miden por la superficie del ambiente. */
+  piso: string[];
 };
 
 export type TipoAbertura = "puerta" | "ventana";
@@ -135,9 +175,24 @@ export type Abertura = {
   hojas: number | null;
 };
 
-export type Dibujo = { muros: Muro[]; ambientes: Ambiente[]; aberturas: Abertura[] };
+export type Dibujo = {
+  muros: Muro[];
+  ambientes: Ambiente[];
+  aberturas: Abertura[];
+  /**
+   * Las capas de las caras de muro que no llevan las de su ambiente: la pared
+   * de la bañera que va con otro revestimiento, o una cara que no da a ningún
+   * ambiente dibujado —el frente, una medianera—.
+   *
+   * La clave es **qué cara es, no dónde está**: `muro|lado|ambiente`, la cara
+   * de ese muro que da a ese ambiente (o a ninguno). Así sobrevive a que el
+   * muro se mueva o se alargue, que es lo que una posición no aguanta. Una
+   * lista vacía es "esta cara no lleva nada", distinto de no tener entrada.
+   */
+  caras: Record<string, Capa[]>;
+};
 
-export const DIBUJO_VACIO: Dibujo = { muros: [], ambientes: [], aberturas: [] };
+export const DIBUJO_VACIO: Dibujo = { muros: [], ambientes: [], aberturas: [], caras: {} };
 
 /** Con qué arranca cada tipo: las medidas más comunes, para corregir de ahí. */
 export const ABERTURA_INICIAL: Record<
@@ -356,7 +411,12 @@ export function medir(
       (a.antepecho ?? -1) - (b.antepecho ?? -1)
   );
   const vanos = aberturas.reduce((t, g) => t + g.superficie, 0);
-  const paredUnaCara = largoDeMuros * (altura > 0 ? altura : 0);
+  // Cada muro con su altura: la propia si la tiene, y si no la de la planta.
+  const alturaDePlanta = altura > 0 ? altura : 0;
+  const paredUnaCara = dibujo.muros.reduce(
+    (t, m) => t + distancia(m.a, m.b) * mpp * (m.altura ?? alturaDePlanta),
+    0
+  );
 
   const ambientes = dibujo.ambientes.map((a) => ({
     id: a.id,
@@ -395,6 +455,37 @@ function numero(valor: unknown): number | null {
   return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
 }
 
+/** Una lista de textos, tirando lo que no lo sea. */
+function textos(valor: unknown): string[] {
+  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === "string") : [];
+}
+
+/**
+ * Las capas de una pared. Una capa guardada cuando todavía era sólo el id de
+ * su tarea —antes de que cada una tuviera su altura— sube hasta el techo, que
+ * es lo que medía entonces.
+ */
+function leerCapas(valor: unknown): Capa[] {
+  if (!Array.isArray(valor)) return [];
+
+  const capas: Capa[] = [];
+  for (const cruda of valor) {
+    if (typeof cruda === "string") {
+      capas.push({ tarea: cruda, hasta: "techo" });
+      continue;
+    }
+    if (typeof cruda !== "object" || cruda === null) continue;
+    const r = cruda as Record<string, unknown>;
+    if (typeof r.tarea !== "string") continue;
+    const altura = numero(r.hasta);
+    capas.push({
+      tarea: r.tarea,
+      hasta: r.hasta === "cielorraso" ? "cielorraso" : altura !== null && altura > 0 ? altura : "techo",
+    });
+  }
+  return capas;
+}
+
 function punto(valor: unknown): Punto | null {
   if (typeof valor !== "object" || valor === null) return null;
   const { x, y } = valor as Record<string, unknown>;
@@ -424,6 +515,7 @@ export function leerDibujo(valor: unknown): Dibujo {
     const a = punto(r.a);
     const b = punto(r.b);
     const espesor = numero(r.espesor);
+    const alturaPropia = numero(r.altura);
     if (typeof r.id !== "string" || !a || !b) continue;
     muros.push({
       id: r.id,
@@ -432,6 +524,7 @@ export function leerDibujo(valor: unknown): Dibujo {
       espesor: espesor !== null && espesor > 0 ? espesor : ESPESOR_INICIAL,
       // Un muro guardado antes de que existiera la referencia se marcó por su eje.
       referencia: REFERENCIAS.find((ref) => ref.valor === r.referencia)?.valor ?? "centro",
+      altura: alturaPropia !== null && alturaPropia > 0 ? alturaPropia : null,
     });
   }
 
@@ -442,12 +535,18 @@ export function leerDibujo(valor: unknown): Dibujo {
     const puntos = (Array.isArray(r.puntos) ? r.puntos : [])
       .map(punto)
       .filter((p): p is Punto => p !== null);
+    const alturaCielorraso = numero(r.alturaCielorraso);
     // Con menos de tres puntos no encierra nada.
     if (typeof r.id !== "string" || puntos.length < 3) continue;
     ambientes.push({
       id: r.id,
       nombre: typeof r.nombre === "string" ? r.nombre : "",
       puntos,
+      capas: leerCapas(r.capas),
+      alturaCielorraso:
+        alturaCielorraso !== null && alturaCielorraso > 0 ? alturaCielorraso : null,
+      cielorraso: textos(r.cielorraso),
+      piso: textos(r.piso),
     });
   }
 
@@ -489,5 +588,12 @@ export function leerDibujo(valor: unknown): Dibujo {
     });
   }
 
-  return { muros, ambientes, aberturas };
+  const caras: Record<string, Capa[]> = {};
+  if (typeof crudo.caras === "object" && crudo.caras !== null && !Array.isArray(crudo.caras)) {
+    for (const [clave, capas] of Object.entries(crudo.caras)) {
+      if (Array.isArray(capas)) caras[clave] = leerCapas(capas);
+    }
+  }
+
+  return { muros, ambientes, aberturas, caras };
 }

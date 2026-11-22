@@ -90,3 +90,28 @@ export async function getPlanta(id: string): Promise<Planta | null> {
 
   return data ? aPlanta(data) : null;
 }
+
+/**
+ * Las tareas del catálogo del cómputo que sirven de capa de una terminación:
+ * las que se miden en m². Azotado, revoque, porcelanato, pintura.
+ *
+ * Son las mismas tareas que después se tildan en el cómputo, y es a propósito:
+ * lo que se marca sobre una cara es lo que se va a cotizar, sin una lista de
+ * terminaciones aparte que haya que emparejar con el catálogo.
+ */
+export async function getCapasDisponibles(): Promise<
+  { id: string; nombre: string; rubro: string }[]
+> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("tareas")
+    .select("id, nombre, rubro, orden")
+    .eq("unidad", "m²")
+    .order("rubro")
+    .order("orden");
+
+  if (error) console.error("getCapasDisponibles:", error.message);
+
+  return (data ?? []).map((t) => ({ id: t.id, nombre: t.nombre, rubro: t.rubro }));
+}

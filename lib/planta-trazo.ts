@@ -11,9 +11,12 @@
  */
 
 import {
+  type Capa,
+  type Dibujo,
   type Muro,
   type Punto,
   type Referencia,
+  areaDe,
   distancia,
 } from "@/lib/planta-dibujo";
 
@@ -72,17 +75,26 @@ const PARTE_DE_LAS_GUIAS = 0.6;
  * Calcar a mano es impreciso, y dos muros que casi se tocan miden distinto que
  * dos que se tocan. Por eso el punto se corrige, en este orden:
  *
- *  1. Si hay un vértice cerca, es ése: las esquinas cierran exactas.
+ *  1. Si hay un vértice cerca, es ése: las esquinas cierran exactas. Vértice
+ *     es todo punto que ya está: las puntas de un muro, las esquinas de su
+ *     cuerpo, las de una abertura, los puntos de un ambiente.
  *  2. Trazando a escuadra, se alinea con el punto anterior en horizontal o en
  *     vertical —lo que esté más cerca de lo que se marcó—, y sobre esa línea
- *     se frena a la altura de otra esquina (una guía) o donde cruza un muro:
- *     así sale el encuentro en T sin puntería.
- *  3. Sin escuadra, se alinea con las esquinas que tenga a la misma altura o
- *     en la misma vertical —una guía por eje, y las dos a la vez dan el punto
- *     exacto donde se cruzan—, y si no hay ninguna se apoya sobre el muro que
- *     tenga cerca.
+ *     se frena donde cruza un muro o una de sus caras: así sale el encuentro
+ *     en T sin puntería. Si no cruza nada, a la altura de otra esquina (una
+ *     guía).
+ *  3. Sin escuadra, se apoya sobre la línea que tenga cerca —un muro o una
+ *     cara—, y sobre ella se frena a la altura de otra esquina. Lejos de toda
+ *     línea se alinea con las esquinas que tenga a la misma altura o en la
+ *     misma vertical: una guía por eje, y las dos a la vez dan el cruce.
  *
- * `iman` dice si se pegó a algo y `guias` contra qué se alineó, para mostrarlo.
+ * El orden dice qué vale más: lo que está dibujado le gana a lo que sólo está
+ * alineado. Un punto que cae sobre la cara de un muro es un dato; uno que
+ * quedó a la altura de una esquina lejana, una ayuda.
+ *
+ * `muros` son las líneas de apoyo: los muros por su línea marcada y por sus
+ * caras. `iman` dice si se pegó a algo y `guias` contra qué se alineó, para
+ * mostrarlo.
  */
 export function ajustar(
   p: Punto,
@@ -114,42 +126,90 @@ export function ajustar(
     const horizontal = Math.abs(p.x - previo.x) >= Math.abs(p.y - previo.y);
     // Lo que queda libre es una sola coordenada: la que corre sobre el eje.
     const libre = horizontal ? p.x : p.y;
-    let mejor: number | null = null;
-    let alineadoCon: Punto | null = null;
-    let delta = alcanceDeGuia;
 
+    // Primero lo que está de verdad: dónde el eje cruza un muro o una de sus
+    // caras. Es un encuentro, y le gana a alinearse con una esquina lejana.
+    let cruce: number | null = null;
+    let delta = o.tolerancia;
+    for (const muro of o.muros) {
+      const donde = horizontal
+        ? cruceConEje(muro.a.y, muro.b.y, muro.a.x, muro.b.x, previo.y)
+        : cruceConEje(muro.a.x, muro.b.x, muro.a.y, muro.b.y, previo.x);
+      if (donde !== null && Math.abs(donde - libre) <= delta) {
+        delta = Math.abs(donde - libre);
+        cruce = donde;
+      }
+    }
+    if (cruce !== null) {
+      return {
+        punto: horizontal ? { x: cruce, y: previo.y } : { x: previo.x, y: cruce },
+        iman: true,
+        guias: [],
+      };
+    }
+
+    let alineadoCon: Punto | null = null;
     if (o.guias) {
+      delta = alcanceDeGuia;
       for (const vertice of o.vertices) {
         const candidato = horizontal ? vertice.x : vertice.y;
         if (Math.abs(candidato - libre) <= delta) {
           delta = Math.abs(candidato - libre);
-          mejor = candidato;
           alineadoCon = vertice;
         }
       }
     }
 
-    // El cruce con un muro le gana a una guía igual de cerca: es un encuentro
-    // de verdad, no una alineación.
-    delta = mejor === null ? o.tolerancia : delta;
-    for (const muro of o.muros) {
-      const cruce = horizontal
-        ? cruceConEje(muro.a.y, muro.b.y, muro.a.x, muro.b.x, previo.y)
-        : cruceConEje(muro.a.x, muro.b.x, muro.a.y, muro.b.y, previo.x);
-      if (cruce !== null && Math.abs(cruce - libre) <= delta) {
-        delta = Math.abs(cruce - libre);
-        mejor = cruce;
-        alineadoCon = null;
-      }
-    }
-
-    const valor = mejor ?? libre;
+    const valor = alineadoCon ? (horizontal ? alineadoCon.x : alineadoCon.y) : libre;
     const punto = horizontal ? { x: valor, y: previo.y } : { x: previo.x, y: valor };
     return {
       punto,
-      iman: mejor !== null,
+      iman: alineadoCon !== null,
       guias: alineadoCon ? [{ desde: alineadoCon, hasta: punto }] : [],
     };
+  }
+
+  // Sin escuadra, también primero lo que está: la línea más cercana.
+  let apoyo: Punto | null = null;
+  let linea: { a: Punto; b: Punto } | null = null;
+  menor = o.tolerancia;
+  for (const muro of o.muros) {
+    const proyectado = proyectar(p, muro.a, muro.b);
+    const d = distancia(p, proyectado);
+    if (d <= menor) {
+      menor = d;
+      apoyo = proyectado;
+      linea = muro;
+    }
+  }
+
+  if (apoyo && linea) {
+    // Ya sobre la línea, se frena a la altura de otra esquina: donde la
+    // vertical o la horizontal de un vértice la corta.
+    if (o.guias) {
+      let mejor: Punto | null = null;
+      let alineadoCon: Punto | null = null;
+      let delta = alcanceDeGuia;
+      for (const vertice of o.vertices) {
+        const y = cruceConEje(linea.a.x, linea.b.x, linea.a.y, linea.b.y, vertice.x);
+        const x = cruceConEje(linea.a.y, linea.b.y, linea.a.x, linea.b.x, vertice.y);
+        const candidatos: Punto[] = [];
+        if (y !== null) candidatos.push({ x: vertice.x, y });
+        if (x !== null) candidatos.push({ x, y: vertice.y });
+        for (const candidato of candidatos) {
+          const d = distancia(candidato, apoyo);
+          if (d <= delta) {
+            delta = d;
+            mejor = candidato;
+            alineadoCon = vertice;
+          }
+        }
+      }
+      if (mejor && alineadoCon) {
+        return { punto: mejor, iman: true, guias: [{ desde: alineadoCon, hasta: mejor }] };
+      }
+    }
+    return { punto: apoyo, iman: true, guias: [] };
   }
 
   if (o.guias) {
@@ -178,20 +238,7 @@ export function ajustar(
     }
   }
 
-  let apoyo: Punto | null = null;
-  menor = o.tolerancia;
-  for (const muro of o.muros) {
-    const proyectado = proyectar(p, muro.a, muro.b);
-    const d = distancia(p, proyectado);
-    if (d <= menor) {
-      menor = d;
-      apoyo = proyectado;
-    }
-  }
-
-  return apoyo
-    ? { punto: apoyo, iman: true, guias: [] }
-    : { punto: p, iman: false, guias: [] };
+  return { punto: p, iman: false, guias: [] };
 }
 
 // ---- El cuerpo de un muro -------------------------------------------------
@@ -296,6 +343,80 @@ export function cuerpoDeMuro(
     ejeB,
     grosor,
   };
+}
+
+/**
+ * Las dos caras de un muro, de punta a punta de su cuerpo ya estirado: son las
+ * líneas que el plano dibuja, y contra las que se apoya el contorno de un
+ * ambiente.
+ */
+export function carasDeCuerpo(cuerpo: Cuerpo): { a: Punto; b: Punto }[] {
+  const largo = distancia(cuerpo.a, cuerpo.b);
+  if (!(largo > 0)) return [];
+  const nx = (-(cuerpo.b.y - cuerpo.a.y) / largo) * (cuerpo.grosor / 2);
+  const ny = ((cuerpo.b.x - cuerpo.a.x) / largo) * (cuerpo.grosor / 2);
+  return [
+    { a: { x: cuerpo.a.x + nx, y: cuerpo.a.y + ny }, b: { x: cuerpo.b.x + nx, y: cuerpo.b.y + ny } },
+    { a: { x: cuerpo.a.x - nx, y: cuerpo.a.y - ny }, b: { x: cuerpo.b.x - nx, y: cuerpo.b.y - ny } },
+  ];
+}
+
+/**
+ * Las esquinas del cuerpo de un muro: las cuatro de punta a punta de lo
+ * marcado y las cuatro del cuerpo estirado. En una punta suelta coinciden; en
+ * una esquina, las estiradas dan el vértice de afuera, que no es ningún punto
+ * marcado y es justo adonde hay que llegar con el contorno de un ambiente que
+ * rodea al muro.
+ */
+export function esquinasDeCuerpo(cuerpo: Cuerpo): Punto[] {
+  const largo = distancia(cuerpo.ejeA, cuerpo.ejeB);
+  if (!(largo > 0)) return [];
+  const nx = (-(cuerpo.ejeB.y - cuerpo.ejeA.y) / largo) * (cuerpo.grosor / 2);
+  const ny = ((cuerpo.ejeB.x - cuerpo.ejeA.x) / largo) * (cuerpo.grosor / 2);
+  return [cuerpo.ejeA, cuerpo.ejeB, cuerpo.a, cuerpo.b].flatMap((p) => [
+    { x: p.x + nx, y: p.y + ny },
+    { x: p.x - nx, y: p.y - ny },
+  ]);
+}
+
+/**
+ * Dónde las caras de dos muros se cortan.
+ *
+ * Son las esquinas que no marcó nadie: el rincón de adentro de un encuentro
+ * en L, los dos rincones de uno en T. Ninguna es la punta de un muro ni la
+ * esquina de un cuerpo, y son justo los puntos por donde pasa el contorno de
+ * un ambiente.
+ *
+ * Sólo cuentan los cortes que caen dentro de las dos caras: dos muros que no
+ * se tocan no tienen esquina en común aunque sus líneas, alargadas, se crucen.
+ */
+export function crucesDeCaras(
+  unas: { a: Punto; b: Punto }[],
+  otras: { a: Punto; b: Punto }[]
+): Punto[] {
+  const HOLGURA = 1e-6;
+  const puntos: Punto[] = [];
+
+  for (const una of unas) {
+    const dx = una.b.x - una.a.x;
+    const dy = una.b.y - una.a.y;
+    for (const otra of otras) {
+      const ex = otra.b.x - otra.a.x;
+      const ey = otra.b.y - otra.a.y;
+      const det = dx * ey - dy * ex;
+      if (Math.abs(det) < 1e-9) continue;
+
+      const qx = otra.a.x - una.a.x;
+      const qy = otra.a.y - una.a.y;
+      const t = (qx * ey - qy * ex) / det;
+      const s = (qx * dy - qy * dx) / det;
+      if (t < -HOLGURA || t > 1 + HOLGURA || s < -HOLGURA || s > 1 + HOLGURA) continue;
+
+      puntos.push({ x: una.a.x + dx * t, y: una.a.y + dy * t });
+    }
+  }
+
+  return puntos;
 }
 
 // ---- Los lados de un ambiente ---------------------------------------------
@@ -433,4 +554,618 @@ export function escuadrar(puntos: Punto[], grados = 15): Punto[] {
     }
     return { x, y };
   });
+}
+
+// ---- Muros encimados ------------------------------------------------------
+
+/** Dos muros cuyos cuerpos se pisan a lo largo, y cuánto (en píxeles). */
+export type Solape = { ids: [string, string]; largo: number };
+
+/**
+ * Los pares de muros que están uno encima del otro.
+ *
+ * Pasa calcando: un muro se traza dos veces, o uno largo se dibuja sobre otro
+ * corto que ya estaba. El dibujo no lo impide —hay casos en que dos muros se
+ * tocan a propósito—, pero el largo de ese tramo queda contado dos veces, y
+ * un total que lo calla está mal sin avisar. Acá se los encuentra para
+ * decirlo; qué muro sobra lo decide quien dibuja.
+ *
+ * Dos muros se pisan si corren paralelos, sus cuerpos se superponen de
+ * costado —la distancia entre ejes es menor que la suma de los medios
+ * espesores— y comparten más de dos centímetros a lo largo. Dos muros en
+ * esquina no cuentan, ni dos que se continúan punta con punta, ni una pared
+ * doble con las caras apoyadas.
+ *
+ * Sin escala no hay espesores que comparar y devuelve vacío.
+ */
+export function solapesDeMuros(muros: Muro[], mpp: number | null): Solape[] {
+  if (mpp === null) return [];
+
+  // Sin vecinos: interesa el eje de cada cuerpo de punta a punta, sin estirar.
+  const cuerpos = muros.map((m) => cuerpoDeMuro(m, [], mpp, 0));
+  const minimo = 0.02 / mpp;
+  const solapes: Solape[] = [];
+
+  for (let i = 0; i < muros.length; i++) {
+    const uno = cuerpos[i];
+    const largo = distancia(uno.ejeA, uno.ejeB);
+    if (!(largo > 0)) continue;
+    const dx = (uno.ejeB.x - uno.ejeA.x) / largo;
+    const dy = (uno.ejeB.y - uno.ejeA.y) / largo;
+
+    for (let j = i + 1; j < muros.length; j++) {
+      const otro = cuerpos[j];
+      const largoDelOtro = distancia(otro.ejeA, otro.ejeB);
+      if (!(largoDelOtro > 0)) continue;
+
+      // Paralelos, a menos de unos tres grados.
+      const ex = (otro.ejeB.x - otro.ejeA.x) / largoDelOtro;
+      const ey = (otro.ejeB.y - otro.ejeA.y) / largoDelOtro;
+      if (Math.abs(dx * ey - dy * ex) > 0.05) continue;
+
+      // Encimados de costado: las dos puntas del otro, cerca del eje de éste.
+      const alCostado = (p: Punto) =>
+        Math.abs((p.x - uno.ejeA.x) * -dy + (p.y - uno.ejeA.y) * dx);
+      const holgura = (uno.grosor + otro.grosor) / 2 - Math.min(uno.grosor, otro.grosor) * 0.05;
+      if (alCostado(otro.ejeA) >= holgura || alCostado(otro.ejeB) >= holgura) continue;
+
+      // Y a lo largo: cuánto del otro cae dentro de éste.
+      const s1 = (otro.ejeA.x - uno.ejeA.x) * dx + (otro.ejeA.y - uno.ejeA.y) * dy;
+      const s2 = (otro.ejeB.x - uno.ejeA.x) * dx + (otro.ejeB.y - uno.ejeA.y) * dy;
+      const compartido = Math.min(largo, Math.max(s1, s2)) - Math.max(0, Math.min(s1, s2));
+      if (compartido > minimo) {
+        solapes.push({ ids: [muros[i].id, muros[j].id], largo: compartido });
+      }
+    }
+  }
+
+  return solapes;
+}
+
+// ---- Las caras de los muros -----------------------------------------------
+
+/**
+ * Un tramo visible de una cara de un muro: lo que se revoca, se pinta o se
+ * reviste. Es la unidad de las terminaciones.
+ */
+export type Cara = {
+  /** Qué cara es: `muro|lado|ambiente`. Ver `Dibujo.caras`. */
+  clave: string;
+  muroId: string;
+  /** De qué lado del muro está, sobre su normal. */
+  lado: 1 | -1;
+  /**
+   * Si es un **canto** —la punta del muro, de cara a cara— dice cuál: la del
+   * primer punto o la del segundo. Null en las dos caras largas. Un canto no
+   * tiene aberturas y mide el espesor del muro.
+   */
+  punta: "a" | "b" | null;
+  /** Los dos extremos del tramo, sobre la cara. En píxeles. */
+  a: Punto;
+  b: Punto;
+  largo: number;
+  /** Dónde cae a lo largo del eje del muro, desde su primer punto: para saber
+   *  qué aberturas le tocan. */
+  desde: number;
+  hasta: number;
+  /** El ambiente al que da, o null si no da a ninguno dibujado. */
+  ambienteId: string | null;
+};
+
+/** Cuánto por delante de la cara se mira si hay otro muro: medio milímetro en
+ *  un plano a un centímetro por píxel. Alcanza para distinguir "delante" de
+ *  "detrás" sin pisar nada. */
+const DELANTE = 0.05;
+
+/** A qué distancias de la cara se busca el ambiente, en metros. Varias,
+ *  porque un contorno calcado a pulso puede no llegar hasta la cara. */
+const DONDE_BUSCAR_AMBIENTE = [0.03, 0.1, 0.25];
+
+function adentro(p: Punto, poligono: Punto[]): boolean {
+  let dentro = false;
+  for (let i = 0, j = poligono.length - 1; i < poligono.length; j = i++) {
+    const a = poligono[i];
+    const b = poligono[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+      dentro = !dentro;
+    }
+  }
+  return dentro;
+}
+
+/**
+ * Para qué valores de s vale `desde <= fijo + pendiente * s <= hasta`, o null
+ * si para ninguno.
+ */
+function tramoDentro(
+  fijo: number,
+  pendiente: number,
+  desde: number,
+  hasta: number
+): [number, number] | null {
+  if (Math.abs(pendiente) < 1e-12) {
+    return fijo >= desde && fijo <= hasta ? [-Infinity, Infinity] : null;
+  }
+  const s1 = (desde - fijo) / pendiente;
+  const s2 = (hasta - fijo) / pendiente;
+  return [Math.min(s1, s2), Math.max(s1, s2)];
+}
+
+/**
+ * Los tramos de una línea que quedan adentro del cuerpo de otro muro.
+ *
+ * La línea sale de `origen` en la dirección (dx, dy) y mide `largo`. `propio`
+ * es el muro al que pertenece, que no se tapa a sí mismo.
+ */
+function tramosTapados(
+  cuerpos: Cuerpo[],
+  propio: number,
+  origen: Punto,
+  dx: number,
+  dy: number,
+  largo: number
+): [number, number][] {
+  const tapados: [number, number][] = [];
+  cuerpos.forEach((otro, j) => {
+    if (j === propio) return;
+    const largoDelOtro = distancia(otro.a, otro.b);
+    if (!(largoDelOtro > 0)) return;
+    const ex = (otro.b.x - otro.a.x) / largoDelOtro;
+    const ey = (otro.b.y - otro.a.y) / largoDelOtro;
+    const qx = origen.x - otro.a.x;
+    const qy = origen.y - otro.a.y;
+
+    const aLoLargo = tramoDentro(qx * ex + qy * ey, dx * ex + dy * ey, 0, largoDelOtro);
+    if (!aLoLargo) return;
+    const aLoAncho = tramoDentro(
+      qx * -ey + qy * ex,
+      dx * -ey + dy * ex,
+      -otro.grosor / 2,
+      otro.grosor / 2
+    );
+    if (!aLoAncho) return;
+
+    const s0 = Math.max(0, aLoLargo[0], aLoAncho[0]);
+    const s1 = Math.min(largo, aLoLargo[1], aLoAncho[1]);
+    if (s1 - s0 > 1e-6) tapados.push([s0, s1]);
+  });
+  return tapados;
+}
+
+/** Lo que queda a la vista de una línea, sacándole los tramos tapados. */
+function loQueSeVe(tapados: [number, number][], largo: number): [number, number][] {
+  const enOrden = [...tapados].sort((p, q) => p[0] - q[0]);
+  const vistos: [number, number][] = [];
+  let hasta = 0;
+  for (const [s0, s1] of enOrden) {
+    if (s0 > hasta) vistos.push([hasta, s0]);
+    hasta = Math.max(hasta, s1);
+  }
+  if (hasta < largo) vistos.push([hasta, largo]);
+  return vistos;
+}
+
+/**
+ * Desglosa cada muro en los tramos de sus dos caras que quedan a la vista.
+ *
+ * Una cara no es entera de punta a punta: donde otro muro llega contra ella
+ * —el encuentro en T, la esquina— ese pedazo queda tapado y no lleva
+ * terminación. Lo que queda son los tramos, y cada uno da a un ambiente: una
+ * pared que separa el baño del pasillo tiene una cara de cada uno, y el muro
+ * que las cruza parte en dos la del pasillo.
+ *
+ * "Tapado" se decide mirando apenas por delante de la cara: si ahí hay cuerpo
+ * de otro muro, no se ve. Mirar delante y no sobre la cara es lo que separa
+ * la esquina de afuera —donde el otro muro está detrás y la cara sigue a la
+ * vista— de un muro que llega de frente.
+ *
+ * Las puertas y ventanas no cortan el tramo: arriba de una puerta sigue
+ * habiendo pared. Se descuentan como superficie (`medirCaras`).
+ *
+ * Además de las dos caras largas, cada muro tiene dos **cantos**: sus puntas.
+ * Casi siempre están tapadas —contra otro muro, o adentro de la esquina— y no
+ * cuentan; la que queda suelta, la de un muro que termina en medio de un
+ * ambiente, es pared a la vista y lleva terminación como cualquier otra. Para
+ * un canto no alcanza con mirar delante: en una esquina los dos muros se
+ * estiran hasta llenarla, y la punta de uno queda sobre la cara de afuera del
+ * otro, con aire delante. Ahí es la misma superficie contada dos veces. Por
+ * eso también se mira apenas **detrás**: si la punta está metida en el cuerpo
+ * de otro muro, no es un canto.
+ *
+ * Sin escala no hay espesores y devuelve vacío.
+ */
+export function carasVisibles(
+  muros: Muro[],
+  ambientes: { id: string; puntos: Punto[] }[],
+  mpp: number | null
+): Cara[] {
+  if (mpp === null) return [];
+
+  const cuerpos = muros.map((m) => cuerpoDeMuro(m, muros, mpp, 0));
+  const minimo = 0.01 / mpp;
+  const caras: Cara[] = [];
+
+  muros.forEach((muro, i) => {
+    const cuerpo = cuerpos[i];
+    const largo = distancia(cuerpo.a, cuerpo.b);
+    if (!(largo > 0)) return;
+
+    const dx = (cuerpo.b.x - cuerpo.a.x) / largo;
+    const dy = (cuerpo.b.y - cuerpo.a.y) / largo;
+    // Cuánto se estiró el cuerpo antes del primer punto marcado.
+    const estirado = distancia(cuerpo.a, cuerpo.ejeA);
+
+    for (const lado of [1, -1] as const) {
+      const nx = -dy * lado;
+      const ny = dx * lado;
+      const origen = {
+        x: cuerpo.a.x + nx * (cuerpo.grosor / 2),
+        y: cuerpo.a.y + ny * (cuerpo.grosor / 2),
+      };
+      const delante = { x: origen.x + nx * DELANTE, y: origen.y + ny * DELANTE };
+
+      // Los tramos tapados por el cuerpo de otro muro.
+      const tapados: [number, number][] = [];
+      cuerpos.forEach((otro, j) => {
+        if (j === i) return;
+        const largoDelOtro = distancia(otro.a, otro.b);
+        if (!(largoDelOtro > 0)) return;
+        const ex = (otro.b.x - otro.a.x) / largoDelOtro;
+        const ey = (otro.b.y - otro.a.y) / largoDelOtro;
+        const qx = delante.x - otro.a.x;
+        const qy = delante.y - otro.a.y;
+
+        const aLoLargo = tramoDentro(qx * ex + qy * ey, dx * ex + dy * ey, 0, largoDelOtro);
+        if (!aLoLargo) return;
+        const aLoAncho = tramoDentro(
+          qx * -ey + qy * ex,
+          dx * -ey + dy * ex,
+          -otro.grosor / 2,
+          otro.grosor / 2
+        );
+        if (!aLoAncho) return;
+
+        const s0 = Math.max(0, aLoLargo[0], aLoAncho[0]);
+        const s1 = Math.min(largo, aLoLargo[1], aLoAncho[1]);
+        if (s1 - s0 > 1e-6) tapados.push([s0, s1]);
+      });
+
+      // Lo que queda a la vista es lo que no está tapado.
+      tapados.sort((p, q) => p[0] - q[0]);
+      const vistos: [number, number][] = [];
+      let hasta = 0;
+      for (const [s0, s1] of tapados) {
+        if (s0 > hasta) vistos.push([hasta, s0]);
+        hasta = Math.max(hasta, s1);
+      }
+      if (hasta < largo) vistos.push([hasta, largo]);
+
+      for (const [s0, s1] of vistos) {
+        if (s1 - s0 < minimo) continue;
+        const a = { x: origen.x + dx * s0, y: origen.y + dy * s0 };
+        const b = { x: origen.x + dx * s1, y: origen.y + dy * s1 };
+        const medio = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+        let ambienteId: string | null = null;
+        for (const metros of DONDE_BUSCAR_AMBIENTE) {
+          const sonda = { x: medio.x + (nx * metros) / mpp, y: medio.y + (ny * metros) / mpp };
+          const ambiente = ambientes.find((amb) => adentro(sonda, amb.puntos));
+          if (ambiente) {
+            ambienteId = ambiente.id;
+            break;
+          }
+        }
+
+        caras.push({
+          clave: `${muro.id}|${lado}|${ambienteId ?? ""}`,
+          muroId: muro.id,
+          lado,
+          punta: null,
+          a,
+          b,
+          largo: s1 - s0,
+          desde: s0 - estirado,
+          hasta: s1 - estirado,
+          ambienteId,
+        });
+      }
+    }
+
+    // Los cantos: cada punta del muro, de cara a cara.
+    for (const punta of ["a", "b"] as const) {
+      const fin = punta === "a" ? cuerpo.a : cuerpo.b;
+      // Hacia afuera del muro...
+      const ox = punta === "a" ? -dx : dx;
+      const oy = punta === "a" ? -dy : dy;
+      // ...y a lo ancho, en el sentido que deja esa dirección como su normal:
+      // así un canto se dibuja y se sondea igual que una cara larga.
+      const ex = oy;
+      const ey = -ox;
+      const origen = {
+        x: fin.x - ex * (cuerpo.grosor / 2),
+        y: fin.y - ey * (cuerpo.grosor / 2),
+      };
+      const corrido = (cuanto: number) => ({
+        x: origen.x + ox * cuanto,
+        y: origen.y + oy * cuanto,
+      });
+
+      const vistos = loQueSeVe(
+        [
+          ...tramosTapados(cuerpos, i, corrido(DELANTE), ex, ey, cuerpo.grosor),
+          ...tramosTapados(cuerpos, i, corrido(-DELANTE), ex, ey, cuerpo.grosor),
+        ],
+        cuerpo.grosor
+      );
+
+      for (const [s0, s1] of vistos) {
+        if (s1 - s0 < minimo) continue;
+        const a = { x: origen.x + ex * s0, y: origen.y + ey * s0 };
+        const b = { x: origen.x + ex * s1, y: origen.y + ey * s1 };
+        const medio = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+        let ambienteId: string | null = null;
+        for (const metros of DONDE_BUSCAR_AMBIENTE) {
+          const sonda = { x: medio.x + (ox * metros) / mpp, y: medio.y + (oy * metros) / mpp };
+          const ambiente = ambientes.find((amb) => adentro(sonda, amb.puntos));
+          if (ambiente) {
+            ambienteId = ambiente.id;
+            break;
+          }
+        }
+
+        caras.push({
+          clave: `${muro.id}|${punta}|${ambienteId ?? ""}`,
+          muroId: muro.id,
+          lado: 1,
+          punta,
+          a,
+          b,
+          largo: s1 - s0,
+          // Un canto se mide de punta a punta de sí mismo: no está sobre el
+          // eje del muro, y no hay aberturas que ubicar en él.
+          desde: 0,
+          hasta: s1 - s0,
+          ambienteId,
+        });
+      }
+    }
+  });
+
+  return caras;
+}
+
+/**
+ * Un pedazo de una cara. A lo largo, una puerta o una ventana la parten: a los
+ * costados queda el paño, de piso a techo, y en el ancho del vano lo que hay
+ * de pared arriba —el dintel— y, en una ventana, abajo —el antepecho—. Las
+ * tres cosas son pared y llevan la misma terminación; se separan porque
+ * miden distinto y porque es la cuenta que hay que poder revisar.
+ */
+export type ParteDeCara = {
+  tipo: "pano" | "dintel" | "antepecho";
+  /** El nombre de la abertura, en un dintel o un antepecho. */
+  abertura: string | null;
+  /** Los extremos sobre la cara, en píxeles. */
+  a: Punto;
+  b: Punto;
+  /** En metros. */
+  ancho: number;
+  alto: number;
+  /** A qué altura del piso arranca: cero, salvo el dintel. */
+  desde: number;
+  superficie: number;
+};
+
+/** Una capa de una cara, con lo que mide ahí. */
+export type CapaMedida = Capa & {
+  /** Hasta qué altura sube de verdad en esta cara, en metros. */
+  alto: number;
+  superficie: number;
+};
+
+export type CaraMedida = Cara & {
+  /** De piso a techo: la altura de su muro, o la de la planta. */
+  alto: number;
+  /** Los paños, dinteles y antepechos en que la parten sus aberturas. */
+  partes: ParteDeCara[];
+  /** m²: la suma de sus partes, que ya no incluye los vanos. */
+  superficie: number;
+  /** Sus capas, del muro hacia afuera: las propias o las de su ambiente. */
+  capas: CapaMedida[];
+  /** Si las capas son las suyas y no las que hereda de su ambiente. */
+  propias: boolean;
+};
+
+export type MedidaDeCaras = {
+  caras: CaraMedida[];
+  /** m² de cada capa de pared, sumando todas las caras que la llevan. */
+  porCapa: { capa: string; superficie: number }[];
+  /** m² de cara a la vista que todavía no tienen ninguna capa. */
+  sinTerminacion: number;
+  /** m² de cada capa de piso y de cielorraso, sumando los ambientes. */
+  pisos: { capa: string; superficie: number }[];
+  cielorrasos: { capa: string; superficie: number }[];
+  /** m² de ambiente que todavía no tienen piso, o cielorraso. */
+  sinPiso: number;
+  sinCielorraso: number;
+};
+
+/**
+ * Las caras de los muros con su superficie y sus capas.
+ *
+ * La superficie de una cara es la suma de sus partes: los paños de piso a
+ * techo, y en el ancho de cada puerta o ventana lo que queda de pared arriba
+ * y abajo. La altura es la del muro si tiene la suya, y si no la de la
+ * planta. Las capas son las propias de la cara si las tiene, y si no las de
+ * su ambiente.
+ *
+ * Cada capa mide hasta donde sube: toda la cara si llega al techo, y si no la
+ * parte de cada paño, antepecho y dintel que queda por debajo de su altura.
+ * Un porcelanato hasta el cielorraso a 2,40 no cuenta los 25 cm que el muro
+ * sigue por arriba, y de un dintel que arranca a 2,05 cuenta 35.
+ *
+ * El piso y el cielorraso se miden por la superficie de su ambiente.
+ *
+ * Es de **un** piso, como `medir`. Null sin escala.
+ */
+export function medirCaras(
+  dibujo: Dibujo,
+  mpp: number | null,
+  altura: number
+): MedidaDeCaras | null {
+  if (mpp === null) return null;
+
+  const alturaDePlanta = altura > 0 ? altura : 0;
+  const muros = new Map(dibujo.muros.map((m) => [m.id, m] as const));
+  const cuerpos = new Map(
+    dibujo.muros.map((m) => [m.id, cuerpoDeMuro(m, [], mpp, 0)] as const)
+  );
+  /** Menos que esto no es un paño: un milímetro. */
+  const minimo = 0.001 / mpp;
+  const ambientes = new Map(dibujo.ambientes.map((amb) => [amb.id, amb] as const));
+
+  const caras = carasVisibles(dibujo.muros, dibujo.ambientes, mpp).map((cara): CaraMedida => {
+    const cuerpo = cuerpos.get(cara.muroId);
+    const largoDelEje = cuerpo ? distancia(cuerpo.ejeA, cuerpo.ejeB) : 0;
+
+    const alto = muros.get(cara.muroId)?.altura ?? alturaDePlanta;
+
+    // Los vanos que le tocan a esta cara, en orden y sin pisarse.
+    // Un canto no tiene aberturas: es la punta del muro.
+    const vanos = dibujo.aberturas
+      .filter((ab) => cara.punta === null && ab.muroId === cara.muroId)
+      .map((ab) => {
+        const centro = ab.t * largoDelEje;
+        const medio = ab.ancho / mpp / 2;
+        return {
+          ab,
+          desde: Math.max(cara.desde, centro - medio),
+          hasta: Math.min(cara.hasta, centro + medio),
+        };
+      })
+      .filter((v) => v.hasta - v.desde > minimo)
+      .sort((p, q) => p.desde - q.desde);
+
+    const dx = cara.largo > 0 ? (cara.b.x - cara.a.x) / cara.largo : 0;
+    const dy = cara.largo > 0 ? (cara.b.y - cara.a.y) / cara.largo : 0;
+    const en = (s: number): Punto => ({
+      x: cara.a.x + dx * (s - cara.desde),
+      y: cara.a.y + dy * (s - cara.desde),
+    });
+    const parte = (
+      tipo: ParteDeCara["tipo"],
+      abertura: string | null,
+      desde: number,
+      hasta: number,
+      altoDeLaParte: number,
+      desdeElPiso = 0
+    ): ParteDeCara => {
+      const ancho = (hasta - desde) * mpp;
+      return {
+        tipo,
+        abertura,
+        a: en(desde),
+        b: en(hasta),
+        ancho,
+        alto: altoDeLaParte,
+        desde: desdeElPiso,
+        superficie: ancho * altoDeLaParte,
+      };
+    };
+
+    const partes: ParteDeCara[] = [];
+    let recorrido = cara.desde;
+    for (const vano of vanos) {
+      const desde = Math.max(vano.desde, recorrido);
+      if (vano.hasta - desde <= minimo) continue;
+      if (desde - recorrido > minimo) partes.push(parte("pano", null, recorrido, desde, alto));
+
+      // Bajo una ventana, hasta su antepecho; una puerta arranca en el piso.
+      // Una ventana sin antepecho cargado no se sabe a qué altura está: lo
+      // que no es vano va todo arriba, que da la misma superficie.
+      const antepecho = Math.min(vano.ab.antepecho ?? 0, alto);
+      if (antepecho > 0) {
+        partes.push(parte("antepecho", vano.ab.nombre, desde, vano.hasta, antepecho));
+      }
+      const dintel = alto - antepecho - vano.ab.alto;
+      if (dintel > 1e-9) {
+        partes.push(parte("dintel", vano.ab.nombre, desde, vano.hasta, dintel, alto - dintel));
+      }
+      recorrido = vano.hasta;
+    }
+    if (cara.hasta - recorrido > minimo) {
+      partes.push(parte("pano", null, recorrido, cara.hasta, alto));
+    }
+
+    const ambiente = cara.ambienteId ? ambientes.get(cara.ambienteId) : undefined;
+    const propias = dibujo.caras[cara.clave];
+
+    // Una capa repetida en la misma cara cuenta una vez, la primera: dos
+    // manos de lo mismo no son el doble de superficie.
+    const vistas = new Set<string>();
+    const capas = (propias ?? ambiente?.capas ?? [])
+      .filter((capa) => !vistas.has(capa.tarea) && vistas.add(capa.tarea))
+      .map((capa): CapaMedida => {
+        const tope =
+          capa.hasta === "techo"
+            ? alto
+            : capa.hasta === "cielorraso"
+              ? ambiente?.alturaCielorraso ?? alto
+              : capa.hasta;
+        const hasta = Math.min(tope, alto);
+        return {
+          ...capa,
+          alto: hasta,
+          // De cada parte, lo que queda por debajo de donde llega la capa.
+          superficie: partes.reduce(
+            (t, p) => t + p.ancho * Math.max(0, Math.min(hasta, p.desde + p.alto) - p.desde),
+            0
+          ),
+        };
+      });
+
+    return {
+      ...cara,
+      alto,
+      partes,
+      superficie: partes.reduce((t, p) => t + p.superficie, 0),
+      capas,
+      propias: propias !== undefined,
+    };
+  });
+
+  const sumar = (a: Map<string, number>, capa: string, superficie: number) =>
+    a.set(capa, (a.get(capa) ?? 0) + superficie);
+  const filas = (a: Map<string, number>) =>
+    Array.from(a, ([capa, superficie]) => ({ capa, superficie }));
+
+  const porCapa = new Map<string, number>();
+  let sinTerminacion = 0;
+  for (const cara of caras) {
+    if (cara.capas.length === 0) sinTerminacion += cara.superficie;
+    for (const capa of cara.capas) sumar(porCapa, capa.tarea, capa.superficie);
+  }
+
+  const pisos = new Map<string, number>();
+  const cielorrasos = new Map<string, number>();
+  let sinPiso = 0;
+  let sinCielorraso = 0;
+  for (const ambiente of dibujo.ambientes) {
+    const superficie = areaDe(ambiente.puntos) * mpp * mpp;
+    if (ambiente.piso.length === 0) sinPiso += superficie;
+    if (ambiente.cielorraso.length === 0) sinCielorraso += superficie;
+    for (const capa of new Set(ambiente.piso)) sumar(pisos, capa, superficie);
+    for (const capa of new Set(ambiente.cielorraso)) sumar(cielorrasos, capa, superficie);
+  }
+
+  return {
+    caras,
+    porCapa: filas(porCapa),
+    sinTerminacion,
+    pisos: filas(pisos),
+    cielorrasos: filas(cielorrasos),
+    sinPiso,
+    sinCielorraso,
+  };
 }

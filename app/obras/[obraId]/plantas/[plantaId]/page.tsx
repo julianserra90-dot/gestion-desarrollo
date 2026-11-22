@@ -3,7 +3,7 @@ import EditorPlanta from "@/components/EditorPlanta";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import { getObraPorSlug } from "@/lib/obras";
-import { getPlanta } from "@/lib/plantas";
+import { getCapasDisponibles, getPlanta } from "@/lib/plantas";
 import { eliminarPlanta, guardarPlanta } from "../actions";
 
 export default async function PlantaPage({
@@ -19,7 +19,10 @@ export default async function PlantaPage({
   }
 
   // El id llega por la URL y no tiene por qué ser de esta obra.
-  const planta = await getPlanta(plantaId);
+  const [planta, capasDisponibles] = await Promise.all([
+    getPlanta(plantaId),
+    getCapasDisponibles(),
+  ]);
 
   if (!planta || planta.obraId !== obra.id) {
     return (
@@ -57,6 +60,7 @@ export default async function PlantaPage({
         slug={obra.slug}
         guardar={guardarPlanta}
         eliminar={eliminarPlanta}
+        capasDisponibles={capasDisponibles}
       />
     </AppShell>
   );
