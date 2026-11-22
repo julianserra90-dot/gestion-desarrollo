@@ -36,7 +36,14 @@ export default async function PlantasPage({
     medidas: medir(p.dibujo, p.escala, p.altura),
     // El hormigón de la estructura de arriba de la planta, en m³.
     hormigon:
-      medirEstructura(p.dibujo.estructura, metrosPorPixel(p.escala), p.altura)?.total ?? 0,
+      medirEstructura(
+        p.dibujo.estructura,
+        metrosPorPixel(p.escala),
+        p.altura,
+        // De piso terminado a piso terminado, si la planta es de algún piso:
+        // es de donde se cuelga su estructura.
+        pisosDeObra.find((piso) => piso.plantaId === p.id)?.altura ?? null
+      )?.total ?? 0,
   }));
 
   // Los totales son del edificio: cada planta por los pisos que la repiten.

@@ -292,6 +292,37 @@ export type MedidaDeEstructura = {
 };
 
 /**
+ * A qué alturas va una losa, en metros sobre el piso terminado de la planta.
+ *
+ * **La losa sostiene el piso de arriba, y es desde ese piso terminado que se
+ * la ubica**: su cara de arriba queda `bajoNpt` más abajo —lo que ocupan el
+ * contrapiso, la carpeta y el piso—, y su fondo, un espesor más abajo todavía.
+ * El piso terminado que sostiene está a `pisoAPiso` del de la planta.
+ *
+ * Sin `bajoNpt` o sin `pisoAPiso` —no se dijo cuánto, o la planta todavía no
+ * es de ningún piso de la obra— no hay de dónde colgarla: va con su fondo a
+ * la altura de piso a techo de la planta, y `bajoNpt` vuelve con lo que eso
+ * deja entre la losa y el piso de arriba, si se sabe, para mostrarlo.
+ */
+export function nivelesDeLosa(
+  espesor: number,
+  bajoNpt: number | null,
+  alturaDePlanta: number,
+  pisoAPiso: number | null
+): { arriba: number; fondo: number; bajoNpt: number | null } {
+  if (bajoNpt !== null && pisoAPiso !== null) {
+    const arriba = pisoAPiso - bajoNpt;
+    return { arriba, fondo: arriba - espesor, bajoNpt };
+  }
+  const arriba = alturaDePlanta + espesor;
+  return {
+    arriba,
+    fondo: alturaDePlanta,
+    bajoNpt: pisoAPiso !== null ? pisoAPiso - arriba : null,
+  };
+}
+
+/**
  * Cuánto hormigón lleva la estructura de una planta.
  *
  * **Los cruces se descuentan**, y quién se queda con el nudo está fijo:
@@ -303,12 +334,17 @@ export type MedidaDeEstructura = {
  *
  * Las alturas, salvo que la pieza diga otra cosa:
  *
- *   losa      su fondo, a la altura de piso a techo de la planta.
+ *   losa      **referida al piso terminado que sostiene** —el del piso de
+ *             arriba, a `pisoAPiso` del de la planta—: su cara de arriba queda
+ *             `bajoNpt` por debajo de él (`nivelesDeLosa`). Si no se dijo
+ *             cuánto, o la planta no es de ningún piso, su fondo va a la
+ *             altura de piso a techo de la planta.
  *   viga      su cara de arriba, en la cara de arriba de la losa que tiene
  *             encima: **la altura de una viga incluye la losa**. Una de 12×45
- *             bajo una losa de 12 asoma 33. Sin losa encima, su cara de arriba
- *             va al fondo de losa de la planta.
- *   columna   desde el piso terminado hasta el fondo de losa.
+ *             bajo una losa de 12 asoma 33.
+ *   columna   desde la cara de arriba de la losa de abajo —`bajoNpt` por
+ *             debajo del piso terminado de la planta— hasta el fondo de la
+ *             losa que tiene encima.
  *
  * Las piezas **metálicas** —columnas y vigas— no entran en el hormigón: llevan
  * cero m³, no se quedan con ningún nudo, y lo suyo es el largo
@@ -320,37 +356,60 @@ export type MedidaDeEstructura = {
 export function medirEstructura(
   estructura: Estructura,
   mpp: number | null,
-  alturaDePlanta: number
+  alturaDePlanta: number,
+  pisoAPiso: number | null = null
 ): MedidaDeEstructura | null {
   if (mpp === null) return null;
 
-  const fondoDeLosa = alturaDePlanta > 0 ? alturaDePlanta : 0;
+  const techo = alturaDePlanta > 0 ? alturaDePlanta : 0;
   const pixel2 = mpp * mpp;
+  // Hasta dónde llega lo que no tiene una losa dibujada encima: la cara de
+  // arriba de la estructura si se la refirió al piso que sostiene, y si no el
+  // techo de la planta.
+  const sinLosa =
+    estructura.bajoNpt !== null && pisoAPiso !== null ? pisoAPiso - estructura.bajoNpt : techo;
 
-  const columnas = estructura.columnas.map((columna) => {
-    const altura = columna.altura ?? Math.max(0, fondoDeLosa - columna.desde);
+  const losas = estructura.losas.map((losa) => {
+    const niveles = nivelesDeLosa(
+      losa.espesor,
+      losa.bajoNpt ?? estructura.bajoNpt,
+      techo,
+      pisoAPiso
+    );
     const prisma: Prisma = {
-      huella: huellaDeColumna(columna, mpp),
-      convexa: true,
-      desde: columna.desde,
-      hasta: columna.desde + altura,
+      huella: losa.puntos,
+      convexa: false,
+      desde: niveles.fondo,
+      hasta: niveles.arriba,
     };
+    const superficie = areaDe(losa.puntos) * pixel2;
+    return { losa, prisma, superficie, bruto: superficie * losa.espesor };
+  });
+
+  // Las columnas arrancan en la cara de arriba de la losa de abajo, que está
+  // lo mismo por debajo del piso terminado.
+  const arranque = estructura.bajoNpt !== null ? -estructura.bajoNpt : 0;
+  const columnas = estructura.columnas.map((columna) => {
+    const huella = huellaDeColumna(columna, mpp);
+    const desde = columna.desde ?? arranque;
+    // Y llegan hasta el fondo de la losa que tienen encima: la más alta de
+    // las que las cubren.
+    let fondoDeSuLosa: number | null = null;
+    for (const { prisma } of losas) {
+      if (!(areaDe(recortar(prisma.huella, huella)) * pixel2 > 1e-6)) continue;
+      fondoDeSuLosa = Math.max(fondoDeSuLosa ?? prisma.desde, prisma.desde);
+    }
+    // Salvo que diga dónde termina, medido desde el piso terminado de arriba.
+    const hasta =
+      columna.arriba !== null && pisoAPiso !== null
+        ? pisoAPiso + columna.arriba
+        : fondoDeSuLosa ?? sinLosa;
+    const altura = Math.max(0, hasta - desde);
+    const prisma: Prisma = { huella, convexa: true, desde, hasta: desde + altura };
     // Una metálica no lleva hormigón: es un perfil, y se mide por su largo.
     const bruto =
       columna.material === "metalica" ? 0 : columna.ancho * columna.profundidad * altura;
     return { columna, prisma, altura, bruto };
-  });
-
-  const losas = estructura.losas.map((losa) => {
-    const fondo = losa.nivel ?? fondoDeLosa;
-    const prisma: Prisma = {
-      huella: losa.puntos,
-      convexa: false,
-      desde: fondo,
-      hasta: fondo + losa.espesor,
-    };
-    const superficie = areaDe(losa.puntos) * pixel2;
-    return { losa, prisma, superficie, bruto: superficie * losa.espesor };
   });
 
   const vigas = estructura.vigas.map((viga) => {
@@ -376,8 +435,8 @@ export function medirEstructura(
         fondoDeSuLosa = Math.min(fondoDeSuLosa ?? prisma.desde, prisma.desde);
       }
     }
-    // Sin losa encima, su cara de arriba va al fondo de losa de la planta.
-    const tope = arriba ?? fondoDeLosa;
+    // Sin losa encima, su cara de arriba va adonde iría la de la estructura.
+    const tope = arriba ?? sinLosa;
     const prisma: Prisma = { huella, convexa: true, desde: tope - viga.alto, hasta: tope };
     const largo = distancia(viga.a, viga.b) * mpp;
     return {

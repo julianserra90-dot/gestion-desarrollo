@@ -1032,6 +1032,56 @@ export type CapaMedida = Capa & {
   superficie: number;
 };
 
+/**
+ * Cuánto hay de una capa en toda la planta.
+ *
+ * La superficie es de todas las veces que aparece. El volumen, sólo de las
+ * que tienen espesor cargado: superficie por espesor, que es de donde sale el
+ * material. `espesor` es el de todas si es el mismo en todos lados; null si
+ * hay más de uno o si a alguna le falta —el volumen entonces es parcial—.
+ */
+export type FilaDeCapa = {
+  capa: string;
+  superficie: number;
+  volumen: number;
+  espesor: number | null;
+};
+
+/** Va juntando lo de cada capa, por su tarea. */
+class Acumulado {
+  private filas = new Map<
+    string,
+    { superficie: number; volumen: number; espesores: Set<number | null> }
+  >();
+
+  sumar(capa: Pick<Capa, "tarea" | "espesor">, superficie: number) {
+    const fila = this.filas.get(capa.tarea) ?? {
+      superficie: 0,
+      volumen: 0,
+      espesores: new Set<number | null>(),
+    };
+    fila.superficie += superficie;
+    fila.volumen += superficie * (capa.espesor ?? 0);
+    fila.espesores.add(capa.espesor);
+    this.filas.set(capa.tarea, fila);
+  }
+
+  lista(): FilaDeCapa[] {
+    return Array.from(this.filas, ([capa, f]) => ({
+      capa,
+      superficie: f.superficie,
+      volumen: f.volumen,
+      espesor: f.espesores.size === 1 ? Array.from(f.espesores)[0] : null,
+    }));
+  }
+}
+
+/** Sin repetir la misma tarea: dos manos de lo mismo no son el doble. */
+function sinRepetir(capas: Capa[]): Capa[] {
+  const vistas = new Set<string>();
+  return capas.filter((capa) => !vistas.has(capa.tarea) && vistas.add(capa.tarea));
+}
+
 export type CaraMedida = Cara & {
   /** De piso a techo: la altura de su muro, o la de la planta. */
   alto: number;
@@ -1047,13 +1097,14 @@ export type CaraMedida = Cara & {
 
 export type MedidaDeCaras = {
   caras: CaraMedida[];
-  /** m² de cada capa de pared, sumando todas las caras que la llevan. */
-  porCapa: { capa: string; superficie: number }[];
+  /** Cada capa de pared, sumando todas las caras que la llevan: sus m² y,
+   *  donde tiene espesor, sus m³. */
+  porCapa: FilaDeCapa[];
   /** m² de cara a la vista que todavía no tienen ninguna capa. */
   sinTerminacion: number;
-  /** m² de cada capa de piso y de cielorraso, sumando los ambientes. */
-  pisos: { capa: string; superficie: number }[];
-  cielorrasos: { capa: string; superficie: number }[];
+  /** Cada capa de piso y de cielorraso, sumando los ambientes. */
+  pisos: FilaDeCapa[];
+  cielorrasos: FilaDeCapa[];
   /** m² de ambiente que todavía no tienen piso, o cielorraso. */
   sinPiso: number;
   sinCielorraso: number;
@@ -1185,27 +1236,24 @@ export function medirCaras(
 
     // Una capa repetida en la misma cara cuenta una vez, la primera: dos
     // manos de lo mismo no son el doble de superficie.
-    const vistas = new Set<string>();
-    const capas = (propias ?? ambiente?.capas ?? [])
-      .filter((capa) => !vistas.has(capa.tarea) && vistas.add(capa.tarea))
-      .map((capa): CapaMedida => {
-        const tope =
-          capa.hasta === "techo"
-            ? alto
-            : capa.hasta === "cielorraso"
-              ? ambiente?.alturaCielorraso ?? alto
-              : capa.hasta;
-        const hasta = Math.min(tope, alto);
-        return {
-          ...capa,
-          alto: hasta,
-          // De cada parte, lo que queda por debajo de donde llega la capa.
-          superficie: partes.reduce(
-            (t, p) => t + p.ancho * Math.max(0, Math.min(hasta, p.desde + p.alto) - p.desde),
-            0
-          ),
-        };
-      });
+    const capas = sinRepetir(propias ?? ambiente?.capas ?? []).map((capa): CapaMedida => {
+      const tope =
+        capa.hasta === "techo"
+          ? alto
+          : capa.hasta === "cielorraso"
+            ? ambiente?.alturaCielorraso ?? alto
+            : capa.hasta;
+      const hasta = Math.min(tope, alto);
+      return {
+        ...capa,
+        alto: hasta,
+        // De cada parte, lo que queda por debajo de donde llega la capa.
+        superficie: partes.reduce(
+          (t, p) => t + p.ancho * Math.max(0, Math.min(hasta, p.desde + p.alto) - p.desde),
+          0
+        ),
+      };
+    });
 
     return {
       ...cara,
@@ -1217,28 +1265,23 @@ export function medirCaras(
     };
   });
 
-  const sumar = (a: Map<string, number>, capa: string, superficie: number) =>
-    a.set(capa, (a.get(capa) ?? 0) + superficie);
-  const filas = (a: Map<string, number>) =>
-    Array.from(a, ([capa, superficie]) => ({ capa, superficie }));
-
-  const porCapa = new Map<string, number>();
+  const porCapa = new Acumulado();
   let sinTerminacion = 0;
   for (const cara of caras) {
     if (cara.capas.length === 0) sinTerminacion += cara.superficie;
-    for (const capa of cara.capas) sumar(porCapa, capa.tarea, capa.superficie);
+    for (const capa of cara.capas) porCapa.sumar(capa, capa.superficie);
   }
 
-  const pisos = new Map<string, number>();
-  const cielorrasos = new Map<string, number>();
+  const pisos = new Acumulado();
+  const cielorrasos = new Acumulado();
   let sinPiso = 0;
   let sinCielorraso = 0;
   for (const ambiente of dibujo.ambientes) {
     const superficie = areaDe(ambiente.puntos) * mpp * mpp;
     if (ambiente.piso.length === 0) sinPiso += superficie;
     if (ambiente.cielorraso.length === 0) sinCielorraso += superficie;
-    for (const capa of new Set(ambiente.piso)) sumar(pisos, capa, superficie);
-    for (const capa of new Set(ambiente.cielorraso)) sumar(cielorrasos, capa, superficie);
+    for (const capa of sinRepetir(ambiente.piso)) pisos.sumar(capa, superficie);
+    for (const capa of sinRepetir(ambiente.cielorraso)) cielorrasos.sumar(capa, superficie);
   }
 
   const porTipo = new Map<string, { superficie: number; volumen: number }>();
@@ -1265,10 +1308,10 @@ export function medirCaras(
 
   return {
     caras,
-    porCapa: filas(porCapa),
+    porCapa: porCapa.lista(),
     sinTerminacion,
-    pisos: filas(pisos),
-    cielorrasos: filas(cielorrasos),
+    pisos: pisos.lista(),
+    cielorrasos: cielorrasos.lista(),
     sinPiso,
     sinCielorraso,
     muros: Array.from(porTipo, ([capa, m]) => ({ capa, ...m })),

@@ -595,16 +595,34 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   necesitó migración: es otra clave del jsonb y `leerDibujo` la tolera.
   **Cada planta dibuja la estructura de arriba**: las columnas que la
   atraviesan y las vigas y la losa que la cubren ("sobre planta baja").
-  **Los niveles se miden desde el piso terminado de la planta, que es ±0,00**;
-  el fondo de losa es la altura de piso a techo de la planta, salvo que la
-  losa diga otra cosa (`losa.nivel`).
+  **Los niveles se miden desde el piso terminado de la planta, que es ±0,00**.
+  **La estructura no está al nivel del piso terminado, y se la refiere al
+  piso terminado que sostiene** (pedido del usuario): la losa de arriba
+  sostiene el piso siguiente, que está a `pisos.altura` —NPT a NPT— del de la
+  planta, y su cara de arriba queda `estructura.bajoNpt` más abajo: lo que
+  ocupan el contrapiso, la carpeta y el piso. Se carga en la solapa Planta,
+  en modo Estructura, que muestra lo que resulta (NPT que sostiene, cara de
+  arriba, fondo de losa, arranque de columnas). Una losa rebajada —un baño,
+  un balcón— lleva el suyo (`losa.bajoNpt`). Las columnas arrancan en la losa
+  de abajo, lo mismo por debajo del ±0,00, y llegan al fondo de la losa que
+  las cubre. Sin `bajoNpt`, o si la planta no es de ningún piso, no hay de
+  dónde colgarla: la losa va con su fondo a la altura de piso a techo de la
+  planta, como antes (`nivelesDeLosa`). Si el fondo de losa que sale no es la
+  altura de piso a techo de la planta, se avisa en rojo. Caso de control: NPT
+  a NPT 2,80, `bajoNpt` 0,08, losa de 12 → losa de +2,60 a +2,72, columna de
+  −0,08 a +2,60.
+  **La columna se define como en ArchiCAD** (el usuario mandó la captura): no
+  se le escribe la altura sino **cuánto se separa del piso terminado de
+  arriba** (`arriba`, casi siempre negativo) **y del de la planta** (`desde`),
+  y la altura es lo que resulta, sólo para leer (`AlturaDeColumna`). Vacíos,
+  los dos campos dicen lo que le toca sola. Así un alto escrito a mano no
+  queda viejo cuando se cambia el nivel de un piso.
   Cada pieza se dibuja como su par de arquitectura. La **columna** se pone con
   un toque, como una abertura: ancho (en horizontal), profundidad (en
   vertical) y **de dónde se agarra** —el centro o una de sus cuatro esquinas
   (`ancla`)—, que es el punto que se pega a la esquina del muro o al filo de
   la medianera y el que queda quieto si después se le cambia la sección;
-  cambiarle el ancla ya puesta no la mueve (`puntoDeAncla`). Va del piso
-  terminado al fondo de losa salvo que se le ponga `desde` o `altura`. La
+  cambiarle el ancla ya puesta no la mueve (`puntoDeAncla`). La
   **viga** se traza como un muro, con su línea de referencia, y la **losa** se
   contornea como un ambiente (los mismos agarres: se arrastra un punto, se
   corre un lado, doble clic suma o saca un punto).
@@ -756,6 +774,20 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   atraen a su propia punta —se perseguiría a sí mismo—. Todo esto se calcula
   con `useMemo`, cuando cambian los muros, las aberturas, la escala o el zoom,
   y no en cada movimiento del puntero.
+- **Cada capa lleva su espesor** (`Capa.espesor`, en metros; null = sin
+  cargar; pedido del usuario: "no es lo mismo un revoque de 1 cm que uno de
+  2"). La superficie alcanza para la mano de obra, pero **el material sale
+  del volumen**, que es superficie por espesor. Se carga en centímetros
+  debajo de cada capa, en paredes, pisos y cielorrasos, y Medidas muestra
+  debajo de los m² de cada tarea su espesor y sus m³. Si la misma tarea va
+  con espesores distintos, el volumen suma cada uno con el suyo y en vez del
+  espesor dice que son varios; una capa sin espesor mide sus m² igual y no da
+  m³. **Las capas de piso y de cielorraso pasaron a ser `Capa`** como las de
+  pared —antes eran sólo el id de la tarea— justamente por el espesor: un
+  contrapiso de 8 y una carpeta de 2; ahí `hasta` no dice nada. Lo guardado
+  como ids sueltos se lee igual, sin espesor. Caso de control: el baño de
+  2,00 × 1,50 con revoque de 2 cm → 16,56 m², 0,331 m³; contrapiso de 8 cm →
+  3 m², 0,24 m³.
 - **Las caras de los muros y sus capas** (22/11/2026). Es la terminación de
   las paredes, y la unidad es **la cara**: el tramo de un lado de un muro que
   queda a la vista. `carasVisibles` (`lib/planta-trazo.ts`) desglosa cada muro

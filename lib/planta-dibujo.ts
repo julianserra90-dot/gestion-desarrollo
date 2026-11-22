@@ -71,8 +71,21 @@ export type Muro = {
  *   "cielorraso"  hasta el cielorraso del ambiente al que da la cara. Si el
  *                 ambiente no tiene, hasta la losa.
  *   un número     esa altura desde el piso, en metros.
+ *
+ * Y su **espesor**, en metros: no es lo mismo un revoque de 1 cm que uno de 2.
+ * La superficie alcanza para cotizar la mano de obra, pero el material —la
+ * mezcla de un revoque, el hormigón de un contrapiso— sale del volumen, y el
+ * volumen es superficie por espesor. Null: no se cargó; la capa mide sus m²
+ * igual, y no da m³.
+ *
+ * Las capas de un piso y de un cielorraso son del mismo tipo, por el espesor:
+ * un contrapiso de 8 y una carpeta de 2. Ahí `hasta` no dice nada.
  */
-export type Capa = { tarea: string; hasta: "techo" | "cielorraso" | number };
+export type Capa = {
+  tarea: string;
+  hasta: "techo" | "cielorraso" | number;
+  espesor: number | null;
+};
 
 export type Ambiente = {
   id: string;
@@ -93,10 +106,10 @@ export type Ambiente = {
   alturaCielorraso: number | null;
   /** De qué es el cielorraso, por capas: placa de yeso, y encima pintura. Se
    *  miden por la superficie del ambiente. */
-  cielorraso: string[];
+  cielorraso: Capa[];
   /** El piso, por capas desde la losa: contrapiso, carpeta, porcelanato. Se
    *  miden por la superficie del ambiente. */
-  piso: string[];
+  piso: Capa[];
 };
 
 export type TipoAbertura = "puerta" | "ventana";
@@ -245,10 +258,24 @@ export type Columna = {
   /** En metros. */
   ancho: number;
   profundidad: number;
-  /** De dónde arranca, en metros sobre el piso terminado. Casi siempre 0. */
-  desde: number;
-  /** Cuánto mide de alto. Null: hasta el fondo de losa de la planta. */
-  altura: number | null;
+  /**
+   * De dónde arranca, en metros sobre el piso terminado de la planta. Null:
+   * de la cara de arriba de la losa de abajo, que queda **debajo** del piso
+   * terminado —lo que diga `Estructura.bajoNpt`—; sin ese dato, del piso
+   * terminado. Con número, negativo si arranca más abajo.
+   */
+  desde: number | null;
+  /**
+   * Dónde termina, medido **desde el piso terminado de arriba**: negativo si
+   * termina antes de llegar a él, que es lo de siempre —una columna llega al
+   * fondo de la losa, unos centímetros por debajo del piso que esa losa
+   * sostiene—. Null: hasta el fondo de la losa que tiene encima.
+   *
+   * La altura no se guarda: sale de dónde arranca y dónde termina. Es como se
+   * define una columna en un programa de arquitectura, y evita que un alto
+   * escrito a mano quede viejo cuando se cambia el nivel de un piso.
+   */
+  arriba: number | null;
 };
 
 /** Una viga: se traza como un muro, con su línea de referencia. */
@@ -289,15 +316,37 @@ export type Losa = {
   /** En metros. */
   espesor: number;
   /**
-   * A qué altura está su fondo, en metros sobre el piso terminado. Null: a la
-   * altura de piso a techo de la planta.
+   * Cuánto más abajo que el piso terminado que sostiene queda su cara de
+   * arriba, en metros, si no es lo de toda la planta (`Estructura.bajoNpt`):
+   * la losa rebajada de un baño o de un balcón. Null: lo de la planta.
    */
-  nivel: number | null;
+  bajoNpt: number | null;
 };
 
-export type Estructura = { columnas: Columna[]; vigas: Viga[]; losas: Losa[] };
+export type Estructura = {
+  columnas: Columna[];
+  vigas: Viga[];
+  losas: Losa[];
+  /**
+   * **Cuánto más abajo que el piso terminado que sostiene queda la cara de
+   * arriba de la losa**, en metros: lo que ocupan el contrapiso, la carpeta y
+   * el piso. La estructura no está al nivel del piso terminado: la losa que
+   * sostiene el piso de arriba termina unos centímetros antes, y es desde ese
+   * piso terminado —el del piso de arriba— que se la ubica.
+   *
+   * Null: no se dijo. La losa va entonces con su fondo a la altura de piso a
+   * techo de la planta, que es como se la ubicaba antes de que la obra
+   * tuviera sus pisos definidos.
+   */
+  bajoNpt: number | null;
+};
 
-export const ESTRUCTURA_VACIA: Estructura = { columnas: [], vigas: [], losas: [] };
+export const ESTRUCTURA_VACIA: Estructura = {
+  columnas: [],
+  vigas: [],
+  losas: [],
+  bajoNpt: null,
+};
 
 /** Con qué arranca cada pieza: las secciones más comunes, para corregir de ahí. */
 export const COLUMNA_INICIAL = { ancho: 0.2, profundidad: 0.2 };
@@ -591,15 +640,11 @@ function numero(valor: unknown): number | null {
   return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
 }
 
-/** Una lista de textos, tirando lo que no lo sea. */
-function textos(valor: unknown): string[] {
-  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === "string") : [];
-}
-
 /**
- * Las capas de una pared. Una capa guardada cuando todavía era sólo el id de
- * su tarea —antes de que cada una tuviera su altura— sube hasta el techo, que
- * es lo que medía entonces.
+ * Las capas de una pared, de un piso o de un cielorraso. Una capa guardada
+ * cuando todavía era sólo el id de su tarea —antes de que cada una tuviera su
+ * altura, y como se guardaron siempre las de piso y cielorraso— sube hasta el
+ * techo, que es lo que medía entonces, y no tiene espesor cargado.
  */
 function leerCapas(valor: unknown): Capa[] {
   if (!Array.isArray(valor)) return [];
@@ -607,16 +652,18 @@ function leerCapas(valor: unknown): Capa[] {
   const capas: Capa[] = [];
   for (const cruda of valor) {
     if (typeof cruda === "string") {
-      capas.push({ tarea: cruda, hasta: "techo" });
+      capas.push({ tarea: cruda, hasta: "techo", espesor: null });
       continue;
     }
     if (typeof cruda !== "object" || cruda === null) continue;
     const r = cruda as Record<string, unknown>;
     if (typeof r.tarea !== "string") continue;
     const altura = numero(r.hasta);
+    const espesor = numero(r.espesor);
     capas.push({
       tarea: r.tarea,
       hasta: r.hasta === "cielorraso" ? "cielorraso" : altura !== null && altura > 0 ? altura : "techo",
+      espesor: espesor !== null && espesor > 0 ? espesor : null,
     });
   }
   return capas;
@@ -682,8 +729,8 @@ export function leerDibujo(valor: unknown): Dibujo {
       capas: leerCapas(r.capas),
       alturaCielorraso:
         alturaCielorraso !== null && alturaCielorraso > 0 ? alturaCielorraso : null,
-      cielorraso: textos(r.cielorraso),
-      piso: textos(r.piso),
+      cielorraso: leerCapas(r.cielorraso),
+      piso: leerCapas(r.piso),
     });
   }
 
@@ -741,6 +788,12 @@ function medida(valor: unknown, siFalta: number): number {
   return n !== null && n > 0 ? n : siFalta;
 }
 
+/** Una medida que puede ser cero pero no negativa, o null si no está. */
+function noNegativo(valor: unknown): number | null {
+  const n = numero(valor);
+  return n !== null && n >= 0 ? n : null;
+}
+
 /**
  * La estructura guardada. Un dibujo de antes de que existiera no la trae, y
  * abre con la estructura vacía.
@@ -755,7 +808,6 @@ function leerEstructura(valor: unknown): Estructura {
     const r = c as Record<string, unknown>;
     const p = punto(r.p);
     const desde = numero(r.desde);
-    const altura = numero(r.altura);
     if (typeof r.id !== "string" || !p) continue;
     columnas.push({
       id: r.id,
@@ -768,8 +820,8 @@ function leerEstructura(valor: unknown): Estructura {
       perfil: typeof r.perfil === "string" ? r.perfil : "",
       ancho: medida(r.ancho, COLUMNA_INICIAL.ancho),
       profundidad: medida(r.profundidad, COLUMNA_INICIAL.profundidad),
-      desde: desde ?? 0,
-      altura: altura !== null && altura > 0 ? altura : null,
+      desde,
+      arriba: numero(r.arriba),
     });
   }
 
@@ -807,9 +859,9 @@ function leerEstructura(valor: unknown): Estructura {
       nombre: typeof r.nombre === "string" ? r.nombre : "",
       puntos,
       espesor: medida(r.espesor, LOSA_INICIAL.espesor),
-      nivel: numero(r.nivel),
+      bajoNpt: noNegativo(r.bajoNpt),
     });
   }
 
-  return { columnas, vigas, losas };
+  return { columnas, vigas, losas, bajoNpt: noNegativo(crudo.bajoNpt) };
 }

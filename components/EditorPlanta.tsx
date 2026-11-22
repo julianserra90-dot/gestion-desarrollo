@@ -66,6 +66,7 @@ import {
   huellaDeColumna,
   huellaDeViga,
   medirEstructura,
+  nivelesDeLosa,
   nombreQueSigue,
   normalizarGiro,
   puntoDeAncla,
@@ -111,6 +112,9 @@ type Vista = { x: number; y: number; k: number };
 
 /** Una línea por dos puntos. */
 type Eje = { a: Punto; b: Punto };
+
+/** Las listas de piezas de la estructura, sin lo que es de toda ella. */
+type ClaseDePieza = "columnas" | "vigas" | "losas";
 
 type Seleccion = {
   tipo: "muro" | "ambiente" | "abertura" | "columna" | "viga" | "losa";
@@ -162,8 +166,8 @@ type Copiado =
       de: "ambiente";
       nombre: string;
       capas: Capa[];
-      piso: string[];
-      cielorraso: string[];
+      piso: Capa[];
+      cielorraso: Capa[];
       alturaCielorraso: number | null;
     };
 
@@ -434,6 +438,9 @@ export default function EditorPlanta({
   const pisosDeLaPlanta = pisosDeObra.filter((p) => p.plantaId === planta.id);
   /** Cuánto hay de piso terminado a piso terminado en cada uno de ellos. */
   const alturasDePiso = pisosDeLaPlanta.map((p) => p.altura);
+  /** A cuánto está el piso terminado que la estructura de esta planta
+   *  sostiene —el del piso de arriba—, o null si la planta no es de ninguno. */
+  const pisoAPiso = pisosDeObra.find((p) => p.plantaId === planta.id)?.altura ?? null;
   const pisos =
     pisosDeLaPlanta.length > 0
       ? pisosDeLaPlanta.length
@@ -535,8 +542,8 @@ export default function EditorPlanta({
   // hay huellas: una sección en metros no tiene tamaño en el plano.
   const { estructura } = dibujo;
   const hormigon = useMemo(
-    () => medirEstructura(estructura, mpp, alturaDePlanta),
-    [estructura, mpp, alturaDePlanta]
+    () => medirEstructura(estructura, mpp, alturaDePlanta, pisoAPiso),
+    [estructura, mpp, alturaDePlanta, pisoAPiso]
   );
   const huellas = useMemo(
     () =>
@@ -665,7 +672,7 @@ export default function EditorPlanta({
   // ---- La estructura --------------------------------------------------------
 
   /** El trazo con una pieza de la estructura cambiada. */
-  const conPieza = <K extends keyof Estructura>(
+  const conPieza = <K extends ClaseDePieza>(
     clase: K,
     id: string,
     cambios: Partial<Estructura[K][number]>
@@ -686,7 +693,7 @@ export default function EditorPlanta({
    * Cambia algo de una pieza. El nombre, mientras se tipea, no entra al
    * historial: si no, deshacer iría sacando las letras de a una.
    */
-  const cambiarPieza = <K extends keyof Estructura>(
+  const cambiarPieza = <K extends ClaseDePieza>(
     clase: K,
     id: string,
     cambios: Partial<Estructura[K][number]>,
@@ -731,9 +738,9 @@ export default function EditorPlanta({
           perfil: material === "metalica" ? perfil.trim() : "",
           ancho,
           profundidad,
-          // Del piso terminado al fondo de losa: lo de casi todas.
-          desde: 0,
-          altura: null,
+          // De la losa de abajo al fondo de la de arriba: lo de casi todas.
+          desde: null,
+          arriba: null,
         },
       ],
     });
@@ -752,7 +759,7 @@ export default function EditorPlanta({
           nombre: moldeDeLosa.nombre.trim() || proximaLosa,
           puntos,
           espesor: moldeDeLosa.espesor,
-          nivel: null,
+          bajoNpt: null,
         },
       ],
     });
@@ -829,7 +836,7 @@ export default function EditorPlanta({
             ? sinLasCaras((otra) => otra === clave)
             : // Sólo lo que es de la capa: las que vienen de una cara medida
               // traen además cuánto miden, que no se guarda.
-              { ...dibujo.caras, [clave]: capas.map(({ tarea, hasta }) => ({ tarea, hasta })) },
+              { ...dibujo.caras, [clave]: capas.map(soloLaCapa) },
       },
     });
   };
@@ -845,7 +852,7 @@ export default function EditorPlanta({
     if (!copiado) {
       setCopiado({
         de: "cara",
-        capas: cara.capas.map(({ tarea, hasta }) => ({ tarea, hasta })),
+        capas: cara.capas.map(soloLaCapa),
       });
       return;
     }
@@ -1915,8 +1922,18 @@ export default function EditorPlanta({
     seleccion?.tipo === "viga" ? estructura.vigas.find((v) => v.id === seleccion.id) ?? null : null;
   const losaElegida =
     seleccion?.tipo === "losa" ? estructura.losas.find((l) => l.id === seleccion.id) ?? null : null;
-  /** Dónde está el fondo de losa de la planta, sobre el piso terminado. */
-  const fondoDeLosa = alturaDePlanta;
+  // A qué alturas va la losa de la planta, desde su piso terminado, para
+  // mostrarlo: con el espesor de la primera que haya, o el que se va a usar.
+  const espesorDeReferencia = estructura.losas[0]?.espesor ?? moldeDeLosa.espesor;
+  const nivelesDeLaLosa = nivelesDeLosa(
+    espesorDeReferencia,
+    estructura.bajoNpt,
+    alturaDePlanta,
+    pisoAPiso
+  );
+  const medidaDeLaColumna = columnaElegida
+    ? hormigon?.columnas.find((c) => c.id === columnaElegida.id) ?? null
+    : null;
   // El contorno que se está editando: el de un ambiente o el de una losa. Se
   // corrigen igual —se arrastra un punto, se corre un lado, doble clic suma o
   // saca un punto—, así que comparten los mismos agarres.
@@ -1936,7 +1953,7 @@ export default function EditorPlanta({
   const columnaFantasma =
     herramienta === "columna" && cursor && mpp !== null
       ? huellaDeColumna(
-          { ...moldeDeColumna, id: "", nombre: "", p: cursor.punto, desde: 0, altura: null },
+          { ...moldeDeColumna, id: "", nombre: "", p: cursor.punto, desde: null, arriba: null },
           mpp
         )
       : null;
@@ -2010,7 +2027,7 @@ export default function EditorPlanta({
   const unificarParedes = (pasarAlAmbiente: boolean) => {
     if (!ambienteElegido || carasConLasSuyas.length === 0) return;
     const claves = new Set(carasConLasSuyas.map((c) => c.clave));
-    const capas = carasConLasSuyas[0].capas.map(({ tarea, hasta }) => ({ tarea, hasta }));
+    const capas = carasConLasSuyas[0].capas.map(soloLaCapa);
     cambiar({
       escala,
       dibujo: {
@@ -3063,10 +3080,10 @@ export default function EditorPlanta({
                     {copiado.de === "ambiente" && (
                       <>
                         <Renglon nombre="Piso">
-                          {resumenDeCapas(copiado.piso.map(capaEntera), nombreDeCapa)}
+                          {resumenDeCapas(copiado.piso, nombreDeCapa)}
                         </Renglon>
                         <Renglon nombre="Cielorraso">
-                          {resumenDeCapas(copiado.cielorraso.map(capaEntera), nombreDeCapa)}
+                          {resumenDeCapas(copiado.cielorraso, nombreDeCapa)}
                           {copiado.alturaCielorraso !== null &&
                             ` · a ${formatMedida(copiado.alturaCielorraso)}`}
                         </Renglon>
@@ -3674,21 +3691,21 @@ export default function EditorPlanta({
                   />
                 </label>
                 <EditorDeCapas
-                  capas={ambienteElegido.cielorraso.map(capaEntera)}
+                  capas={ambienteElegido.cielorraso}
                   disponibles={capasDisponibles}
                   primero={RUBROS_DE_CIELORRASO}
                   alCambiar={(nuevas) =>
-                    cambiarAmbiente(ambienteElegido.id, { cielorraso: nuevas.map((c) => c.tarea) })
+                    cambiarAmbiente(ambienteElegido.id, { cielorraso: nuevas })
                   }
                 />
 
                 <p style={subtitulo}>Piso</p>
                 <EditorDeCapas
-                  capas={ambienteElegido.piso.map(capaEntera)}
+                  capas={ambienteElegido.piso}
                   disponibles={capasDisponibles}
                   primero={RUBROS_DE_PISO}
                   alCambiar={(nuevas) =>
-                    cambiarAmbiente(ambienteElegido.id, { piso: nuevas.map((c) => c.tarea) })
+                    cambiarAmbiente(ambienteElegido.id, { piso: nuevas })
                   }
                 />
 
@@ -3842,27 +3859,14 @@ export default function EditorPlanta({
                     />
                   </label>
                 </div>
-                <div style={dosCampos}>
-                  <label style={campo}>
-                    <span style={rotulo}>Desde (m)</span>
-                    <CampoMetros
-                      key={columnaElegida.id}
-                      desdeCero
-                      valor={columnaElegida.desde}
-                      alCambiar={(desde) => cambiarPieza("columnas", columnaElegida.id, { desde })}
-                    />
-                  </label>
-                  <label style={campo}>
-                    <span style={rotulo}>Altura (m)</span>
-                    <CampoMetros
-                      key={columnaElegida.id}
-                      valor={columnaElegida.altura}
-                      vacio={formatMedida(Math.max(0, fondoDeLosa - columnaElegida.desde))}
-                      alCambiar={(altura) => cambiarPieza("columnas", columnaElegida.id, { altura })}
-                      alVaciar={() => cambiarPieza("columnas", columnaElegida.id, { altura: null })}
-                    />
-                  </label>
-                </div>
+                <AlturaDeColumna
+                  key={columnaElegida.id}
+                  arriba={columnaElegida.arriba}
+                  desde={columnaElegida.desde}
+                  medida={medidaDeLaColumna}
+                  pisoAPiso={pisoAPiso}
+                  alCambiar={(cambios) => cambiarPieza("columnas", columnaElegida.id, cambios)}
+                />
                 {(() => {
                   const medida = hormigon?.columnas.find((c) => c.id === columnaElegida.id);
                   return medida ? (
@@ -4015,17 +4019,27 @@ export default function EditorPlanta({
                     />
                   </label>
                   <label style={campo}>
-                    <span style={rotulo}>Fondo (m)</span>
+                    <span style={rotulo}>Bajo el NPT (m)</span>
                     <CampoMetros
                       key={losaElegida.id}
                       desdeCero
-                      valor={losaElegida.nivel}
-                      vacio={formatMedida(fondoDeLosa)}
-                      alCambiar={(nivel) => cambiarPieza("losas", losaElegida.id, { nivel })}
-                      alVaciar={() => cambiarPieza("losas", losaElegida.id, { nivel: null })}
+                      valor={losaElegida.bajoNpt}
+                      vacio={
+                        estructura.bajoNpt !== null
+                          ? `${formatMedida(estructura.bajoNpt)} — el de la planta`
+                          : "sin definir"
+                      }
+                      alCambiar={(bajoNpt) => cambiarPieza("losas", losaElegida.id, { bajoNpt })}
+                      alVaciar={() => cambiarPieza("losas", losaElegida.id, { bajoNpt: null })}
                     />
                   </label>
                 </div>
+                {/* Sólo si no es lo de toda la planta: una losa rebajada. */}
+                <p style={nota}>
+                  Cuánto más abajo que el piso terminado que sostiene queda su cara de arriba, si
+                  no es lo de toda la planta.
+                  {pisoAPiso === null && " Hace falta que la planta sea de algún piso de la obra."}
+                </p>
                 {(() => {
                   const medida = hormigon?.losas.find((l) => l.id === losaElegida.id);
                   return medida ? (
@@ -4382,9 +4396,10 @@ export default function EditorPlanta({
                           ...terminaciones.porCapa,
                           ...terminaciones.pisos,
                           ...terminaciones.cielorrasos,
-                        ]).map(({ capa, superficie }) => (
+                        ]).map(({ capa, superficie, volumen }) => (
                           <Renglon key={capa} nombre={nombreDeCapa.get(capa) ?? "Tarea eliminada"}>
                             {formatM2(superficie * pisos)}
+                            {volumen > 0 && ` · ${formatM3(volumen * pisos)}`}
                           </Renglon>
                         ))}
                     </Grupo>
@@ -4482,13 +4497,60 @@ export default function EditorPlanta({
 
             {modo === "estructura" && (
               <section style={bloque}>
-                <h3 style={tituloBloque}>Alturas de la estructura</h3>
-                <Renglon nombre="Piso terminado">±0,00</Renglon>
-                <Renglon nombre="Fondo de losa">{formatNivel(fondoDeLosa)}</Renglon>
+                <h3 style={tituloBloque}>Niveles de la estructura</h3>
+                {/* La estructura no está al nivel del piso terminado: la losa
+                    que sostiene el piso de arriba termina unos centímetros
+                    antes. Eso es lo que se carga acá, y de ahí sale todo. */}
+                <label style={campo}>
+                  <span style={rotulo}>La losa, bajo el NPT que sostiene (m)</span>
+                  <CampoMetros
+                    desdeCero
+                    valor={estructura.bajoNpt}
+                    vacio={
+                      nivelesDeLaLosa.bajoNpt !== null
+                        ? `${formatMedida(nivelesDeLaLosa.bajoNpt)} — lo que deja la altura`
+                        : "sin definir"
+                    }
+                    alCambiar={(bajoNpt) => agregarAEstructura({ bajoNpt })}
+                    alVaciar={() => agregarAEstructura({ bajoNpt: null })}
+                  />
+                </label>
+                {pisoAPiso === null ? (
+                  <p style={nota}>
+                    Esta planta todavía no es de ningún piso de la obra, así que no se sabe a qué
+                    nivel está el piso que sostiene: la losa va con su fondo a la altura de piso a
+                    techo.
+                  </p>
+                ) : (
+                  <Renglon nombre="NPT que sostiene">{formatNivel(pisoAPiso)}</Renglon>
+                )}
+                <Renglon nombre="Cara de arriba de la losa">
+                  {formatNivel(nivelesDeLaLosa.arriba)}
+                </Renglon>
+                <Renglon nombre="Fondo de losa">{formatNivel(nivelesDeLaLosa.fondo)}</Renglon>
+                <Renglon nombre="Arranque de columnas">
+                  {formatNivel(estructura.bajoNpt !== null ? -estructura.bajoNpt : 0)}
+                </Renglon>
                 <p style={nota}>
-                  Desde el piso terminado de cada piso que es esta planta. Es la estructura de
-                  arriba; el fondo de losa sale de su altura.
+                  Medidos desde el piso terminado de esta planta (±0,00), para una losa de{" "}
+                  {formatEspesor(espesorDeReferencia)}. Es la estructura de arriba: sostiene el
+                  piso siguiente.
                 </p>
+                {/* El fondo de losa es el techo de la planta: si no coinciden,
+                    las paredes se están midiendo hasta otra altura. */}
+                {Math.abs(nivelesDeLaLosa.fondo - alturaDePlanta) > 0.005 && (
+                  <p style={alerta}>
+                    El fondo de losa queda en {formatNivel(nivelesDeLaLosa.fondo)} y la planta
+                    mide {formatMedida(alturaDePlanta)} de piso a techo: revisá cuál de los dos
+                    es.
+                  </p>
+                )}
+                {alturasDePiso.some((h) => Math.abs(h - alturasDePiso[0]) > 0.0005) && (
+                  <p style={nota}>
+                    Los pisos de esta planta no miden lo mismo de NPT a NPT: la estructura se
+                    calcula con el de más abajo.
+                  </p>
+                )}
               </section>
             )}
 
@@ -4617,6 +4679,8 @@ function EditorDeCapas({
   );
   const cambiarCapa = (cual: number, hasta: Capa["hasta"]) =>
     alCambiar(capas.map((capa, k) => (k === cual ? { ...capa, hasta } : capa)));
+  const ponerEspesor = (cual: number, espesor: number | null) =>
+    alCambiar(capas.map((capa, k) => (k === cual ? { ...capa, espesor } : capa)));
 
   return (
     <div style={campo}>
@@ -4673,12 +4737,23 @@ function EditorDeCapas({
               )}
             </div>
           )}
+          {/* El espesor, en centímetros, que es como se dice el de un
+              revoque o el de una carpeta. De él sale el volumen de material. */}
+          <label style={espesorDeCapa}>
+            <span style={rotulo}>espesor</span>
+            <CampoCm
+              key={`${capa.tarea}-${i}`}
+              valor={capa.espesor}
+              alCambiar={(espesor) => ponerEspesor(i, espesor)}
+            />
+            <span style={rotulo}>cm</span>
+          </label>
         </div>
       ))}
       <select
         value=""
         onChange={(e) => {
-          if (e.target.value) alCambiar([...capas, { tarea: e.target.value, hasta: "techo" }]);
+          if (e.target.value) alCambiar([...capas, { tarea: e.target.value, hasta: "techo", espesor: null }]);
         }}
         style={ui.input}
       >
@@ -4699,25 +4774,85 @@ function EditorDeCapas({
   );
 }
 
-/** Los m² de cada capa, con su color: un bloque de las medidas. */
+/**
+ * Un espesor de capa, escrito en centímetros y guardado en metros.
+ *
+ * Vacío es "sin cargar", y así se avisa: una capa sin espesor mide sus m²
+ * igual. Guarda el texto aparte del número, como `CampoMetros`: mientras se
+ * escribe "1," todavía no hay un espesor.
+ */
+function CampoCm({
+  valor,
+  alCambiar,
+}: {
+  /** En metros, o null si no se cargó. */
+  valor: number | null;
+  alCambiar: (metros: number | null) => void;
+}) {
+  // Redondeado: 0,015 m por cien da 1,4999999999999998.
+  const enCm = (metros: number | null) =>
+    metros === null ? "" : String(Math.round(metros * 100000) / 1000);
+  const [texto, setTexto] = useState(enCm(valor));
+  const [visto, setVisto] = useState(valor);
+
+  if (visto !== valor) {
+    setVisto(valor);
+    if (valor === null) setTexto("");
+    else if (texto === "" || Math.abs(Number(texto) / 100 - valor) > 1e-9) setTexto(enCm(valor));
+  }
+
+  return (
+    <input
+      type="number"
+      min="0"
+      step="0.5"
+      value={texto}
+      placeholder="—"
+      onChange={(e) => {
+        setTexto(e.target.value);
+        if (e.target.value === "") {
+          alCambiar(null);
+          return;
+        }
+        const cm = Number(e.target.value);
+        if (cm > 0) alCambiar(Math.round(cm * 1000) / 100000);
+      }}
+      style={selectChico}
+    />
+  );
+}
+
+/**
+ * Lo que hay de cada capa, con su color: un bloque de las medidas. Los m²
+ * siempre; debajo, cuando la capa tiene espesor, los m³ que salen de él —el
+ * material—, y si en algún lado le falta, cuánto quedó sin contar.
+ */
 function FilasDeCapas({
   filas,
   nombres,
 }: {
-  filas: { capa: string; superficie: number }[];
+  filas: { capa: string; superficie: number; volumen: number; espesor: number | null }[];
   nombres: Map<string, string>;
 }) {
   return (
     <>
-      {filas.map(({ capa, superficie }) => (
-        <div key={capa} style={renglon}>
-          <span style={nombreConMuestra}>
-            <span style={{ ...muestra, background: colorDeCapa(capa) }} />
-            <span style={nombreRenglon}>
-              {nombres.get(capa) ?? "Tarea que ya no está en el catálogo"}
+      {filas.map(({ capa, superficie, volumen, espesor }) => (
+        <div key={capa}>
+          <div style={renglon}>
+            <span style={nombreConMuestra}>
+              <span style={{ ...muestra, background: colorDeCapa(capa) }} />
+              <span style={nombreRenglon}>
+                {nombres.get(capa) ?? "Tarea que ya no está en el catálogo"}
+              </span>
             </span>
-          </span>
-          <span style={valorRenglon}>{formatM2(superficie)}</span>
+            <span style={valorRenglon}>{formatM2(superficie)}</span>
+          </div>
+          {volumen > 0 && (
+            <p style={detalleDeCapa}>
+              {espesor !== null ? formatCm(espesor) : "espesores distintos o sin cargar"} ·{" "}
+              {formatM3(volumen)}
+            </p>
+          )}
         </div>
       ))}
     </>
@@ -4964,6 +5099,150 @@ function CamposDeApertura({
           )}
         </select>
       </label>
+    </div>
+  );
+}
+
+/**
+ * Un nivel que puede no estar cargado y puede ser negativo: de dónde arranca
+ * una columna. Vacío es "lo que le toca", que se lee en el campo.
+ *
+ * Como `CampoMetros`, guarda el texto aparte del número: mientras se escribe
+ * "-" todavía no hay un nivel.
+ */
+function CampoNivel({
+  valor,
+  vacio,
+  alCambiar,
+  etiqueta,
+  quieto = false,
+}: {
+  valor: number | null;
+  /** Lo que se lee en el campo cuando no tiene valor. */
+  vacio?: string;
+  alCambiar: (nuevo: number | null) => void;
+  /** Cómo se llama, para quien no ve el dibujo de al lado. */
+  etiqueta?: string;
+  /** Si no se puede escribir: falta de dónde medirlo. */
+  quieto?: boolean;
+}) {
+  const [texto, setTexto] = useState(valor === null ? "" : String(valor));
+  const [visto, setVisto] = useState(valor);
+
+  if (visto !== valor) {
+    setVisto(valor);
+    if (valor === null) setTexto("");
+    else if (texto === "" || Number(texto) !== valor) setTexto(String(valor));
+  }
+
+  return (
+    <input
+      type="number"
+      step="0.01"
+      aria-label={etiqueta}
+      disabled={quieto}
+      value={texto}
+      placeholder={vacio}
+      onChange={(e) => {
+        setTexto(e.target.value);
+        if (e.target.value === "") {
+          alCambiar(null);
+          return;
+        }
+        const n = Number(e.target.value);
+        if (Number.isFinite(n)) alCambiar(n);
+      }}
+      style={quieto ? campoQuieto : ui.input}
+    />
+  );
+}
+
+/**
+ * De dónde a dónde va una columna, como en un programa de arquitectura: la
+ * columna dibujada entre los dos pisos y, al lado, cuánto se separa del piso
+ * terminado de arriba, cuánto del de la planta, y en el medio la altura que
+ * resulta —que no se escribe: sale de las otras dos—.
+ *
+ * Vacíos, los dos campos dicen lo que le toca sola: arranca en la losa de
+ * abajo y llega al fondo de la de arriba. Sin pisos definidos no hay piso de
+ * arriba desde el cual medir, y ese campo queda bloqueado.
+ */
+function AlturaDeColumna({
+  arriba,
+  desde,
+  medida,
+  pisoAPiso,
+  alCambiar,
+}: {
+  arriba: number | null;
+  desde: number | null;
+  /** Lo que resulta, en metros sobre el piso terminado de la planta. */
+  medida: { desde: number; hasta: number; alto: number } | null;
+  /** A cuánto está el piso terminado de arriba, o null si no se sabe. */
+  pisoAPiso: number | null;
+  alCambiar: (cambios: { arriba?: number | null; desde?: number | null }) => void;
+}) {
+  return (
+    <div style={alturaDeColumna}>
+      <svg
+        width="64"
+        height="132"
+        viewBox="0 0 64 132"
+        fill="none"
+        stroke="#9ca3af"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {/* El piso de arriba y el de la planta, en perspectiva. */}
+        <path d="M4 22l14-10h34l-14 10z" fill="#f3f4f6" />
+        <path d="M4 118l14-10h34l-14 10z" fill="#f3f4f6" />
+        {/* La columna, que no llega al de arriba. */}
+        <path d="M20 112V36l8-6h8v76l-8 6z" fill="#ffffff" stroke="#374151" />
+        <path d="M20 36h8l8-6M28 36v76" stroke="#374151" />
+        {/* Las tres cotas: arriba, la altura, abajo. */}
+        <path d="M46 17h14M46 33h14M46 113h14" />
+        <path d="M56 17v16M56 33v80" stroke="#374151" />
+      </svg>
+
+      <div style={camposDeAltura}>
+        <label style={campo}>
+          <span style={rotulo}>Del piso de arriba</span>
+          <CampoNivel
+            etiqueta="Separación del piso terminado de arriba"
+            valor={arriba}
+            quieto={pisoAPiso === null}
+            vacio={
+              pisoAPiso === null
+                ? "faltan los pisos"
+                : medida
+                  ? formatNivel(medida.hasta - pisoAPiso)
+                  : undefined
+            }
+            alCambiar={(nuevo) => alCambiar({ arriba: nuevo })}
+          />
+        </label>
+        <label style={campo}>
+          <span style={rotulo}>Altura</span>
+          <input
+            type="text"
+            readOnly
+            tabIndex={-1}
+            aria-label="Altura de la columna"
+            value={medida ? formatMedida(medida.alto) : ""}
+            style={campoQuieto}
+          />
+        </label>
+        <label style={campo}>
+          <span style={rotulo}>Del piso de la planta</span>
+          <CampoNivel
+            etiqueta="Separación del piso terminado de la planta"
+            valor={desde}
+            vacio={medida ? formatNivel(medida.desde) : undefined}
+            alCambiar={(nuevo) => alCambiar({ desde: nuevo })}
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -5294,9 +5573,9 @@ function detalleDeCapas(cara: CaraMedida, nombres: Map<string, string>) {
 }
 
 /** Dos listas de capas son la misma si tienen las mismas tareas, en el mismo
- *  orden y hasta la misma altura. */
+ *  orden, hasta la misma altura y del mismo espesor. */
 function firmaDeCapas(capas: Capa[]) {
-  return capas.map((capa) => `${capa.tarea}@${capa.hasta}`).join("|");
+  return capas.map((capa) => `${capa.tarea}@${capa.hasta}@${capa.espesor}`).join("|");
 }
 
 /** Las capas en una línea: "Revoque + Porcelanato", o que no hay ninguna. */
@@ -5306,18 +5585,25 @@ function resumenDeCapas(capas: Capa[], nombres: Map<string, string>) {
     : capas.map((capa) => nombres.get(capa.tarea) ?? "?").join(" + ");
 }
 
-/** Una capa de piso o de cielorraso: no tiene altura, es la tarea sola. */
-function capaEntera(tarea: string): Capa {
-  return { tarea, hasta: "techo" };
+/** Sólo lo que es de la capa: las que vienen de una cara medida traen además
+ *  cuánto miden ahí, que no se guarda. */
+function soloLaCapa({ tarea, hasta, espesor }: Capa): Capa {
+  return { tarea, hasta, espesor };
 }
 
 /** Junta por tarea: la misma en la pared y en el piso es una sola cantidad. */
-function porTarea(filas: { capa: string; superficie: number }[]) {
-  const sumas = new Map<string, number>();
-  for (const { capa, superficie } of filas) {
-    sumas.set(capa, (sumas.get(capa) ?? 0) + superficie);
+function porTarea(filas: { capa: string; superficie: number; volumen: number }[]) {
+  const sumas = new Map<string, { superficie: number; volumen: number }>();
+  for (const { capa, superficie, volumen } of filas) {
+    const ya = sumas.get(capa) ?? { superficie: 0, volumen: 0 };
+    sumas.set(capa, { superficie: ya.superficie + superficie, volumen: ya.volumen + volumen });
   }
-  return Array.from(sumas, ([capa, superficie]) => ({ capa, superficie }));
+  return Array.from(sumas, ([capa, suma]) => ({ capa, ...suma }));
+}
+
+/** Un espesor de capa, en centímetros: "1,5 cm". */
+function formatCm(metros: number) {
+  return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(metros * 100)} cm`;
 }
 
 /**
@@ -5853,6 +6139,19 @@ const botonDeModoActivo = {
   color: "#ffffff",
 };
 
+/** El dibujo de la columna a la izquierda y sus tres medidas a la derecha. */
+const alturaDeColumna = {
+  display: "grid",
+  gridTemplateColumns: "64px minmax(0, 1fr)",
+  alignItems: "center",
+  gap: "12px",
+};
+
+const camposDeAltura = {
+  display: "grid",
+  gap: "8px",
+};
+
 const giroConBoton = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -6190,6 +6489,24 @@ const alturaDeCapa = {
   alignItems: "center",
   gap: "8px",
   paddingLeft: "18px",
+};
+
+/** El espesor de una capa: un campo chico con su unidad al lado. */
+const espesorDeCapa = {
+  display: "grid",
+  gridTemplateColumns: "auto 72px auto",
+  justifyContent: "start",
+  alignItems: "center",
+  gap: "8px",
+  paddingLeft: "18px",
+};
+
+/** El volumen de una capa, debajo de sus m² y alineado con su nombre. */
+const detalleDeCapa = {
+  fontSize: "12px",
+  color: "#8a8a8a",
+  margin: "2px 0 0 18px",
+  textAlign: "right" as const,
 };
 
 const selectChico = {
