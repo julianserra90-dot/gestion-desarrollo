@@ -3,11 +3,14 @@ import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
-import { formatM2, formatMetros } from "@/lib/format";
+import BotonDefinirPisos from "@/components/BotonDefinirPisos";
+import { formatM2, formatM3, formatMetros, formatNiveles } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { medir, metrosPorPixel } from "@/lib/planta-dibujo";
+import { medirEstructura } from "@/lib/planta-estructura";
 import { solapesDeMuros } from "@/lib/planta-trazo";
-import { getPlantas } from "@/lib/plantas";
+import { getPisos, getPlantas } from "@/lib/plantas";
+import { guardarPisos } from "./actions";
 
 export default async function PlantasPage({
   params,
@@ -24,9 +27,16 @@ export default async function PlantasPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const plantas = (await getPlantas(obra.id)).map((p) => ({
+  const [todas, pisosDeObra] = await Promise.all([getPlantas(obra.id), getPisos(obra.id)]);
+
+  const plantas = todas.map((p) => ({
     ...p,
+    // El nivel de piso terminado de cada piso que es esta planta.
+    niveles: pisosDeObra.filter((piso) => piso.plantaId === p.id).map((piso) => piso.cota),
     medidas: medir(p.dibujo, p.escala, p.altura),
+    // El hormigón de la estructura de arriba de la planta, en m³.
+    hormigon:
+      medirEstructura(p.dibujo.estructura, metrosPorPixel(p.escala), p.altura)?.total ?? 0,
   }));
 
   // Los totales son del edificio: cada planta por los pisos que la repiten.
@@ -60,9 +70,16 @@ export default async function PlantasPage({
           <h2 style={ui.pageTitle}>Plantas</h2>
         </div>
 
-        <Link href={`/obras/${obra.slug}/plantas/nueva`} style={ui.button}>
-          Nueva planta
-        </Link>
+        <div style={accionesDePagina}>
+          <BotonDefinirPisos
+            pisos={pisosDeObra}
+            plantas={todas.map((p) => ({ id: p.id, nombre: p.nombre }))}
+            guardar={guardarPisos.bind(null, obra.slug, obra.id)}
+          />
+          <Link href={`/obras/${obra.slug}/plantas/nueva`} style={ui.button}>
+            Nueva planta
+          </Link>
+        </div>
       </section>
 
       {error && <p style={errorBox}>{error}</p>}
@@ -86,7 +103,9 @@ export default async function PlantasPage({
         </div>
       </section>
 
-      <section style={ui.panelConMargen}>
+      {/* Con la ventana angosta la tabla se corre adentro de su panel: son
+          muchas columnas, y de otro modo empujaba la página entera. */}
+      <section style={{ ...ui.panelConMargen, overflowX: "auto" }}>
         {plantas.length === 0 ? (
           <p style={ui.vacio}>Todavía no hay plantas cargadas en esta obra.</p>
         ) : (
@@ -96,12 +115,14 @@ export default async function PlantasPage({
                 <tr>
                   <th style={ui.th}>Planta</th>
                   <th style={ui.thRight}>Pisos iguales</th>
+                  <th style={ui.thRight}>Nivel</th>
                   <th style={ui.thRight}>Altura</th>
                   <th style={ui.thRight}>Muros</th>
                   <th style={ui.thRight}>Pared sin vanos</th>
                   <th style={ui.thRight}>Aberturas</th>
                   <th style={ui.thRight}>Ambientes</th>
                   <th style={ui.thRight}>Superficie</th>
+                  <th style={ui.thRight}>Hormigón</th>
                   <th style={ui.th} />
                 </tr>
               </thead>
@@ -110,6 +131,8 @@ export default async function PlantasPage({
                   <tr key={p.id}>
                     <td style={ui.td}>{p.nombre}</td>
                     <td style={ui.tdRight}>{p.repeticiones}</td>
+                    {/* Sin piso asignado todavía no está en ningún nivel. */}
+                    <td style={ui.tdRight}>{formatNiveles(p.niveles) ?? "—"}</td>
                     <td style={ui.tdRight}>{formatMetros(p.altura)}</td>
                     {p.medidas ? (
                       <>
@@ -124,9 +147,14 @@ export default async function PlantasPage({
                         <td style={ui.tdRight}>
                           {formatM2(p.medidas.areaDeAmbientes)}
                         </td>
+                        {/* Vacío, y no "0,00 m³", en la planta que todavía no
+                            tiene estructura dibujada. */}
+                        <td style={ui.tdRight}>
+                          {p.hormigon > 0 ? formatM3(p.hormigon) : "—"}
+                        </td>
                       </>
                     ) : (
-                      <td style={sinEscalaCelda} colSpan={5}>
+                      <td style={sinEscalaCelda} colSpan={6}>
                         Sin escala: todavía no mide
                       </td>
                     )}
@@ -171,6 +199,12 @@ const cabeceraPagina = {
   alignItems: "flex-start",
   gap: "16px",
   marginBottom: "28px",
+};
+
+const accionesDePagina = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
 };
 
 const enlace = {

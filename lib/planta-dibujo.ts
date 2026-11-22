@@ -50,6 +50,13 @@ export type Muro = {
    * los mueve a todos menos a los que tienen la suya.
    */
   altura: number | null;
+  /**
+   * De qué está hecho: una tarea del catálogo del cómputo, por su id —ladrillo
+   * hueco del 8, del 12 portante, ladrillo común, un tabique de placa de
+   * yeso—. Null: todavía no se dijo. Es lo que hace que el dibujo dé los m²
+   * (o los m³) de cada mampostería sin medir nada aparte.
+   */
+  tarea: string | null;
 };
 
 /**
@@ -175,10 +182,133 @@ export type Abertura = {
   hojas: number | null;
 };
 
+// ---- La estructura --------------------------------------------------------
+//
+// El hormigón armado se dibuja sobre el mismo plano, en su propia capa. Es la
+// estructura **de arriba** del piso: las columnas que lo atraviesan y las
+// vigas y la losa que lo cubren. Las alturas se miden desde el nivel de piso
+// terminado de la planta, que es siempre 0,00 (`planta-estructura.ts`).
+
+/**
+ * De dónde se agarra una columna al ponerla: su centro o una de sus cuatro
+ * esquinas, nombradas como se ven en el plano —superior izquierda, superior
+ * derecha, inferior izquierda, inferior derecha—.
+ */
+export const ANCLAS = [
+  { valor: "si", nombre: "Esquina superior izquierda" },
+  { valor: "sd", nombre: "Esquina superior derecha" },
+  { valor: "centro", nombre: "Centro" },
+  { valor: "ii", nombre: "Esquina inferior izquierda" },
+  { valor: "id", nombre: "Esquina inferior derecha" },
+] as const;
+
+export type Ancla = (typeof ANCLAS)[number]["valor"];
+
+/**
+ * De qué es una columna. Cambia qué se le computa: la de hormigón lleva m³ y
+ * se queda con el nudo donde llegan las vigas; la metálica es un perfil, se
+ * mide por su largo y no le saca hormigón a nadie.
+ */
+export const MATERIALES = [
+  { valor: "hormigon", nombre: "Hormigón armado" },
+  { valor: "metalica", nombre: "Metálica" },
+] as const;
+
+export type Material = (typeof MATERIALES)[number]["valor"];
+
+/**
+ * Una columna: se pone con un toque, como una abertura. Sin girar, sus lados
+ * van con los ejes del plano: el ancho en horizontal y la profundidad en
+ * vertical.
+ */
+export type Columna = {
+  id: string;
+  /** El de la planilla de estructura: C01. */
+  nombre: string;
+  /** El punto que se marcó: el ancla. */
+  p: Punto;
+  ancla: Ancla;
+  /**
+   * Cuánto está girada, en grados y en el sentido de las agujas del reloj
+   * como se ve en el plano. Gira **alrededor de su ancla**, que queda donde
+   * se la marcó: una columna tomada de una esquina se acomoda a un muro en
+   * diagonal sin soltarse de esa esquina.
+   */
+  giro: number;
+  material: Material;
+  /**
+   * Sólo en las metálicas: qué perfil es —"IPN 200", "Tubo 100×100×4"—. Es
+   * lo que se le pide al herrero y lo que dice cuánto pesa el metro; vacío,
+   * se la junta por su sección.
+   */
+  perfil: string;
+  /** En metros. */
+  ancho: number;
+  profundidad: number;
+  /** De dónde arranca, en metros sobre el piso terminado. Casi siempre 0. */
+  desde: number;
+  /** Cuánto mide de alto. Null: hasta el fondo de losa de la planta. */
+  altura: number | null;
+};
+
+/** Una viga: se traza como un muro, con su línea de referencia. */
+export type Viga = {
+  id: string;
+  /** V01. */
+  nombre: string;
+  a: Punto;
+  b: Punto;
+  referencia: Referencia;
+  /**
+   * De hormigón o metálica, como las columnas. Cambia dos cosas: qué se le
+   * computa —m³ o metros de perfil— y **dónde va respecto de la losa**: la de
+   * hormigón se cuela con ella y su alto la incluye; la metálica la sostiene
+   * desde abajo.
+   */
+  material: Material;
+  /** Sólo en las metálicas: qué perfil es, "IPN 200". */
+  perfil: string;
+  /** En metros: 0,12 × 0,45. **En las de hormigón, el alto incluye la losa.** */
+  ancho: number;
+  alto: number;
+  /**
+   * A qué altura está su cara de arriba, en metros sobre el piso terminado.
+   * Null: donde le toca por su material —en la cara de arriba de la losa que
+   * tiene encima si es de hormigón, en el fondo de esa losa si es metálica—.
+   * Con número, una viga invertida o una de un entrepiso.
+   */
+  nivel: number | null;
+};
+
+/** Una losa: se dibuja como un ambiente, por su contorno. */
+export type Losa = {
+  id: string;
+  /** L01. */
+  nombre: string;
+  puntos: Punto[];
+  /** En metros. */
+  espesor: number;
+  /**
+   * A qué altura está su fondo, en metros sobre el piso terminado. Null: a la
+   * altura de piso a techo de la planta.
+   */
+  nivel: number | null;
+};
+
+export type Estructura = { columnas: Columna[]; vigas: Viga[]; losas: Losa[] };
+
+export const ESTRUCTURA_VACIA: Estructura = { columnas: [], vigas: [], losas: [] };
+
+/** Con qué arranca cada pieza: las secciones más comunes, para corregir de ahí. */
+export const COLUMNA_INICIAL = { ancho: 0.2, profundidad: 0.2 };
+export const VIGA_INICIAL = { ancho: 0.12, alto: 0.45 };
+export const LOSA_INICIAL = { espesor: 0.12 };
+
 export type Dibujo = {
   muros: Muro[];
   ambientes: Ambiente[];
   aberturas: Abertura[];
+  estructura: Estructura;
   /**
    * Las capas de las caras de muro que no llevan las de su ambiente: la pared
    * de la bañera que va con otro revestimiento, o una cara que no da a ningún
@@ -192,7 +322,13 @@ export type Dibujo = {
   caras: Record<string, Capa[]>;
 };
 
-export const DIBUJO_VACIO: Dibujo = { muros: [], ambientes: [], aberturas: [], caras: {} };
+export const DIBUJO_VACIO: Dibujo = {
+  muros: [],
+  ambientes: [],
+  aberturas: [],
+  estructura: ESTRUCTURA_VACIA,
+  caras: {},
+};
 
 /** Con qué arranca cada tipo: las medidas más comunes, para corregir de ahí. */
 export const ABERTURA_INICIAL: Record<
@@ -525,6 +661,7 @@ export function leerDibujo(valor: unknown): Dibujo {
       // Un muro guardado antes de que existiera la referencia se marcó por su eje.
       referencia: REFERENCIAS.find((ref) => ref.valor === r.referencia)?.valor ?? "centro",
       altura: alturaPropia !== null && alturaPropia > 0 ? alturaPropia : null,
+      tarea: typeof r.tarea === "string" && r.tarea !== "" ? r.tarea : null,
     });
   }
 
@@ -595,5 +732,84 @@ export function leerDibujo(valor: unknown): Dibujo {
     }
   }
 
-  return { muros, ambientes, aberturas, caras };
+  return { muros, ambientes, aberturas, estructura: leerEstructura(crudo.estructura), caras };
+}
+
+/** Una medida en metros que tiene que ser mayor que cero, o lo de siempre. */
+function medida(valor: unknown, siFalta: number): number {
+  const n = numero(valor);
+  return n !== null && n > 0 ? n : siFalta;
+}
+
+/**
+ * La estructura guardada. Un dibujo de antes de que existiera no la trae, y
+ * abre con la estructura vacía.
+ */
+function leerEstructura(valor: unknown): Estructura {
+  if (typeof valor !== "object" || valor === null) return ESTRUCTURA_VACIA;
+  const crudo = valor as Record<string, unknown>;
+
+  const columnas: Columna[] = [];
+  for (const c of Array.isArray(crudo.columnas) ? crudo.columnas : []) {
+    if (typeof c !== "object" || c === null) continue;
+    const r = c as Record<string, unknown>;
+    const p = punto(r.p);
+    const desde = numero(r.desde);
+    const altura = numero(r.altura);
+    if (typeof r.id !== "string" || !p) continue;
+    columnas.push({
+      id: r.id,
+      nombre: typeof r.nombre === "string" ? r.nombre : "",
+      p,
+      ancla: ANCLAS.find((a) => a.valor === r.ancla)?.valor ?? "centro",
+      // Una columna guardada antes de que existieran: derecha y de hormigón.
+      giro: numero(r.giro) ?? 0,
+      material: MATERIALES.find((m) => m.valor === r.material)?.valor ?? "hormigon",
+      perfil: typeof r.perfil === "string" ? r.perfil : "",
+      ancho: medida(r.ancho, COLUMNA_INICIAL.ancho),
+      profundidad: medida(r.profundidad, COLUMNA_INICIAL.profundidad),
+      desde: desde ?? 0,
+      altura: altura !== null && altura > 0 ? altura : null,
+    });
+  }
+
+  const vigas: Viga[] = [];
+  for (const v of Array.isArray(crudo.vigas) ? crudo.vigas : []) {
+    if (typeof v !== "object" || v === null) continue;
+    const r = v as Record<string, unknown>;
+    const a = punto(r.a);
+    const b = punto(r.b);
+    if (typeof r.id !== "string" || !a || !b) continue;
+    vigas.push({
+      id: r.id,
+      nombre: typeof r.nombre === "string" ? r.nombre : "",
+      a,
+      b,
+      referencia: REFERENCIAS.find((ref) => ref.valor === r.referencia)?.valor ?? "centro",
+      material: MATERIALES.find((m) => m.valor === r.material)?.valor ?? "hormigon",
+      perfil: typeof r.perfil === "string" ? r.perfil : "",
+      ancho: medida(r.ancho, VIGA_INICIAL.ancho),
+      alto: medida(r.alto, VIGA_INICIAL.alto),
+      nivel: numero(r.nivel),
+    });
+  }
+
+  const losas: Losa[] = [];
+  for (const l of Array.isArray(crudo.losas) ? crudo.losas : []) {
+    if (typeof l !== "object" || l === null) continue;
+    const r = l as Record<string, unknown>;
+    const puntos = (Array.isArray(r.puntos) ? r.puntos : [])
+      .map(punto)
+      .filter((p): p is Punto => p !== null);
+    if (typeof r.id !== "string" || puntos.length < 3) continue;
+    losas.push({
+      id: r.id,
+      nombre: typeof r.nombre === "string" ? r.nombre : "",
+      puntos,
+      espesor: medida(r.espesor, LOSA_INICIAL.espesor),
+      nivel: numero(r.nivel),
+    });
+  }
+
+  return { columnas, vigas, losas };
 }

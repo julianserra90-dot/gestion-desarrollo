@@ -569,6 +569,171 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   se marcó. **Las aberturas van sobre el eje del cuerpo**, no sobre la línea
   marcada (`murosPorSuCuerpo` en el editor). Un muro guardado sin referencia
   abre por su eje.
+- **El tipo de muro** (`muros[].tarea`; null = sin tipo). De qué está hecho
+  cada muro: una tarea del catálogo del cómputo —ladrillo hueco del 8, del 12
+  portante, ladrillo común, un tabique de placa—. Con eso el dibujo da la
+  mampostería por tipo sin medir nada aparte (`medirCaras().muros`). Se mide
+  **por muro y no por cara**: el largo de la línea marcada por su altura,
+  menos sus puertas y ventanas, una sola vez. **Van los m² y los m³**, y la
+  unidad de la tarea dice cuál es la suya: el catálogo cotiza los ladrillos
+  huecos por superficie y los comunes por volumen (superficie × espesor). Por
+  eso los tipos de muro son las tareas de m² **y** de m³ (`getTiposDeMuro`),
+  no sólo las de m² como las capas; el desplegable pone primero Mamposterías
+  y Estructuras. Se elige al trazar —queda puesto para los muros que siguen,
+  como el espesor—, en la ficha, y con **Copiar**, que sobre el cuerpo de un
+  muro toma su tipo. La ficha ofrece además el atajo de todos los días:
+  ponérselo a los otros muros **del mismo espesor que no tienen tipo**
+  —nunca pisa uno elegido a mano—. Medidas dice cuántos m² de muro siguen sin
+  tipo.
+- **La estructura de hormigón** (`dibujo.estructura`: columnas, vigas y losas;
+  cuentas en `lib/planta-estructura.ts`). Va **sobre el mismo plano**, en su
+  propio modo: el editor tiene Arquitectura | Estructura, con la misma imagen
+  y la misma escala, y lo que cambia es qué herramientas hay y qué se deja
+  tocar; lo del otro modo se ve atenuado, porque la estructura se dibuja
+  mirando los muros (y los muros se pegan a las columnas). Sin escala no hay
+  modo Estructura: una sección en metros no tiene tamaño en el plano. No
+  necesitó migración: es otra clave del jsonb y `leerDibujo` la tolera.
+  **Cada planta dibuja la estructura de arriba**: las columnas que la
+  atraviesan y las vigas y la losa que la cubren ("sobre planta baja").
+  **Los niveles se miden desde el piso terminado de la planta, que es ±0,00**;
+  el fondo de losa es la altura de piso a techo de la planta, salvo que la
+  losa diga otra cosa (`losa.nivel`).
+  Cada pieza se dibuja como su par de arquitectura. La **columna** se pone con
+  un toque, como una abertura: ancho (en horizontal), profundidad (en
+  vertical) y **de dónde se agarra** —el centro o una de sus cuatro esquinas
+  (`ancla`)—, que es el punto que se pega a la esquina del muro o al filo de
+  la medianera y el que queda quieto si después se le cambia la sección;
+  cambiarle el ancla ya puesta no la mueve (`puntoDeAncla`). Va del piso
+  terminado al fondo de losa salvo que se le ponga `desde` o `altura`. La
+  **viga** se traza como un muro, con su línea de referencia, y la **losa** se
+  contornea como un ambiente (los mismos agarres: se arrastra un punto, se
+  corre un lado, doble clic suma o saca un punto).
+  **El nombre se puede escribir antes de poner la pieza** (campo Nombre de la
+  herramienta; vacío es "el que sigue", que se lee en el campo como
+  sugerencia). Lo escrito vale para esa pieza y después el campo se vacía: la
+  que viene **sigue la serie de la última** (`nombreQueSigue`) —después de
+  CM01 va CM02, después de P1 va P2, con las mismas cifras—. Las columnas y
+  las vigas llevan dos series, una por material: C y CM, V y VM. También se
+  corrige en la ficha.
+  **La columna gira** (`giro`, en grados, horario como se ve en el plano)
+  **alrededor de su ancla**, que no se mueve: tomada de una esquina se acomoda
+  a un muro en diagonal sin soltarse de ella. La ficha tiene el ángulo y el
+  atajo de un cuarto de vuelta.
+  **Las columnas y las vigas son de hormigón o metálicas** (`material`). La
+  metálica lleva además su `perfil` —texto libre: "IPN 200", "tubo
+  100×100×4"; no hay catálogo de perfiles ni se calculan kilos—, se dibuja
+  hueca (la columna con sus dos diagonales, la viga con su eje), **no suma
+  hormigón ni se queda con el nudo** de nadie (su sección es el rectángulo
+  que la envuelve, no lo que ocupa), y en Medidas va aparte, **por perfil y
+  en metros**, que es como se pide. **La viga metálica va debajo de la losa**
+  —la sostiene, no se cuela con ella—: su cara de arriba es el fondo de la
+  losa, no su cara de arriba como en la de hormigón. Caso de control: IPN de
+  20 de alto bajo losa con fondo en +2,60 → de +2,40 a +2,60.
+  **El alto de la viga incluye la losa** (decidido con el usuario): una 12×45
+  bajo una losa de 12 asoma 33. Su cara de arriba va al ras de arriba de la
+  losa que tiene encima; sin losa, al fondo de losa de la planta; `viga.nivel`
+  la pone a mano (una invertida).
+  **El hormigón se mide descontando los cruces** (decidido con el usuario), y
+  quién se queda con el nudo está fijo: **columna, después losa, después
+  viga**; entre dos vigas, la que se dibujó primero. Es la regla de un cómputo
+  métrico: la columna va de corrido, la losa entera, y la viga por lo que
+  asoma debajo de la losa y entre caras de columnas. Cada pieza es un prisma
+  (huella en planta + tramo de altura) y `medirEstructura` le saca a cada una
+  lo que le pisan las de más prioridad, cortando su altura en tramos. Caso de
+  control: paño de 4,00 × 3,00 a ejes, cuatro columnas de 20×20, cuatro vigas
+  de 12×45 y losa de 12 hasta el filo de las columnas, planta de 2,60 →
+  columnas 0,416, vigas 0,523, losa 1,613, total 2,552 m³.
+  El listado de plantas muestra el hormigón de cada una.
+- **Los pisos de la obra y su nivel** (tabla `pisos`, migración
+  `20261122180000`; cuentas en `lib/pisos.ts`; diálogo
+  `components/DefinicionDePisos.tsx`). Una planta dice cómo es un piso, no
+  **dónde está**: para apilar las plantas en 3D hace falta el nivel de piso
+  terminado de cada piso. El usuario pidió la **Definición de pisos de
+  ArchiCAD**, y es eso: una tabla **de la obra entera** —N.º, nombre, cota de
+  nivel, altura del piso— con Insertar encima, Insertar abajo y Borrar, más
+  una columna que ArchiCAD no tiene: **qué planta dibujada es la de cada
+  piso**. Se abre desde el botón "NPT …" de la barra del editor, al lado de
+  Arquitectura | Estructura, y desde "Definir pisos" en el listado.
+  El 0 es la planta baja; hacia arriba 1, 2, 3; los subsuelos, negativos.
+  **Las cotas van encadenadas**: la de un piso es la del de abajo más su
+  altura. Cambiar una altura sube o baja a todos los de arriba; escribir una
+  cota le cambia la altura al piso de abajo (o la propia, en un subsuelo); la
+  de la planta baja es el origen y mueve el edificio entero. Una cota que
+  dejaría un piso sin altura no se toma: no se pueden encimar dos pisos.
+  Mientras se edita, la definición es la lista de abajo hacia arriba más cuál
+  es la planta baja y su nivel (`Definicion`): el número y la cota salen de
+  ahí, y por eso insertar en el medio no obliga a renumerar a mano. Se guarda
+  entera (`guardarPisos`: escribe por número y recién después borra los que
+  sobran).
+  **`pisos.altura` es de nivel de piso terminado a nivel de piso terminado
+  (NPT a NPT); `plantas.altura`, de piso a techo.** No son la misma: entre
+  las dos están la losa y el paquete de piso de arriba. El usuario lo remarcó
+  y la pantalla lo dice: la columna se llama "Altura NPT a NPT", y la solapa
+  Planta muestra las dos y **lo que queda entre ellas para losa y piso**
+  (2,80 − 2,65 = 0,15), con un aviso en rojo si la de piso a techo no entra.
+  **Varios pisos con la misma planta son una planta tipo**, y de ahí sale
+  ahora cuántos pisos la repiten: al guardar los pisos se actualiza
+  `plantas.repeticiones`, y en el editor "Pisos iguales" queda bloqueado
+  mostrando esa cuenta. Una planta sin ningún piso asignado conserva lo que
+  se le cargó a mano, y su botón dice "NPT sin definir" en naranja.
+  Un piso insertado copia la altura **y la planta** del que se tomó de
+  referencia (casi siempre se suma otro piso de la misma planta tipo).
+  Antes de esto se había empezado a guardar los niveles dentro del dibujo de
+  cada planta; se descartó: los pisos son de la obra, no de una planta.
+- **La punta de un muro o de una viga se estira derecha** (`estirar` en el
+  editor; el usuario veía que al alargar un muro "se movía entero"). Antes la
+  punta seguía al puntero en cualquier dirección: arrastrada a pulso quedaba
+  unos centímetros al costado y el muro cambiaba de dirección. Ahora, mientras
+  el puntero esté a menos de `ESTIRAR` (24 px de pantalla) de **la línea que
+  tenía el tramo al agarrarlo**, la punta va por esa línea, y se frena justo
+  donde cruza a otro muro o a una de sus caras (el encuentro en T). Más lejos
+  queda libre, que es como se lo gira a propósito. Con "Mover también los
+  muros unidos" y más de un muro en la punta no hay línea que seguir.
+  De paso se corrigió por qué se torcía aun con las guías: **los rincones**
+  (donde las caras de dos muros se cortan) se guardaban entre las esquinas de
+  los dos, así que al mover uno su rincón seguía atrayendo desde la lista del
+  vecino, y la punta se alineaba con el rincón de su propia otra punta —medio
+  espesor al costado—. Ahora van aparte, con los dos muros que los forman
+  (`rincones` en el memo de `bordes`), y no atraen si uno de los dos se mueve.
+- **Las aberturas no se corren cuando se estira su muro**
+  (`aberturasEnSuLugar`, en `planta-trazo.ts`; era lo que el usuario veía
+  como "el muro se mueve entero"). Una abertura guarda en qué **fracción** del
+  largo de su muro está (`t`): eso la lleva con el muro cuando se lo mueve,
+  pero al estirarlo la corría —la puerta al 30 % de un muro de 3 m, a 90 cm
+  de la esquina, quedaba a 1,20 si el muro pasaba a 4—. Ahora, al arrastrar
+  una punta, a cada abertura de los muros que cambian se le rehace la
+  fracción para que su centro quede **donde estaba en el plano**; si el muro
+  giró, en el punto más cercano de su nueva línea. Si el muro se acorta hasta
+  pisarla, la abertura queda adentro, contra la punta, y nunca asoma. Se
+  ubican contra el dibujo de **cuando empezó el arrastre** (`alAgarrar`), no
+  contra el paso anterior: la que la punta empujó vuelve a su lugar si el
+  muro se alarga otra vez en el mismo arrastre. El modelo no cambió: sigue
+  guardando la fracción. Caso de control: muro de 3,00 con puerta a 0,90 de
+  la punta, estirado a 4,00 → sigue a 0,90 (t pasa de 0,30 a 0,225).
+- **La pantalla del editor es una mesa de trabajo**, no una página
+  (reordenada el 22/11/2026 a pedido del usuario: antes los botones se
+  partían en dos renglones, el panel se cortaba y había que correr la página).
+  Ocupa la ventana entera y **mide justo su alto**: `AppShell` tiene para eso
+  `pantallaCompleta` (sin el ancho máximo y con 16 px de margen), y la página
+  de la planta no lleva `ObraHeader` —el "← Plantas" y el nombre van en la
+  barra del editor—. Tres zonas: **arriba**, lo de la planta entera (volver,
+  Arquitectura | Estructura, nombre, deshacer, encuadrar, guardar); **a la
+  izquierda**, las herramientas del modo en una tira de íconos
+  (`IconoHerramienta`, del mismo juego que `IconoObra`; el nombre sale al
+  apoyar el puntero); **a la derecha**, el panel, de ancho fijo, en tres
+  solapas: **Propiedades** (lo elegido o las opciones de la herramienta; se
+  abre sola al tocar algo o elegir una herramienta con opciones), **Medidas**
+  (cada apartado plegado con su total en la cabeza, `Grupo`: la solapa es una
+  lista corta y el detalle se abre donde hace falta) y **Planta** (nombre,
+  altura, pisos iguales, eliminar). Las solapas que no se miran siguen
+  montadas (`display: none`) para no perder lo que se estaba escribiendo. Lo
+  único que puede tener barra propia es el contenido del panel. La pista de la
+  herramienta y las casillas "A escuadra" y "Guías" flotan sobre el plano.
+  **El corte del panel era un bug de grilla**: un `display: grid` sin columnas
+  declaradas estira su columna hasta el renglón más largo que no parte
+  —"Ladrillos cerámicos huecos 12x18x33cm"— y empujaba la página; por eso
+  `bloque` declara `minmax(0, 1fr)` y los nombres de los renglones bajan de
+  línea en vez de cortarse.
 - **Guías dinámicas** (`ajustar` devuelve `guias`). Al marcar o mover un
   punto, se alinea con cualquier esquina que tenga en la misma horizontal o
   vertical y dibuja la línea celeste contra la que se alineó; las dos a la vez
@@ -622,7 +787,11 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
     metros desde el piso. La capa mide, de cada paño, antepecho y dintel, lo
     que queda por debajo de su altura: de un dintel que arranca a 2,05, un
     porcelanato hasta 2,40 cuenta 35 cm. Una capa guardada cuando era sólo el
-    id de su tarea se lee como "hasta el techo", que es lo que medía.
+    id de su tarea se lee como "hasta la losa", que es lo que medía. En
+    pantalla las tres opciones se llaman **Losa · Cielorraso · Altura
+    personalizada**, como las pidió el usuario: el valor guardado sigue
+    siendo `"techo"`, pero "techo" en pantalla confundía —en un ambiente con
+    cielorraso, el techo que se ve es el cielorraso—.
   - **El cielorraso y el piso son del ambiente** y se miden por su
     superficie: `ambiente.alturaCielorraso` (null = no hay suspendido, el
     techo es la losa), `ambiente.cielorraso` y `ambiente.piso`, los dos por
@@ -672,6 +841,16 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
     cara que lleva las suyas, o que no da a ningún ambiente (el frente, una
     medianera). Una lista vacía es "esta cara no lleva nada", distinto de no
     tener entrada, que es heredar.
+  - **La ficha del ambiente muestra las capas que sus muros ya tienen.** Las
+    paredes se pueden terminar desde dos lados —el ambiente o cada muro— y
+    quien las cargó muro por muro encontraba "Paredes" vacío con el baño
+    entero revestido: parecía que no había nada. Ahora, debajo de las capas
+    del ambiente, se listan las caras que dan a él y llevan las suyas, cada
+    una como un botón que lleva a su muro con esa cara abierta. Y dos atajos
+    para dejar la terminación en un solo lugar, que es donde la altura de
+    cada capa se ajusta una vez: **Pasarlas al ambiente** —sólo si todas son
+    iguales y el ambiente no tiene las suyas, porque de otro modo habría que
+    elegir cuál pisa a cuál— y **Que lleven las del ambiente**.
   - **La clave de una cara dice qué cara es, no dónde está**:
     `muro|lado|ambiente`. Una posición no aguanta que el muro se mueva o se
     alargue; "la cara de este muro que da al baño" sí. Dos tramos del mismo
@@ -2164,7 +2343,14 @@ acción de borrar el pago del lote viaja como prop.
   computan por unidad y por tipo, y la planilla ya las da así.
   **Etapa 3 — vista 3D y aberturas.** El usuario la quiere **girable con el
   mouse**, lo que pide sumar una librería 3D (three.js); la isométrica fija
-  en SVG, como `VolumenLote`, se descartó.
+  en SVG, como `VolumenLote`, se descartó. Cada planta se levanta en la cota
+  de cada piso que la tiene asignada (tabla `pisos`). Tiene que mostrar también la
+  **estructura**, que ya está en 2D con sus niveles (cada pieza es un prisma:
+  `medirEstructura` da de dónde a dónde va en altura).
+  **Estructura, lo que falta**: mandar el hormigón al cómputo (m³ de
+  columnas, vigas y losas contra las tareas de Estructuras), bases y
+  fundaciones, encadenados, y que una pieza lleve su tarea del catálogo como
+  los muros llevan su tipo.
   **No detecta muros solo**: el plano se calca a mano, y es a propósito —la
   detección automática desde un PDF o un JPG no es confiable—.
 

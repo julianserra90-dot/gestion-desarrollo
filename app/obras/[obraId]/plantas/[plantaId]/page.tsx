@@ -3,8 +3,14 @@ import EditorPlanta from "@/components/EditorPlanta";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import { getObraPorSlug } from "@/lib/obras";
-import { getCapasDisponibles, getPlanta } from "@/lib/plantas";
-import { eliminarPlanta, guardarPlanta } from "../actions";
+import {
+  getCapasDisponibles,
+  getPisos,
+  getPlanta,
+  getPlantas,
+  getTiposDeMuro,
+} from "@/lib/plantas";
+import { eliminarPlanta, guardarPisos, guardarPlanta } from "../actions";
 
 export default async function PlantaPage({
   params,
@@ -19,9 +25,12 @@ export default async function PlantaPage({
   }
 
   // El id llega por la URL y no tiene por qué ser de esta obra.
-  const [planta, capasDisponibles] = await Promise.all([
+  const [planta, capasDisponibles, tiposDeMuro, pisos, plantas] = await Promise.all([
     getPlanta(plantaId),
     getCapasDisponibles(),
+    getTiposDeMuro(),
+    getPisos(obra.id),
+    getPlantas(obra.id),
   ]);
 
   if (!planta || planta.obraId !== obra.id) {
@@ -35,12 +44,13 @@ export default async function PlantaPage({
     );
   }
 
+  // Sin la cabecera de la obra: el editor es una mesa de trabajo y ocupa la
+  // ventana entera. El "← Volver" y el nombre de la planta van en su barra.
   return (
     <AppShell
+      pantallaCompleta
       sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="plantas" />}
     >
-      <ObraHeader obra={obra} activeSection="plantas" ocultarNav />
-
       <EditorPlanta
         planta={{
           id: planta.id,
@@ -61,6 +71,10 @@ export default async function PlantaPage({
         guardar={guardarPlanta}
         eliminar={eliminarPlanta}
         capasDisponibles={capasDisponibles}
+        tiposDeMuro={tiposDeMuro}
+        pisosDeObra={pisos}
+        plantasDeObra={plantas.map((p) => ({ id: p.id, nombre: p.nombre }))}
+        guardarPisos={guardarPisos.bind(null, obra.slug, obra.id)}
       />
     </AppShell>
   );

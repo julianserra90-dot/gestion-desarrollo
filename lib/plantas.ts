@@ -11,6 +11,7 @@ import {
   leerDibujo,
   leerEscala,
 } from "@/lib/planta-dibujo";
+import type { Piso } from "@/lib/pisos";
 import { createClient } from "@/lib/supabase/server";
 
 export type Planta = {
@@ -77,6 +78,30 @@ export async function getPlantas(obraId: string): Promise<Planta[]> {
   return (data ?? []).map(aPlanta);
 }
 
+/**
+ * La definición de pisos de la obra, de abajo hacia arriba: cada piso con su
+ * nivel de piso terminado, su altura y la planta dibujada que le toca.
+ */
+export async function getPisos(obraId: string): Promise<Piso[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("pisos")
+    .select("numero, nombre, cota, altura, planta_id")
+    .eq("obra_id", obraId)
+    .order("numero");
+
+  if (error) console.error("getPisos:", error.message);
+
+  return (data ?? []).map((p) => ({
+    numero: p.numero,
+    nombre: p.nombre,
+    cota: Number(p.cota),
+    altura: Number(p.altura),
+    plantaId: p.planta_id,
+  }));
+}
+
 export async function getPlanta(id: string): Promise<Planta | null> {
   const supabase = await createClient();
 
@@ -114,4 +139,36 @@ export async function getCapasDisponibles(): Promise<
   if (error) console.error("getCapasDisponibles:", error.message);
 
   return (data ?? []).map((t) => ({ id: t.id, nombre: t.nombre, rubro: t.rubro }));
+}
+
+/**
+ * Las tareas del catálogo que sirven de tipo de muro: las que se miden en m²
+ * y las de m³.
+ *
+ * Las dos unidades, porque el catálogo cotiza los ladrillos huecos y los
+ * tabiques por superficie y los ladrillos comunes por volumen. No se filtra
+ * por rubro: un muro puede ser un tabique de hormigón, que está en
+ * Estructuras, o una tarea propia que alguien cargó en otro lado. El
+ * desplegable pone primero las mamposterías.
+ */
+export async function getTiposDeMuro(): Promise<
+  { id: string; nombre: string; rubro: string; unidad: string }[]
+> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("tareas")
+    .select("id, nombre, rubro, unidad, orden")
+    .in("unidad", ["m²", "m³"])
+    .order("rubro")
+    .order("orden");
+
+  if (error) console.error("getTiposDeMuro:", error.message);
+
+  return (data ?? []).map((t) => ({
+    id: t.id,
+    nombre: t.nombre,
+    rubro: t.rubro,
+    unidad: t.unidad,
+  }));
 }

@@ -11,6 +11,7 @@
  */
 
 import {
+  type Abertura,
   type Capa,
   type Dibujo,
   type Muro,
@@ -417,6 +418,73 @@ export function crucesDeCaras(
   }
 
   return puntos;
+}
+
+// ---- Las aberturas, cuando su muro cambia ---------------------------------
+
+/**
+ * Las aberturas **en el mismo lugar del plano** después de que sus muros
+ * cambiaron de largo o de posición.
+ *
+ * Una abertura no guarda coordenadas: guarda en qué fracción del largo de su
+ * muro está. Eso la lleva con el muro cuando se lo mueve entero, pero al
+ * estirarlo la corre: la puerta que estaba al 30 % de un muro de 3 m —a 90
+ * cm de la esquina— queda a 1,20 si el muro pasa a medir 4. Y una puerta no
+ * se mueve porque la pared siga más allá.
+ *
+ * Por eso, para cada abertura de un muro que cambió, se busca dónde estaba su
+ * centro (`antes`) y se rehace la fracción sobre el muro como quedó
+ * (`despues`). Si el muro giró, es el punto más cercano de su nueva línea. Si
+ * se acortó hasta pisarla, la abertura se queda adentro, contra la punta:
+ * nunca asoma. Las de los muros que no cambiaron vuelven tal cual.
+ *
+ * Conviene que `antes` sea el dibujo de **cuando empezó el arrastre**, no el
+ * del paso anterior: así una abertura que la punta empujó vuelve a su lugar si
+ * el muro se alarga otra vez.
+ */
+export function aberturasEnSuLugar(
+  aberturas: Abertura[],
+  antes: Muro[],
+  despues: Muro[],
+  mpp: number | null,
+  u: number
+): Abertura[] {
+  return aberturas.map((abertura) => {
+    const viejo = antes.find((m) => m.id === abertura.muroId);
+    const nuevo = despues.find((m) => m.id === abertura.muroId);
+    if (!viejo || !nuevo) return abertura;
+    if (
+      mismoPunto(viejo.a, nuevo.a) &&
+      mismoPunto(viejo.b, nuevo.b) &&
+      viejo.espesor === nuevo.espesor &&
+      viejo.referencia === nuevo.referencia
+    ) {
+      return abertura;
+    }
+
+    // Las aberturas van sobre el eje del cuerpo, de punta a punta de lo
+    // marcado: no depende de los vecinos, sólo del propio muro.
+    const ejeViejo = cuerpoDeMuro(viejo, [], mpp, u);
+    const ejeNuevo = cuerpoDeMuro(nuevo, [], mpp, u);
+    const centro = {
+      x: ejeViejo.ejeA.x + (ejeViejo.ejeB.x - ejeViejo.ejeA.x) * abertura.t,
+      y: ejeViejo.ejeA.y + (ejeViejo.ejeB.y - ejeViejo.ejeA.y) * abertura.t,
+    };
+
+    const dx = ejeNuevo.ejeB.x - ejeNuevo.ejeA.x;
+    const dy = ejeNuevo.ejeB.y - ejeNuevo.ejeA.y;
+    const largo2 = dx * dx + dy * dy;
+    if (largo2 === 0) return abertura;
+
+    const t = ((centro.x - ejeNuevo.ejeA.x) * dx + (centro.y - ejeNuevo.ejeA.y) * dy) / largo2;
+    // Entera adentro del muro; si no entra, al medio. Sin escala no se sabe
+    // cuánto ocupa: sólo se la deja adentro.
+    const medio = mpp !== null ? abertura.ancho / mpp / 2 / Math.sqrt(largo2) : 0;
+    return {
+      ...abertura,
+      t: medio >= 0.5 ? 0.5 : Math.min(1 - medio, Math.max(medio, t)),
+    };
+  });
 }
 
 // ---- Los lados de un ambiente ---------------------------------------------
@@ -989,6 +1057,15 @@ export type MedidaDeCaras = {
   /** m² de ambiente que todavía no tienen piso, o cielorraso. */
   sinPiso: number;
   sinCielorraso: number;
+  /**
+   * La mampostería: cuánto muro hay de cada tipo, ya sin los vanos. Van los
+   * m² y los m³ porque el catálogo cotiza unos de una forma y otros de la
+   * otra: el ladrillo hueco por superficie, el común por volumen. Quién usa
+   * cuál lo dice la unidad de la tarea.
+   */
+  muros: { capa: string; superficie: number; volumen: number }[];
+  /** m² de muro que todavía no tienen tipo. */
+  murosSinTipo: number;
 };
 
 /**
@@ -1006,6 +1083,11 @@ export type MedidaDeCaras = {
  * sigue por arriba, y de un dintel que arranca a 2,05 cuenta 35.
  *
  * El piso y el cielorraso se miden por la superficie de su ambiente.
+ *
+ * La mampostería se mide por muro y no por cara: el largo de la línea con que
+ * se lo marcó por su altura, menos sus puertas y ventanas, una sola vez —un
+ * muro es un muro aunque tenga dos caras—. El volumen es esa superficie por
+ * su espesor.
  *
  * Es de **un** piso, como `medir`. Null sin escala.
  */
@@ -1159,6 +1241,28 @@ export function medirCaras(
     for (const capa of new Set(ambiente.cielorraso)) sumar(cielorrasos, capa, superficie);
   }
 
+  const porTipo = new Map<string, { superficie: number; volumen: number }>();
+  let murosSinTipo = 0;
+  for (const muro of dibujo.muros) {
+    const alto = muro.altura ?? alturaDePlanta;
+    const largo = distancia(muro.a, muro.b) * mpp;
+    let vanos = 0;
+    for (const ab of dibujo.aberturas) {
+      if (ab.muroId === muro.id) vanos += Math.min(ab.ancho, largo) * Math.min(ab.alto, alto);
+    }
+    const superficie = Math.max(0, largo * alto - vanos);
+
+    if (muro.tarea === null) {
+      murosSinTipo += superficie;
+      continue;
+    }
+    const ya = porTipo.get(muro.tarea) ?? { superficie: 0, volumen: 0 };
+    porTipo.set(muro.tarea, {
+      superficie: ya.superficie + superficie,
+      volumen: ya.volumen + superficie * muro.espesor,
+    });
+  }
+
   return {
     caras,
     porCapa: filas(porCapa),
@@ -1167,5 +1271,7 @@ export function medirCaras(
     cielorrasos: filas(cielorrasos),
     sinPiso,
     sinCielorraso,
+    muros: Array.from(porTipo, ([capa, m]) => ({ capa, ...m })),
+    murosSinTipo,
   };
 }

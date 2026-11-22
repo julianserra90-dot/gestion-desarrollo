@@ -1787,6 +1787,68 @@ export type Database = {
           },
         ]
       }
+      pisos: {
+        Row: {
+          altura: number
+          cota: number
+          creado_en: string
+          id: string
+          nombre: string
+          numero: number
+          obra_id: string
+          planta_id: string | null
+        }
+        Insert: {
+          altura: number
+          cota: number
+          creado_en?: string
+          id?: string
+          nombre?: string
+          numero: number
+          obra_id: string
+          planta_id?: string | null
+        }
+        Update: {
+          altura?: number
+          cota?: number
+          creado_en?: string
+          id?: string
+          nombre?: string
+          numero?: number
+          obra_id?: string
+          planta_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pisos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "pisos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "pisos_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pisos_planta_id_fkey"
+            columns: ["planta_id"]
+            isOneToOne: false
+            referencedRelation: "plantas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plantas: {
         Row: {
           altura: number

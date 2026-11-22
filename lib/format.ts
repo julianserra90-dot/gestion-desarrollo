@@ -56,6 +56,16 @@ export function formatM2(valor: number | null | undefined) {
   return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(valor)} m²`;
 }
 
+/** Un volumen: "1,61 m³". Con dos decimales siempre: el hormigón se pide así. */
+export function formatM3(valor: number | null | undefined) {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+
+  return `${new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(valor)} m³`;
+}
+
 /**
  * Un largo: "4,50 m". Siempre con dos decimales, al revés que la superficie:
  * los largos se leen en listas de medidas, una abajo de la otra, y "4,5 m"
@@ -68,6 +78,32 @@ export function formatMetros(valor: number | null | undefined) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(valor)} m`;
+}
+
+/**
+ * Un nivel, con su signo como en un plano: "+2,90", "−2,80", "±0,00". Sin
+ * unidad: un nivel siempre es en metros, y así se escribe en un corte.
+ */
+export function formatNivel(metros: number | null | undefined) {
+  if (metros === null || metros === undefined || !Number.isFinite(metros)) return "—";
+  if (Math.abs(metros) < 0.0005) return "±0,00";
+
+  const valor = new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(metros));
+  return `${metros > 0 ? "+" : "−"}${valor}`;
+}
+
+/**
+ * Los niveles de una planta en una línea: el único que tiene, o del primero
+ * al último. Null si no hay ninguno cargado.
+ */
+export function formatNiveles(niveles: (number | null)[]) {
+  const cargados = niveles.filter((n): n is number => n !== null);
+  if (cargados.length === 0) return null;
+  if (cargados.length === 1) return formatNivel(cargados[0]);
+  return `${formatNivel(Math.min(...cargados))} a ${formatNivel(Math.max(...cargados))}`;
 }
 
 /** Un porcentaje: "42,01 %". Hasta dos decimales, y ninguno si es redondo. */

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Json } from "@/lib/database.types";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
+import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala } from "@/lib/planta-dibujo";
 import { createClient } from "@/lib/supabase/server";
 
@@ -148,6 +149,92 @@ export async function guardarPlanta(
 
   if (error) return { error: error.message };
   if (noTocoNada(data)) return { error: sinPermisoPara("modificar esta planta") };
+
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/**
+ * Guarda la definición de pisos de la obra, entera.
+ *
+ * Va la lista completa y no piso por piso porque así se edita: insertar uno
+ * en el medio renumera a los de arriba y les corre la cota, y guardarlos de a
+ * uno dejaría la obra, por un rato, con dos pisos en el mismo número.
+ *
+ * Primero se escriben los que quedan —por su número, que es lo que los
+ * identifica— y recién después se borran los que sobran: si algo falla en el
+ * medio, la obra queda con pisos de más, que se ve y se arregla, y no sin
+ * ninguno.
+ *
+ * De paso deja al día `plantas.repeticiones`: cuántos pisos repiten una planta
+ * es ahora cuántos pisos la tienen asignada, y todo lo que multiplica por los
+ * pisos iguales —las medidas del edificio— sale de esa columna.
+ */
+export async function guardarPisos(
+  slug: string,
+  obraId: string,
+  lista: unknown
+): Promise<Resultado> {
+  const leidos = leerPisos(lista);
+  if ("error" in leidos) return { error: leidos.error };
+  const { pisos } = leidos;
+
+  const supabase = await createClient();
+
+  // Qué plantas tenían pisos antes, para saber cuáles se quedan sin ninguno.
+  const { data: previos } = await supabase
+    .from("pisos")
+    .select("planta_id")
+    .eq("obra_id", obraId);
+
+  if (pisos.length > 0) {
+    const { data, error } = await supabase
+      .from("pisos")
+      .upsert(
+        pisos.map((p) => ({
+          obra_id: obraId,
+          numero: p.numero,
+          nombre: p.nombre,
+          cota: p.cota,
+          altura: p.altura,
+          planta_id: p.plantaId,
+        })),
+        { onConflict: "obra_id,numero" }
+      )
+      .select("id");
+
+    if (error) return { error: error.message };
+    if (noTocoNada(data)) return { error: sinPermisoPara("definir los pisos de esta obra") };
+  }
+
+  // Los que ya no están en la lista.
+  let sobrantes = supabase.from("pisos").delete().eq("obra_id", obraId);
+  if (pisos.length > 0) {
+    sobrantes = sobrantes.not("numero", "in", `(${pisos.map((p) => p.numero).join(",")})`);
+  }
+  const { error: alBorrar } = await sobrantes;
+  if (alBorrar) return { error: alBorrar.message };
+
+  // Cuántos pisos tiene cada planta. La que tenía y se quedó sin ninguno
+  // vuelve a uno; la que nunca tuvo no se toca: conserva los "pisos iguales"
+  // que se le cargaron a mano.
+  const porPlanta = new Map<string, number>();
+  for (const previo of previos ?? []) {
+    if (previo.planta_id) porPlanta.set(previo.planta_id, 1);
+  }
+  const asignados = new Map<string, number>();
+  for (const p of pisos) {
+    if (p.plantaId) asignados.set(p.plantaId, (asignados.get(p.plantaId) ?? 0) + 1);
+  }
+  for (const [plantaId, cantidad] of asignados) porPlanta.set(plantaId, cantidad);
+  for (const [plantaId, repeticiones] of porPlanta) {
+    const { error } = await supabase
+      .from("plantas")
+      .update({ repeticiones })
+      .eq("id", plantaId)
+      .eq("obra_id", obraId);
+    if (error) return { error: error.message };
+  }
 
   revalidatePath("/", "layout");
   return {};
