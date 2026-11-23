@@ -26,6 +26,7 @@ import { cantidadDeElemento, type Forma } from "@/lib/medicion";
 import { nombreDePiso, type Piso } from "@/lib/pisos";
 import { metrosPorPixel, type Dibujo, type Escala } from "@/lib/planta-dibujo";
 import { medirEstructura } from "@/lib/planta-estructura";
+import type { Composicion } from "@/lib/tipos-de-muro";
 import { medirCaras, type FilaDeCapa } from "@/lib/planta-trazo";
 
 /** Lo que hace falta de una planta para computarla. */
@@ -88,6 +89,7 @@ export type LoDelPlano = {
 };
 
 const ETIQUETAS = {
+  zocalos: "Zócalos",
   muros: "Muros",
   paredes: "Paredes",
   pisos: "Pisos",
@@ -105,6 +107,7 @@ const alCentimetroCubico = (n: number) => Math.round(n * 1e6) / 1e6;
 
 const esSuperficie = (unidad: string) => /^m[²2]$/i.test(unidad.trim());
 const esVolumen = (unidad: string) => /^m[³3]$/i.test(unidad.trim());
+const esLargo = (unidad: string) => /^(ml|m)$/i.test(unidad.trim());
 
 /**
  * En qué pisos está una planta.
@@ -152,6 +155,7 @@ export function delPlano(
   plantas: PlantaParaComputar[],
   pisos: Piso[],
   unidadDe: (tareaId: string) => string | null,
+  tipos: Map<string, Composicion> = new Map()
 ): LoDelPlano {
   const renglones: (RenglonDelPlano & { orden: number })[] = [];
   const noSeMiden = new Map<string, string | null>();
@@ -190,6 +194,7 @@ export function delPlano(
         mpp,
         planta.altura,
         lugarDePlanta.pisoAPiso,
+        tipos
       );
       if (!medida) continue;
 
@@ -319,6 +324,19 @@ export function delPlano(
       for (const c of medida.porCapa) agregar(ETIQUETAS.paredes, c);
       for (const c of medida.pisos) agregar(ETIQUETAS.pisos, c);
       for (const c of medida.cielorrasos) agregar(ETIQUETAS.cielorrasos, c);
+
+      // Los zócalos, en metros lineales: lo único del plano que va por largo.
+      for (const z of medida.zocalos) {
+        const unidad = unidadDe(z.capa);
+        if (unidad === null || !esLargo(unidad)) {
+          noSeMiden.set(z.capa, unidad);
+          continue;
+        }
+        const elemento = { forma: "directo" as const, a: null, b: null, c: alCentimetro(z.largo), unidades };
+        const cantidad = cantidadDeElemento(elemento);
+        if (cantidad <= 0) continue;
+        renglones.push({ tareaId: z.capa, nivel, etiqueta: ETIQUETAS.zocalos, ...elemento, cantidad, orden });
+      }
     }
   });
 

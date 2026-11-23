@@ -6,7 +6,14 @@ import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { type Modelo, modeloDePlanta } from "@/lib/planta-3d";
-import { getCapasDisponibles, getPisos, getPlantas, getTiposDeMuro } from "@/lib/plantas";
+import {
+  getCapasDisponibles,
+  getPisos,
+  getPlantas,
+  getTiposDeMuro,
+  getTiposDeMuroDeObra,
+} from "@/lib/plantas";
+import { conSusTipos } from "@/lib/tipos-de-muro";
 import { editarEnPlanta, guardarPisos } from "../actions";
 
 /**
@@ -32,12 +39,14 @@ export default async function Edificio3DPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [plantas, pisosDeObra, capas, tiposDeMuro] = await Promise.all([
+  const [plantas, pisosDeObra, capas, tiposDeMuro, tiposDeLaObra] = await Promise.all([
     getPlantas(obra.id),
     getPisos(obra.id),
     getCapasDisponibles(),
     getTiposDeMuro(),
+    getTiposDeMuroDeObra(obra.id),
   ]);
+  const mapaDeTipos = new Map(tiposDeLaObra.map((t) => [t.id, t]));
   // Cómo se llama cada tarea del catálogo: es lo que dice de qué está hecho
   // un muro o qué capas lleva un piso al tocarlo.
   const nombres = new Map([...capas, ...tiposDeMuro].map((t) => [t.id, t.nombre]));
@@ -47,7 +56,13 @@ export default async function Edificio3DPage({
   for (const planta of plantas) {
     const suPiso = pisosDeObra.find((p) => p.plantaId === planta.id);
     if (!suPiso) continue;
-    const modelo = modeloDePlanta(planta, suPiso.altura, nombres);
+    // Los muros con lo de su tipo al día: su revestimiento es la piel que se
+    // dibuja delante del hormigón.
+    const conTipos = {
+      ...planta,
+      dibujo: { ...planta.dibujo, muros: conSusTipos(planta.dibujo.muros, mapaDeTipos) },
+    };
+    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres);
     if (modelo && modelo.solidos.length > 0) modelos[planta.id] = modelo;
   }
 

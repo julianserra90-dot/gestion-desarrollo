@@ -204,15 +204,31 @@ export function modeloDePlanta(
       { x: cuerpo.a.x + dx * s0 + dy * grosor, y: cuerpo.a.y + dy * s0 - dx * grosor },
     ];
 
+    /** Un tramo entre dos distancias de la punta y dos de la normal. */
+    const tramoEntre = (s0: number, s1: number, n0: number, n1: number): Punto[] => [
+      { x: cuerpo.a.x + dx * s0 - dy * n1, y: cuerpo.a.y + dy * s0 + dx * n1 },
+      { x: cuerpo.a.x + dx * s1 - dy * n1, y: cuerpo.a.y + dy * s1 + dx * n1 },
+      { x: cuerpo.a.x + dx * s1 - dy * n0, y: cuerpo.a.y + dy * s1 + dx * n0 },
+      { x: cuerpo.a.x + dx * s0 - dy * n0, y: cuerpo.a.y + dy * s0 + dx * n0 },
+    ];
+    // Dónde va el núcleo —el ladrillo— dentro del cuerpo, sobre la normal: en
+    // un muro con capas no está al medio.
+    const corrido =
+      (cuerpo.nucleo.ejeA.x - cuerpo.ejeA.x) * -dy + (cuerpo.nucleo.ejeA.y - cuerpo.ejeA.y) * dx;
+    const medioNucleo = cuerpo.nucleo.grosor / 2;
+
     // Las aberturas van sobre el eje sin estirar; el cuerpo arranca antes.
     const arranque = distancia(cuerpo.a, cuerpo.ejeA);
     const largoDelEje = distancia(cuerpo.ejeA, cuerpo.ejeB);
     const vanos = vanosDeMuro(dibujo.aberturas, muro.id, largoDelEje, arranque, mpp);
-    // Y el hormigón le saca lugar: donde hay una columna o una viga no hay
-    // ladrillo, y el muro no se dibuja ahí.
-    const eje = { a: cuerpo.a, b: cuerpo.b };
+    // Y el hormigón le saca lugar al ladrillo: donde hay una columna o una
+    // viga no hay ladrillo. Se lo busca en el núcleo, no en el revoque.
+    const eje = {
+      a: { x: cuerpo.a.x - dy * corrido, y: cuerpo.a.y + dx * corrido },
+      b: { x: cuerpo.b.x - dy * corrido, y: cuerpo.b.y + dx * corrido },
+    };
     const sombras = hormigon
-      .map((prisma) => sombraEnMuro(eje, cuerpo.grosor, prisma))
+      .map((prisma) => sombraEnMuro(eje, cuerpo.nucleo.grosor, prisma))
       .filter((s): s is Pano => s !== null);
 
     const objeto = `muro:${muro.id}`;
@@ -248,7 +264,29 @@ export function modeloDePlanta(
     };
 
     for (const pano of panosDeMuro(largo, alto, [...vanos, ...sombras])) {
-      sumar("muro", objeto, grupo, tramo(pano.desde, pano.hasta), pano.abajo, pano.arriba);
+      sumar(
+        "muro",
+        objeto,
+        grupo,
+        tramoEntre(pano.desde, pano.hasta, corrido - medioNucleo, corrido + medioNucleo),
+        pano.abajo,
+        pano.arriba
+      );
+    }
+
+    // El revestimiento de cada lado: una piel continua que pasa por delante
+    // del hormigón —el revoque tapa la columna igual que al ladrillo— y sólo
+    // se corta en los vanos. Del mismo grupo que el muro: se lee como una
+    // sola pieza.
+    const pieles: [number, number][] = [
+      [-medio, corrido - medioNucleo],
+      [corrido + medioNucleo, medio],
+    ];
+    for (const [n0, n1] of pieles) {
+      if (n1 - n0 < 1e-6) continue;
+      for (const pano of panosDeMuro(largo, alto, vanos)) {
+        sumar("muro", objeto, grupo, tramoEntre(pano.desde, pano.hasta, n0, n1), pano.abajo, pano.arriba);
+      }
     }
 
     // Lo que llena cada vano: el vidrio de una ventana, la hoja de una puerta.

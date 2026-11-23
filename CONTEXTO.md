@@ -1125,6 +1125,111 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   arma `/archivos/<id>`, que es la ruta que verifica el permiso
   (`buscarArchivoVisible` conoce la tabla nueva).
 
+#### Muros por capas: tipos de muro (23/11/2026)
+Decidido con el usuario, con la referencia del "muro compuesto" de ArchiCAD:
+un muro es de un **tipo** de la obra (tabla `tipos_de_muro`, migración
+`20261123140000`), y el tipo es una pila de capas reales: el **núcleo** (la
+mampostería, lo que el hormigón reemplaza) y a cada lado sus capas del núcleo
+hacia afuera —revoques, aislación, porcelanato, látex—, cada una con su tarea,
+su espesor y **entre qué alturas va** (`desde`/`hasta`): el porcelanato de
+0 a 2,10 y el látex de 2,10 al techo ya no se superponen. Todo en el muro,
+también las terminaciones (el usuario lo prefirió así; un tabique con
+porcelanato de un lado y látex del otro es su propio tipo).
+- **Los tipos son de la obra**, no de la planta: el mismo "Muro exterior 30"
+  en planta baja y en la tipo. Cambiar un tipo se guarda solo (700 ms después
+  de dejar de tocarlo) y `guardarTipoDeMuro` les actualiza el espesor y la
+  tarea a los muros que lo usan **en todas las plantas**.
+- El muro guarda `tipo` (id); su `espesor` es la suma de las capas y su
+  `tarea` la del núcleo, sincronizados: así el dibujo, el 3D y todo lo que
+  ya leía `espesor` siguen igual. El **volumen de la mampostería sale del
+  espesor del núcleo**, no del total con revoques.
+- **Exterior** es el lado de la "cara exterior" de la referencia (el −normal);
+  el canto lleva las capas del interior.
+- **Zócalo por tramo**: cada muro elige la tarea de zócalo de cada lado
+  (tareas en ml). Se mide por el pie de la cara, sin las puertas, y pasa al
+  cómputo en metros.
+- Un muro **sin tipo** sigue como antes (mampostería + espesor, terminaciones
+  del ambiente), y su panel muestra esos dos campos.
+- **La línea de referencia es la del núcleo** (pedido del usuario): marcar
+  "cara exterior" es marcar la cara exterior del ladrillo; las capas
+  exteriores crecen hacia afuera y las interiores hacia adentro sin correrlo.
+  El muro guarda `revestimiento` (lo que suman las capas de cada lado, al día
+  con el tipo, `medidasDelMuro`/`conSusTipos`) y `rangoDelCuerpo` ubica el
+  cuerpo con eso. `Cuerpo.nucleo` es el eje y espesor del ladrillo solo: el
+  hormigón se busca ahí, no en el revoque.
+- **Mochetas**: una columna de hormigón que sobresale de la cara del ladrillo
+  más que el revestimiento de ese lado suma sus dos costados (profundidad × 2)
+  a cada capa de esa cara, en su franja de altura (`columnasEnLaCara`). Si
+  sobresale menos, el revoque la absorbe.
+- **Hormigón visto** (casilla de la columna): no hace mochetas, y se le resta
+  a cada capa de la cara el ancho de su frente.
+- **El ambiente puede tener terminación propia de paredes** (Paredes: "Las
+  del muro" | "Propias"), que reemplaza las capas del lado del muro en todas
+  sus caras: el baño con su revoque impermeable, porcelanato 0–2,10 y látex
+  arriba, sin un tipo de muro para cada combinación. Orden en una cara: las
+  suyas (`dibujo.caras`) > las del ambiente > las del lado del tipo. Al
+  pasar a "Propias" arranca con las del muro. Las capas del ambiente también
+  tienen `desde`.
+- **Una cara que da a dos ambientes se corta donde cambia el ambiente**
+  (`carasVisibles`): antes iba entera al ambiente de su punto medio, y el
+  medianero entre dormitorio y baño llevaba una sola terminación.
+- **Se agarra de** (antes "Línea de referencia" en el muro elegido): cambiarla
+  ya **no mueve el muro**, como el ancla de una columna: el cuerpo queda y se
+  corre la línea con sus puntos (`conOtraReferencia`); los muros que llegan a
+  una punta van al cruce con la nueva línea para no despegarse. Así se toma el
+  muro de la cara que se quiere alinear.
+- **Mover el muro entero**: el cuadrado del medio de su línea. Se pega por sus
+  puntas o por el medio a caras, esquinas y líneas de otros muros —gana la que
+  menos corrige—; con "puntas unidas" los vecinos lo acompañan y sus aberturas
+  se quedan donde estaban; las del muro van con él.
+- **Caras terminadas** (`REFERENCIAS_DE_MURO`): un muro se agarra también de
+  la cara exterior o interior **terminada** —el borde del revoque—, además de
+  las del ladrillo y su centro. Es la que se alinea con la de otro muro cuando
+  tiene que coincidir lo que se ve. Las vigas siguen con sus tres.
+- **Precisión al mover muros**: arrastrando una punta, una esquina de otro
+  muro a menos del imán manda sobre el "estirar derecha" —antes la punta
+  quedaba atada a su línea y no llegaba a una esquina unos milímetros afuera—.
+  Y con un muro elegido, las **flechas** lo corren 1 cm (10 con Shift)
+  (`correrMuro`).
+- **Uniones en corte** (`franjasEnPlanta`): cada muro se dibuja como tres
+  polígonos —capa exterior, núcleo, capa interior— recortados en cada punta
+  que comparte con otro muro. En una L, la capa del lado de afuera llega a la
+  cara terminada de afuera del otro, el núcleo a la cara de afuera del núcleo
+  del otro y la capa de adentro a la cara de adentro del núcleo del otro: cada
+  capa forma su propia L, como lo dibujó el usuario. En una T (el otro sigue en
+  línea con un compañero), el núcleo entra hasta el núcleo del otro y las capas
+  terminan en su cara. Las capas se pintan en un grupo y los núcleos en otro,
+  con la transparencia en el grupo: donde se pisan no se oscurece. El 3D
+  todavía no usa estos cortes.
+- **Esquinas con capas**: en la planta se dibujan primero las capas de todos
+  los muros y encima los ladrillos, así en una esquina el ladrillo de uno corta
+  las capas del otro (el revoque exterior da la vuelta, el interior se
+  interrumpe). Y una cara cuenta como tapada si otro muro está a menos de 5 mm
+  delante (`carasVisibles`): un desfasaje de milímetros dejaba un pedazo de
+  cara suelto adentro de la esquina, que se computaba.
+- **Herramienta Esquina**: clic en un muro y en otro, y se unen en escuadra
+  como el chaflán de distancia cero de AutoCAD (`unirEnEsquina`): cada uno se
+  alarga o se recorta hasta el cruce de sus líneas y comparten la punta. Con
+  eso el cuerpo de cada uno tapa el del otro, el revoque exterior da la vuelta
+  y no quedan pedazos de cara sueltos adentro de la esquina. Paralelos: avisa.
+- **Herramienta Cortar** (tijera): parte un muro en tramos —el medianero en
+  dormitorio, baño y pleno— para que cada tramo tenga su tipo. Al pasar sobre
+  un muro muestra en rojo punteado dónde se lo puede cortar: las caras de los
+  muros que llegan a él, prolongadas (`cortesDeMuro`); el corte se engancha
+  ahí y un clic parte. Usa el mismo partir que el doble clic (`partirEn`).
+- **Planta en corte**: un muro con capas se dibuja con el núcleo con el color
+  de siempre y una franja gris clara por cada lado con capas, con su espesor
+  (`franjasDelMuro`).
+- **3D**: el ladrillo se dibuja con el espesor del núcleo y sin el hormigón, y
+  cada lado lleva su revestimiento como una piel continua que pasa por delante
+  de columnas y vigas (mismo grupo que el muro: se ve como una pieza).
+- Sin hacer todavía: mochetas de vigas que cuelgan bajo el muro y columnas
+  sueltas (que no tocan ningún muro), que no llevan terminación.
+- Propiedades del muro, simple: tipo (+ Nuevo), la pila (exterior arriba,
+  núcleo al medio, interior abajo, en una grilla alineada; la altura de cada
+  capa se despliega abajo), zócalos, altura y referencia. El editor de capas
+  por cara queda sólo para muros sin tipo.
+
 #### Del plano al cómputo (22/11/2026)
 Botón **Pasar al cómputo** en el listado de Plantas. Lleva lo que el dibujo
 mide a la medición de cada tarea (`computo_item_medicion`), y la cantidad de

@@ -2455,6 +2455,52 @@ export type Database = {
         }
         Relationships: []
       }
+      tipos_de_muro: {
+        Row: {
+          composicion: Json
+          creado_en: string
+          id: string
+          nombre: string
+          obra_id: string
+        }
+        Insert: {
+          composicion?: Json
+          creado_en?: string
+          id?: string
+          nombre: string
+          obra_id: string
+        }
+        Update: {
+          composicion?: Json
+          creado_en?: string
+          id?: string
+          nombre?: string
+          obra_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tipos_de_muro_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "tipos_de_muro_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "tipos_de_muro_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       obra_balance: {

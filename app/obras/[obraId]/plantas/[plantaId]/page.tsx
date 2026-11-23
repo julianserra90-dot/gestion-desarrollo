@@ -8,9 +8,17 @@ import {
   getPisos,
   getPlanta,
   getPlantas,
+  getTareasPorMetro,
   getTiposDeMuro,
+  getTiposDeMuroDeObra,
 } from "@/lib/plantas";
-import { eliminarPlanta, guardarPisos, guardarPlanta } from "../actions";
+import {
+  eliminarPlanta,
+  eliminarTipoDeMuro,
+  guardarPisos,
+  guardarPlanta,
+  guardarTipoDeMuro,
+} from "../actions";
 
 export default async function PlantaPage({
   params,
@@ -25,13 +33,16 @@ export default async function PlantaPage({
   }
 
   // El id llega por la URL y no tiene por qué ser de esta obra.
-  const [planta, capasDisponibles, tiposDeMuro, pisos, plantas] = await Promise.all([
-    getPlanta(plantaId),
-    getCapasDisponibles(),
-    getTiposDeMuro(),
-    getPisos(obra.id),
-    getPlantas(obra.id),
-  ]);
+  const [planta, capasDisponibles, tiposDeMuro, pisos, plantas, tiposDeLaObra, tareasPorMetro] =
+    await Promise.all([
+      getPlanta(plantaId),
+      getCapasDisponibles(),
+      getTiposDeMuro(),
+      getPisos(obra.id),
+      getPlantas(obra.id),
+      getTiposDeMuroDeObra(obra.id),
+      getTareasPorMetro(),
+    ]);
 
   if (!planta || planta.obraId !== obra.id) {
     return (
@@ -75,6 +86,10 @@ export default async function PlantaPage({
         pisosDeObra={pisos}
         plantasDeObra={plantas.map((p) => ({ id: p.id, nombre: p.nombre }))}
         guardarPisos={guardarPisos.bind(null, obra.slug, obra.id)}
+        tiposDeLaObra={tiposDeLaObra}
+        tareasPorMetro={tareasPorMetro}
+        guardarTipo={guardarTipoDeMuro.bind(null, obra.id)}
+        eliminarTipo={eliminarTipoDeMuro.bind(null, obra.id)}
       />
     </AppShell>
   );

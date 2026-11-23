@@ -30,6 +30,23 @@ export const REFERENCIAS = [
 
 export type Referencia = (typeof REFERENCIAS)[number]["valor"];
 
+/**
+ * De qué línea se toma un muro: las de una viga, más **las caras
+ * terminadas** —el borde de afuera del revoque—. En un muro con capas, "cara
+ * exterior" es la del ladrillo y "cara exterior terminada" la del revoque: es
+ * la que se alinea con la de otro muro cuando lo que tiene que coincidir es lo
+ * que se ve. Sin capas, las dos son la misma.
+ */
+export const REFERENCIAS_DE_MURO = [
+  { valor: "exteriorTerminada", nombre: "Cara exterior terminada" },
+  { valor: "exterior", nombre: "Cara exterior del ladrillo" },
+  { valor: "centro", nombre: "Centro del ladrillo" },
+  { valor: "interior", nombre: "Cara interior del ladrillo" },
+  { valor: "interiorTerminada", nombre: "Cara interior terminada" },
+] as const;
+
+export type ReferenciaDeMuro = (typeof REFERENCIAS_DE_MURO)[number]["valor"];
+
 export type Muro = {
   id: string;
   /** Los dos puntos que se marcaron: la línea de referencia. */
@@ -42,7 +59,7 @@ export type Muro = {
    * (`cuerpoDeMuro`, en `planta-trazo.ts`). El largo se mide sobre la línea
    * marcada, sea cual sea: es la que se calcó del plano.
    */
-  referencia: Referencia;
+  referencia: ReferenciaDeMuro;
   /**
    * De piso a techo, en metros, si no es la de la planta: un antepecho de
    * balcón, un murete, una pared que no llega arriba. Null es "la de la
@@ -57,6 +74,28 @@ export type Muro = {
    * (o los m³) de cada mampostería sin medir nada aparte.
    */
   tarea: string | null;
+  /**
+   * Su tipo de muro de la obra (`lib/tipos-de-muro.ts`), por id: la pila de
+   * capas de la que está hecho. Con tipo, `espesor` es la suma de sus capas y
+   * `tarea` la de su núcleo —se mantienen al día al cambiar el tipo—, y sus
+   * caras llevan las capas del tipo y no las del ambiente. Null: un muro de
+   * antes de los tipos, que sigue como era.
+   */
+  tipo: string | null;
+  /**
+   * Cuánto suman las capas de cada lado, en metros: lo que el muro crece
+   * hacia afuera y hacia adentro de su núcleo. **La línea de referencia es la
+   * del núcleo** —el ladrillo—: agregar un revoque exterior engorda el muro
+   * hacia afuera sin correr el ladrillo. Sale del tipo y se mantiene al día con
+   * él; cero en un muro sin tipo, que es todo núcleo.
+   */
+  revestimiento: { exterior: number; interior: number };
+  /**
+   * El zócalo de cada lado, por la tarea del catálogo (se cotiza en metros
+   * lineales). Null: ese lado no lleva. Es del tramo y no del tipo: el mismo
+   * muro lleva zócalo de un lado y del otro no.
+   */
+  zocalo: { exterior: string | null; interior: string | null };
 };
 
 /**
@@ -85,6 +124,9 @@ export type Capa = {
   tarea: string;
   hasta: "techo" | "cielorraso" | number;
   espesor: number | null;
+  /** Desde qué altura sube, en metros: el látex de 2,10 para arriba sobre
+   *  un porcelanato. Sin cargar, del piso. */
+  desde?: number;
 };
 
 export type Ambiente = {
@@ -249,6 +291,11 @@ export type Columna = {
    */
   giro: number;
   material: Material;
+  /**
+   * Hormigón visto: no se revoca. El frente que da a la cara de un muro no
+   * lleva sus terminaciones, y si sobresale no hace mochetas de revoque.
+   */
+  visto: boolean;
   /**
    * Sólo en las metálicas: qué perfil es —"IPN 200", "Tubo 100×100×4"—. Es
    * lo que se le pide al herrero y lo que dice cuánto pesa el metro; vacío,
@@ -677,10 +724,12 @@ function leerCapas(valor: unknown): Capa[] {
     if (typeof r.tarea !== "string") continue;
     const altura = numero(r.hasta);
     const espesor = numero(r.espesor);
+    const desde = numero(r.desde);
     capas.push({
       tarea: r.tarea,
       hasta: r.hasta === "cielorraso" ? "cielorraso" : altura !== null && altura > 0 ? altura : "techo",
       espesor: espesor !== null && espesor > 0 ? espesor : null,
+      ...(desde !== null && desde > 0 ? { desde } : {}),
     });
   }
   return capas;
@@ -723,9 +772,12 @@ export function leerDibujo(valor: unknown): Dibujo {
       b,
       espesor: espesor !== null && espesor > 0 ? espesor : ESPESOR_INICIAL,
       // Un muro guardado antes de que existiera la referencia se marcó por su eje.
-      referencia: REFERENCIAS.find((ref) => ref.valor === r.referencia)?.valor ?? "centro",
+      referencia: REFERENCIAS_DE_MURO.find((ref) => ref.valor === r.referencia)?.valor ?? "centro",
       altura: alturaPropia !== null && alturaPropia > 0 ? alturaPropia : null,
       tarea: typeof r.tarea === "string" && r.tarea !== "" ? r.tarea : null,
+      tipo: typeof r.tipo === "string" && r.tipo !== "" ? r.tipo : null,
+      revestimiento: leerRevestimiento(r.revestimiento),
+      zocalo: leerZocalo(r.zocalo),
     });
   }
 
@@ -816,6 +868,23 @@ function idDeTarea(valor: unknown): string | null {
   return typeof valor === "string" && valor !== "" ? valor : null;
 }
 
+/** Lo que suman las capas de cada lado; cero lo que no se entiende. */
+function leerRevestimiento(valor: unknown): Muro["revestimiento"] {
+  const r = (typeof valor === "object" && valor !== null ? valor : {}) as Record<string, unknown>;
+  const metros = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 && n < 2 ? n : 0;
+  };
+  return { exterior: metros(r.exterior), interior: metros(r.interior) };
+}
+
+/** El zócalo de un muro: la tarea de cada lado, o nada. */
+function leerZocalo(valor: unknown): Muro["zocalo"] {
+  const r = (typeof valor === "object" && valor !== null ? valor : {}) as Record<string, unknown>;
+  const tarea = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
+  return { exterior: tarea(r.exterior), interior: tarea(r.interior) };
+}
+
 /**
  * La estructura guardada. Un dibujo de antes de que existiera no la trae, y
  * abre con la estructura vacía.
@@ -839,6 +908,7 @@ function leerEstructura(valor: unknown): Estructura {
       // Una columna guardada antes de que existieran: derecha y de hormigón.
       giro: numero(r.giro) ?? 0,
       material: MATERIALES.find((m) => m.valor === r.material)?.valor ?? "hormigon",
+      visto: r.visto === true,
       perfil: typeof r.perfil === "string" ? r.perfil : "",
       tarea: idDeTarea(r.tarea),
       ancho: medida(r.ancho, COLUMNA_INICIAL.ancho),

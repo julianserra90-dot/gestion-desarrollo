@@ -6,6 +6,19 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } f
 import BotonConfirmar from "@/components/BotonConfirmar";
 import DefinicionDePisos from "@/components/DefinicionDePisos";
 import IconoHerramienta from "@/components/IconoHerramienta";
+import TipoDeMuroEditor, { ListaDeCapas } from "@/components/TipoDeMuroEditor";
+import {
+  CAPA_NUEVA,
+  conSusTipos,
+  espesorTotal,
+  ladoDeCara,
+  type CapaDeMuro,
+  medidasDelMuro,
+  nombreLibre,
+  SIN_REVESTIMIENTO,
+  type Composicion,
+  type TipoMuro,
+} from "@/lib/tipos-de-muro";
 import * as ui from "@/components/ui";
 import { formatM2, formatM3, formatMetros, formatNivel, formatNiveles } from "@/lib/format";
 import { type Piso, nombreDePiso } from "@/lib/pisos";
@@ -34,6 +47,8 @@ import {
   LOSA_INICIAL,
   MATERIALES,
   REFERENCIAS,
+  REFERENCIAS_DE_MURO,
+  type ReferenciaDeMuro,
   ESPESORES,
   ESPESOR_INICIAL,
   VIGA_INICIAL,
@@ -51,6 +66,10 @@ import {
   ajustar,
   carasDeCuerpo,
   crucesDeCaras,
+  conOtraReferencia,
+  cortesDeMuro,
+  franjasEnPlanta,
+  unirEnEsquina,
   cuerpoDeMuro,
   escuadrar,
   esquinasDeCuerpo,
@@ -81,6 +100,8 @@ type Herramienta =
   | "abertura"
   | "medir"
   | "copiar"
+  | "cortar"
+  | "esquina"
   | "columna"
   | "viga"
   | "losa";
@@ -132,6 +153,9 @@ type Agarre =
   // `eje` es la línea del muro al agarrarlo, desde su otra punta: mientras el
   // puntero la siga, la punta va por ella (`estirar`).
   | { tipo: "muro"; id: string; punta: "a" | "b"; desde: Punto; eje: Eje | null }
+  // Un muro entero, por el punto del medio de su línea. `inicio` es dónde se
+  // lo agarró: se corre lo que se movió el puntero desde ahí.
+  | { tipo: "muroEntero"; id: string; inicio: Punto }
   | { tipo: "ambiente"; id: string; indice: number }
   // Un lado entero de un ambiente o de una losa: se corre en paralelo, como
   // una pared. Lleva el polígono de antes y dónde se agarró, para medir cuánto
@@ -160,7 +184,15 @@ type Agarre =
  * son sus capas; de un ambiente, todo lo suyo: paredes, piso y cielorraso.
  */
 type Copiado =
-  | { de: "muro"; tarea: string | null }
+  | {
+      de: "muro";
+      tarea: string | null;
+      tipo: string | null;
+      espesor: number;
+      revestimiento: Muro["revestimiento"];
+      zocalo: Muro["zocalo"];
+      altura: number | null;
+    }
   | { de: "cara"; capas: Capa[] }
   | {
       de: "ambiente";
@@ -206,6 +238,8 @@ const HERRAMIENTAS: Record<Modo, { valor: Herramienta; nombre: string }[]> = {
     { valor: "abertura", nombre: "Abertura" },
     { valor: "medir", nombre: "Medir" },
     { valor: "copiar", nombre: "Copiar" },
+    { valor: "cortar", nombre: "Cortar" },
+    { valor: "esquina", nombre: "Esquina" },
   ],
   // Cada una se dibuja como su par de arquitectura: la columna se pone con un
   // toque, como una abertura; la viga se traza como un muro y la losa se
@@ -269,7 +303,21 @@ export default function EditorPlanta({
   pisosDeObra,
   plantasDeObra,
   guardarPisos,
+  tiposDeLaObra = [],
+  tareasPorMetro = [],
+  guardarTipo,
+  eliminarTipo,
 }: {
+  /** Los tipos de muro de la obra: cada uno una pila de capas. */
+  tiposDeLaObra?: TipoMuro[];
+  /** Las tareas que sirven de zócalo: las de metro lineal. */
+  tareasPorMetro?: TipoDeMuro[];
+  guardarTipo: (tipo: {
+    id: string | null;
+    nombre: string;
+    composicion: Composicion;
+  }) => Promise<{ error?: string; id?: string }>;
+  eliminarTipo: (id: string) => Promise<{ error?: string }>;
   planta: PlantaEnEdicion;
   slug: string;
   guardar: (
@@ -298,10 +346,14 @@ export default function EditorPlanta({
   const router = useRouter();
   const { imagen } = planta;
 
-  const [trazo, setTrazo] = useState<Trazo>({
-    dibujo: planta.dibujo,
+  // Los muros, con lo de su tipo al día: el tipo pudo cambiar en otra planta.
+  const [trazo, setTrazo] = useState<Trazo>(() => ({
+    dibujo: {
+      ...planta.dibujo,
+      muros: conSusTipos(planta.dibujo.muros, new Map(tiposDeLaObra.map((t) => [t.id, t]))),
+    },
     escala: planta.escala,
-  });
+  }));
   const [pasado, setPasado] = useState<Trazo[]>([]);
 
   const [nombre, setNombre] = useState(planta.nombre);
@@ -369,10 +421,27 @@ export default function EditorPlanta({
   const [seleccion, setSeleccion] = useState<Seleccion>(null);
 
   const [espesor, setEspesor] = useState(ESPESOR_INICIAL);
-  const [referencia, setReferencia] = useState<Referencia>("centro");
+  const [referencia, setReferencia] = useState<ReferenciaDeMuro>("centro");
   /** De qué son los muros que se trazan: se elige una vez y vale para todos
    *  los que siguen, como el espesor. */
   const [tipoDeMuro, setTipoDeMuro] = useState<string | null>(null);
+  /** Con la herramienta Esquina: el primer muro tocado, esperando el segundo. */
+  const [primeroDeEsquina, setPrimeroDeEsquina] = useState<string | null>(null);
+  const [avisoDeEsquina, setAvisoDeEsquina] = useState("");
+  /** Con la herramienta Cortar: qué muro y dónde, y por dónde se lo puede cortar. */
+  const [corte, setCorte] = useState<{
+    muroId: string;
+    t: number;
+    posibles: number[];
+    enganchado: boolean;
+  } | null>(null);
+  /** Los tipos de muro de la obra, como se están editando. */
+  const [tipos, setTipos] = useState<TipoMuro[]>(tiposDeLaObra);
+  /** Con qué tipo sale el próximo muro. */
+  const [tipoMolde, setTipoMolde] = useState<string | null>(tiposDeLaObra[0]?.id ?? null);
+  const [errorDeTipo, setErrorDeTipo] = useState("");
+  /** El guardado de cada tipo, demorado: se guarda cuando se deja de tocar. */
+  const guardadosPendientes = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [ortogonal, setOrtogonal] = useState(true);
   /** Si los puntos se alinean con las esquinas que ya están. */
   const [conGuias, setConGuias] = useState(true);
@@ -535,17 +604,30 @@ export default function EditorPlanta({
 
   const encimados = new Set(solapes.flatMap((s) => s.ids));
 
+  // Cada muro en corte: sus capas y su núcleo, recortados en las uniones.
+  const franjas = useMemo(
+    () => new Map(dibujo.muros.map((m) => [m.id, franjasEnPlanta(m, dibujo.muros, mpp)] as const)),
+    [dibujo.muros, mpp]
+  );
+
   // Las caras de los muros con sus m² y sus capas: lo que se termina.
   const alturaDePlanta = Number(altura) || 0;
+  const mapaDeTipos = useMemo(() => new Map(tipos.map((t) => [t.id, t])), [tipos]);
   const terminaciones = useMemo(
-    () => medirCaras(dibujo, mpp, alturaDePlanta, pisoAPiso),
-    [dibujo, mpp, alturaDePlanta, pisoAPiso]
+    () => medirCaras(dibujo, mpp, alturaDePlanta, pisoAPiso, mapaDeTipos),
+    [dibujo, mpp, alturaDePlanta, pisoAPiso, mapaDeTipos]
   );
   const nombreDeCapa = useMemo(
-    () => new Map(capasDisponibles.map((c) => [c.id, c.nombre])),
-    [capasDisponibles]
+    () =>
+      new Map(
+        [...capasDisponibles, ...tiposDeMuro, ...tareasPorMetro].map((c) => [c.id, c.nombre])
+      ),
+    [capasDisponibles, tiposDeMuro, tareasPorMetro]
   );
   const tipoPorId = useMemo(() => new Map(tiposDeMuro.map((t) => [t.id, t])), [tiposDeMuro]);
+  const tipoDelMolde = tipoMolde ? mapaDeTipos.get(tipoMolde) ?? null : null;
+  /** Lo que puede ser una capa de un muro: lo de m² y lo de m³. */
+  const tareasDeCapa = tiposDeMuro;
   const largoEncimado = solapes.reduce((t, s) => t + s.largo, 0) * (mpp ?? 0);
 
   // La estructura: cuánto hormigón lleva, y la huella de cada columna y cada
@@ -769,6 +851,7 @@ export default function EditorPlanta({
           material,
           perfil: material === "metalica" ? perfil.trim() : "",
           tarea: material === "metalica" ? null : tarea,
+          visto: false,
           ancho,
           profundidad,
           // De la losa de abajo al fondo de la de arriba: lo de casi todas.
@@ -900,11 +983,29 @@ export default function EditorPlanta({
    *  toquen. Lo de las caras y los ambientes no le toca a un muro. */
   const tocarMuroParaCopiar = (muro: Muro) => {
     if (!copiado) {
-      setCopiado({ de: "muro", tarea: muro.tarea });
+      setCopiado({
+        de: "muro",
+        tarea: muro.tarea,
+        tipo: muro.tipo,
+        espesor: muro.espesor,
+        revestimiento: muro.revestimiento,
+        zocalo: muro.zocalo,
+        altura: muro.altura,
+      });
       return;
     }
     if (copiado.de !== "muro") return;
-    cambiarMuros(new Set([muro.id]), { tarea: copiado.tarea });
+    // Todo lo que hace a qué es el muro: su tipo —o su mampostería y
+    // espesor—, sus zócalos y su altura. No su línea ni su referencia, que
+    // son de dónde está.
+    cambiarMuros(new Set([muro.id]), {
+      tarea: copiado.tarea,
+      tipo: copiado.tipo,
+      espesor: copiado.espesor,
+      revestimiento: copiado.revestimiento,
+      zocalo: copiado.zocalo,
+      altura: copiado.altura,
+    });
   };
 
   /** Cambia algo de varios muros a la vez: su tipo, casi siempre. */
@@ -944,6 +1045,102 @@ export default function EditorPlanta({
         : // De una cara sólo se sabe de paredes: el piso y el cielorraso del
           // ambiente quedan como estaban.
           { capas: copiado.capas }
+    );
+  };
+
+  /**
+   * Cambia la composición o el nombre de un tipo: al momento en los muros de
+   * esta planta —su espesor es la suma de las capas—, y en la base un rato
+   * después de dejar de tocarlo, que es cuando llega a las demás plantas.
+   */
+  const cambiarTipoDeMuro = (
+    id: string,
+    cambios: Partial<Pick<TipoMuro, "nombre">> & { composicion?: Composicion }
+  ) => {
+    const anterior = tipos.find((t) => t.id === id);
+    if (!anterior) return;
+    const nuevo: TipoMuro = { ...anterior, ...(cambios.composicion ?? {}), ...(cambios.nombre !== undefined ? { nombre: cambios.nombre } : {}) };
+    setTipos((antes) => antes.map((t) => (t.id === id ? nuevo : t)));
+
+    if (cambios.composicion) {
+      const delTipo = medidasDelMuro(nuevo);
+      setTrazo((antes) => ({
+        ...antes,
+        dibujo: {
+          ...antes.dibujo,
+          muros: antes.dibujo.muros.map((m) => (m.tipo === id ? { ...m, ...delTipo } : m)),
+        },
+      }));
+      if (dibujo.muros.some((m) => m.tipo === id)) setSucio(true);
+    }
+
+    const pendiente = guardadosPendientes.current.get(id);
+    if (pendiente) clearTimeout(pendiente);
+    guardadosPendientes.current.set(
+      id,
+      setTimeout(async () => {
+        guardadosPendientes.current.delete(id);
+        if (!nuevo.nombre.trim()) return;
+        const r = await guardarTipo({
+          id,
+          nombre: nuevo.nombre,
+          composicion: { nucleo: nuevo.nucleo, exterior: nuevo.exterior, interior: nuevo.interior },
+        });
+        setErrorDeTipo(r.error ?? "");
+      }, 700)
+    );
+  };
+
+  /**
+   * Un tipo nuevo: vacío, o armado desde un muro —su mampostería y su
+   * espesor de núcleo—, que pasa a usarlo.
+   */
+  const crearTipo = async (desde: Muro | null) => {
+    const composicion: Composicion = {
+      nucleo: { tarea: desde?.tarea ?? null, espesor: desde?.espesor ?? 0.12 },
+      exterior: [],
+      interior: [],
+    };
+    const nombre = nombreLibre(
+      desde ? `Muro ${Math.round((desde.espesor ?? 0.12) * 100)}` : "Muro",
+      tipos.map((t) => t.nombre)
+    );
+    const r = await guardarTipo({ id: null, nombre, composicion });
+    if (r.error || !r.id) {
+      setErrorDeTipo(r.error ?? "No se pudo crear el tipo.");
+      return;
+    }
+    setErrorDeTipo("");
+    const nuevo: TipoMuro = { id: r.id, nombre, ...composicion };
+    setTipos((antes) => [...antes, nuevo]);
+    if (desde) cambiarMuros(new Set([desde.id]), { tipo: r.id, ...medidasDelMuro(nuevo) });
+    else setTipoMolde(r.id);
+  };
+
+  const borrarTipo = async (id: string) => {
+    if (dibujo.muros.some((m) => m.tipo === id)) {
+      setErrorDeTipo("Lo usan muros de esta planta.");
+      return;
+    }
+    const r = await eliminarTipo(id);
+    if (r.error) {
+      setErrorDeTipo(r.error);
+      return;
+    }
+    setErrorDeTipo("");
+    setTipos((antes) => antes.filter((t) => t.id !== id));
+    if (tipoMolde === id) setTipoMolde(null);
+  };
+
+  /** Le pone un tipo a un muro: su espesor y su mampostería salen del tipo. */
+  const ponerTipo = (muro: Muro, id: string | null) => {
+    const tipo = id ? mapaDeTipos.get(id) : undefined;
+    cambiarMuros(
+      new Set([muro.id]),
+      tipo
+        ? { tipo: tipo.id, ...medidasDelMuro(tipo) }
+        : // Sin tipo, todo el espesor vuelve a ser núcleo.
+          { tipo: null, revestimiento: SIN_REVESTIMIENTO }
     );
   };
 
@@ -1301,10 +1498,13 @@ export default function EditorPlanta({
                 id: crypto.randomUUID(),
                 a: ultimo,
                 b: p,
-                espesor,
                 referencia,
                 altura: null,
-                tarea: tipoDeMuro,
+                ...(tipoDelMolde
+                  ? medidasDelMuro(tipoDelMolde)
+                  : { espesor, tarea: tipoDeMuro, revestimiento: SIN_REVESTIMIENTO }),
+                tipo: tipoDelMolde?.id ?? null,
+                zocalo: { exterior: null, interior: null },
               },
             ],
           },
@@ -1377,6 +1577,45 @@ export default function EditorPlanta({
       return;
     }
 
+    if (herramienta === "esquina") {
+      // Un muro, después el otro: se unen en escuadra.
+      const tocado = muroCercano(aPlano(e), murosPorSuCuerpo, ALCANCE_ABERTURA * u);
+      if (!tocado) return;
+      if (!primeroDeEsquina || primeroDeEsquina === tocado.id) {
+        setPrimeroDeEsquina(tocado.id);
+        setAvisoDeEsquina("");
+        return;
+      }
+      const muros = unirEnEsquina(dibujo.muros, primeroDeEsquina, tocado.id);
+      setPrimeroDeEsquina(null);
+      if (!muros) {
+        setAvisoDeEsquina("Son paralelos: no tienen esquina.");
+        return;
+      }
+      setAvisoDeEsquina("");
+      cambiar({
+        escala,
+        dibujo: {
+          ...dibujo,
+          muros,
+          aberturas: aberturasEnSuLugar(dibujo.aberturas, dibujo.muros, muros, mpp, u),
+        },
+      });
+      return;
+    }
+
+    if (herramienta === "cortar") {
+      const muro = corte ? dibujo.muros.find((m) => m.id === corte.muroId) : undefined;
+      if (muro && corte && corte.t > 0 && corte.t < 1) {
+        partirEn(muro, {
+          x: muro.a.x + (muro.b.x - muro.a.x) * corte.t,
+          y: muro.a.y + (muro.b.y - muro.a.y) * corte.t,
+        });
+        setCorte(null);
+      }
+      return;
+    }
+
     if (herramienta === "columna") {
       colocarColumna(ajustarAlDibujar(aPlano(e)).punto);
       return;
@@ -1416,6 +1655,76 @@ export default function EditorPlanta({
         ultimoToque.current = null;
         setPasado((p) => [...p.slice(-99), inicio]);
         antesDeArrastrar.current = null;
+      }
+
+      if (agarrado.tipo === "muroEntero") {
+        const base = alAgarrar.current?.dibujo ?? dibujo;
+        const muro = base.muros.find((m) => m.id === agarrado.id);
+        if (!muro) return;
+        const p = aPlano(e);
+        let dx = p.x - agarrado.inicio.x;
+        let dy = p.y - agarrado.inicio.y;
+
+        // Los que se mueven: el muro, y con las puntas unidas también las
+        // puntas de los que llegan a él.
+        const propio = new Set([muro.id]);
+        // Se prueba pegar cada punta y el medio de su línea a lo que haya cerca
+        // —una cara, una esquina, la línea de otro muro— y gana el que menos
+        // tiene que corregirse: así se lo alinea por la línea de la que se lo
+        // agarra.
+        const medio = { x: (muro.a.x + muro.b.x) / 2, y: (muro.a.y + muro.b.y) / 2 };
+        let mejor: { cx: number; cy: number; guias: Guia[] } | null = null;
+        for (const q of [muro.a, muro.b, medio]) {
+          const objetivo = { x: q.x + dx, y: q.y + dy };
+          const ajuste = ajustar(objetivo, {
+            previo: null,
+            ortogonal: false,
+            tolerancia: IMAN * u,
+            vertices: verticesMenos(undefined, propio).filter(
+              (v) => !mismoPunto(v, muro.a) && !mismoPunto(v, muro.b)
+            ),
+            muros: lineasDeApoyo(propio),
+            guias: conGuias,
+          });
+          if (!ajuste.iman) continue;
+          const cx = ajuste.punto.x - objetivo.x;
+          const cy = ajuste.punto.y - objetivo.y;
+          if (!mejor || Math.hypot(cx, cy) < Math.hypot(mejor.cx, mejor.cy)) {
+            mejor = { cx, cy, guias: ajuste.guias };
+          }
+        }
+        if (mejor) {
+          dx += mejor.cx;
+          dy += mejor.cy;
+        }
+        setGuias(mejor?.guias ?? []);
+
+        const corrido = (q: Punto) => ({ x: q.x + dx, y: q.y + dy });
+        const muros = base.muros.map((m) => {
+          if (m.id === muro.id) return { ...m, a: corrido(m.a), b: corrido(m.b) };
+          if (!puntasJuntas) return m;
+          const pegada = (q: Punto) => mismoPunto(q, muro.a) || mismoPunto(q, muro.b);
+          return {
+            ...m,
+            a: pegada(m.a) ? corrido(m.a) : m.a,
+            b: pegada(m.b) ? corrido(m.b) : m.b,
+          };
+        });
+        // Las aberturas del muro van con él; las de los vecinos que se
+        // estiraron se quedan donde estaban en el plano.
+        const enSuLugar = aberturasEnSuLugar(base.aberturas, base.muros, muros, mpp, u);
+        setTrazo({
+          escala,
+          dibujo: {
+            ...dibujo,
+            muros,
+            aberturas: enSuLugar.map((ab, i) =>
+              ab.muroId === muro.id ? base.aberturas[i] : ab
+            ),
+          },
+        });
+        setSucio(true);
+        return;
       }
 
       if (agarrado.tipo === "esquina") {
@@ -1591,21 +1900,40 @@ export default function EditorPlanta({
             )
           : undefined;
 
+      // Una esquina de otro muro a mano manda sobre todo lo demás: es lo que
+      // se quiere cuando se acerca la punta a ella, aunque quede unos
+      // milímetros fuera de la línea del muro —alinear la cara de un muro con
+      // la de otro—. Sin esto, "estirar" ataba la punta a su línea y no la
+      // dejaba llegar.
+      const crudo = aPlano(e);
+      const esquina =
+        agarrado.tipo === "muro"
+          ? verticesMenos(origen, enMovimiento).reduce<{ p: Punto; d: number } | null>(
+              (mejor, v) => {
+                const d = distancia(v, crudo);
+                return d <= IMAN * u && (!mejor || d < mejor.d) ? { p: v, d } : mejor;
+              },
+              null
+            )
+          : null;
+
       // Un muro solo se estira; una esquina de varios no tiene una línea que
       // seguir, y un punto de un contorno tampoco.
       const estirada = estirar(
-        aPlano(e),
-        agarrado.tipo === "muro" && enMovimiento?.size === 1 ? agarrado.eje : null,
+        crudo,
+        agarrado.tipo === "muro" && enMovimiento?.size === 1 && !esquina ? agarrado.eje : null,
         enMovimiento
       );
-      const ajuste = ajustar(estirada.punto, {
-        previo: null,
-        ortogonal: false,
-        tolerancia: IMAN * u,
-        vertices: [...verticesMenos(origen, enMovimiento), ...estirada.cruces],
-        muros: [...lineasDeApoyo(enMovimiento), ...estirada.lineas],
-        guias: conGuias,
-      });
+      const ajuste = esquina
+        ? { punto: esquina.p, iman: true, guias: [] as Guia[] }
+        : ajustar(estirada.punto, {
+            previo: null,
+            ortogonal: false,
+            tolerancia: IMAN * u,
+            vertices: [...verticesMenos(origen, enMovimiento), ...estirada.cruces],
+            muros: [...lineasDeApoyo(enMovimiento), ...estirada.lineas],
+            guias: conGuias,
+          });
       const destino = ajuste.punto;
       setGuias(ajuste.guias);
 
@@ -1665,6 +1993,29 @@ export default function EditorPlanta({
       const ajuste = ajustarAlDibujar(aPlano(e));
       setCursor(ajuste);
       setGuias(ajuste.guias);
+    } else if (herramienta === "cortar") {
+      // El muro que está debajo del puntero y dónde se lo cortaría: en la
+      // línea de otro muro, si pasa cerca; si no, donde está el puntero.
+      const p = aPlano(e);
+      const cercano = muroCercano(p, murosPorSuCuerpo, ALCANCE_ABERTURA * u);
+      const muro = cercano ? dibujo.muros.find((m) => m.id === cercano.id) : undefined;
+      if (!muro) {
+        setCorte(null);
+        return;
+      }
+      const largo = distancia(muro.a, muro.b);
+      const enLinea = proyectar(p, muro.a, muro.b);
+      const crudo = largo > 0 ? distancia(muro.a, enLinea) / largo : 0.5;
+      const posibles = cortesDeMuro(muro, dibujo.muros, mpp);
+      const cerca = posibles.reduce<number | null>(
+        (mejor, t) =>
+          Math.abs(t - crudo) * largo < IMAN * u &&
+          (mejor === null || Math.abs(t - crudo) < Math.abs(mejor - crudo))
+            ? t
+            : mejor,
+        null
+      );
+      setCorte({ muroId: muro.id, t: cerca ?? crudo, posibles, enganchado: cerca !== null });
     } else if (herramienta === "abertura") {
       const p = aPlano(e);
       const muro = muroCercano(p, murosPorSuCuerpo, ALCANCE_ABERTURA * u);
@@ -1733,7 +2084,11 @@ export default function EditorPlanta({
       muros: [],
       guias: conGuias,
     }).punto;
-    const corte = proyectar(acomodado, m.a, m.b);
+    partirEn(m, proyectar(acomodado, m.a, m.b));
+  };
+
+  /** Parte un muro en un punto de su línea. */
+  const partirEn = (m: Muro, corte: Punto) => {
     // En una punta no hay nada que partir.
     if (mismoPunto(corte, m.a) || mismoPunto(corte, m.b)) return;
 
@@ -1827,6 +2182,32 @@ export default function EditorPlanta({
    * foco en el lienzo dejaban de andar apenas se tocaba un botón del panel
    * —Escuadrar, por ejemplo—, y el Ctrl+Z de después no deshacía nada.
    */
+  /**
+   * Corre un muro entero, en el plano. Con las puntas unidas, las de los que
+   * llegan a él lo acompañan. Sus aberturas van con él; las de los vecinos
+   * quedan donde estaban.
+   */
+  const correrMuro = (muro: Muro, dx: number, dy: number) => {
+    const corrido = (q: Punto) => ({ x: q.x + dx, y: q.y + dy });
+    const pegada = (q: Punto) => mismoPunto(q, muro.a) || mismoPunto(q, muro.b);
+    const muros = dibujo.muros.map((m) =>
+      m.id === muro.id
+        ? { ...m, a: corrido(m.a), b: corrido(m.b) }
+        : puntasJuntas
+          ? { ...m, a: pegada(m.a) ? corrido(m.a) : m.a, b: pegada(m.b) ? corrido(m.b) : m.b }
+          : m
+    );
+    const enSuLugar = aberturasEnSuLugar(dibujo.aberturas, dibujo.muros, muros, mpp, u);
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        muros,
+        aberturas: enSuLugar.map((ab, i) => (ab.muroId === muro.id ? dibujo.aberturas[i] : ab)),
+      },
+    });
+  };
+
   const alTeclear = useEffectEvent((e: KeyboardEvent) => {
     // Con la definición de pisos abierta las teclas son de ella: Supr no
     // puede borrar un muro que está detrás.
@@ -1845,6 +2226,7 @@ export default function EditorPlanta({
       else if (reglaMarcada) setReglaMarcada(null);
       else if (medicion) setMedicion(null);
       else if (copiado) setCopiado(null);
+      else if (primeroDeEsquina) setPrimeroDeEsquina(null);
       else setSeleccion(null);
     } else if (e.key === "Enter") {
       if (herramienta === "ambiente") cerrarAmbiente(enCurso);
@@ -1855,6 +2237,25 @@ export default function EditorPlanta({
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       deshacer();
+    } else if (
+      e.key.startsWith("Arrow") &&
+      seleccion?.tipo === "muro" &&
+      herramienta === "seleccionar"
+    ) {
+      const elegido = dibujo.muros.find((m) => m.id === seleccion.id);
+      if (!elegido) return;
+      // El ajuste fino: un centímetro por tecla, diez con Shift.
+      e.preventDefault();
+      const paso = (e.shiftKey ? 0.1 : 0.01) / (mpp ?? 0.01);
+      const [dx, dy] =
+        e.key === "ArrowLeft"
+          ? [-paso, 0]
+          : e.key === "ArrowRight"
+            ? [paso, 0]
+            : e.key === "ArrowUp"
+              ? [0, -paso]
+              : [0, paso];
+      correrMuro(elegido, dx, dy);
     }
   });
 
@@ -1993,7 +2394,15 @@ export default function EditorPlanta({
   const columnaFantasma =
     herramienta === "columna" && cursor && mpp !== null
       ? huellaDeColumna(
-          { ...moldeDeColumna, id: "", nombre: "", p: cursor.punto, desde: null, arriba: null },
+          {
+            ...moldeDeColumna,
+            id: "",
+            nombre: "",
+            p: cursor.punto,
+            desde: null,
+            arriba: null,
+            visto: false,
+          },
           mpp
         )
       : null;
@@ -2015,7 +2424,18 @@ export default function EditorPlanta({
   const cuerpoEnCurso =
     herramienta === "muro" && previo && cursor && !mismoPunto(previo, cursor.punto)
       ? cuerpoDeMuro(
-          { id: "", a: previo, b: cursor.punto, espesor, referencia, altura: null, tarea: null },
+          {
+            id: "",
+            a: previo,
+            b: cursor.punto,
+            referencia,
+            altura: null,
+            ...(tipoDelMolde
+              ? medidasDelMuro(tipoDelMolde)
+              : { espesor, tarea: null, revestimiento: SIN_REVESTIMIENTO }),
+            tipo: null,
+            zocalo: { exterior: null, interior: null },
+          },
           [],
           mpp,
           u
@@ -2050,6 +2470,24 @@ export default function EditorPlanta({
       ? juntarCaras(terminaciones.caras.filter((c) => c.ambienteId === ambienteElegido.id))
       : [];
   const carasConLasSuyas = carasDelAmbiente.filter((c) => c.propias);
+
+  /**
+   * Con qué arranca la terminación propia de un ambiente: las capas que hoy
+   * le dan sus muros —las del lado de su tipo que da al ambiente—, para
+   * cambiar sólo lo distinto. Sin muros con tipo, una capa vacía.
+   */
+  const capasDeLosMurosDe = (ambienteId: string): CapaDeMuro[] => {
+    for (const cara of terminaciones?.caras ?? []) {
+      if (cara.ambienteId !== ambienteId || cara.punta !== null) continue;
+      const tipo = dibujo.muros.find((m) => m.id === cara.muroId)?.tipo;
+      const delTipo = tipo ? mapaDeTipos.get(tipo) : undefined;
+      if (delTipo) {
+        const capas = delTipo[ladoDeCara(cara.lado, null)];
+        if (capas.length > 0) return capas;
+      }
+    }
+    return [{ ...CAPA_NUEVA }];
+  };
   /** Si todas las que tienen las suyas tienen las mismas: se pueden pasar al
    *  ambiente sin perder nada. */
   const todasLasMismas =
@@ -2083,9 +2521,16 @@ export default function EditorPlanta({
   /** Los otros muros de su espesor que todavía no tienen tipo. */
   const sinTipoDelMismoEspesor = muroElegido
     ? dibujo.muros.filter(
-        (m) => m.id !== muroElegido.id && m.tarea === null && m.espesor === muroElegido.espesor
+        (m) =>
+          m.id !== muroElegido.id &&
+          (muroElegido.tipo ? m.tipo === null : m.tarea === null) &&
+          Math.abs(m.espesor - muroElegido.espesor) < 1e-9
       )
     : [];
+  const tipoDelElegido = muroElegido?.tipo ? mapaDeTipos.get(muroElegido.tipo) ?? null : null;
+  const usosDelTipo = tipoDelElegido
+    ? dibujo.muros.filter((m) => m.tipo === tipoDelElegido.id).length
+    : 0;
 
   /** Si alguna punta del muro elegido es también la punta de otro. */
   const muroUnido =
@@ -2308,6 +2753,46 @@ export default function EditorPlanta({
                 );
               })}
 
+              {/* Las capas de todos los muros van primero y los ladrillos
+                  encima: en una esquina el ladrillo de un muro corta las capas
+                  del otro, el revoque de afuera da la vuelta y el de adentro
+                  se interrumpe donde llega el otro muro. */}
+              {/* Cada pasada va en un grupo con su transparencia: donde dos
+                  muros se pisan en la esquina el color no se oscurece, y la L
+                  se lee pareja. */}
+              <g opacity={0.9} style={{ pointerEvents: "none" }}>
+                {dibujo.muros.map((m) =>
+                  (franjas.get(m.id) ?? [])
+                    .filter((f) => f.clase !== "nucleo")
+                    .map((f) => (
+                      <polygon
+                        key={`${m.id}-${f.clase}`}
+                        points={f.puntos.map((p) => `${p.x},${p.y}`).join(" ")}
+                        fill={muroElegido?.id === m.id ? "#f4b48f" : REVOQUE}
+                      />
+                    ))
+                )}
+              </g>
+              <g opacity={0.75} style={{ pointerEvents: "none" }}>
+                {dibujo.muros.map((m) =>
+                  (franjas.get(m.id) ?? [])
+                    .filter((f) => f.clase === "nucleo")
+                    .map((f) => (
+                      <polygon
+                        key={`${m.id}-nucleo`}
+                        points={f.puntos.map((p) => `${p.x},${p.y}`).join(" ")}
+                        fill={
+                          muroElegido?.id === m.id
+                            ? ACENTO
+                            : encimados.has(m.id)
+                              ? ui.ROJO
+                              : "#111111"
+                        }
+                      />
+                    ))
+                )}
+              </g>
+
               {dibujo.muros.map((m) => {
                 const cuerpo = cuerpos.get(m.id);
                 if (!cuerpo) return null;
@@ -2316,19 +2801,11 @@ export default function EditorPlanta({
                 const largoEnPantalla = distancia(m.a, m.b) * v.k;
                 return (
                   <g key={m.id}>
-                    {/* Sin remate en las puntas: el cuerpo ya viene estirado lo
+                    {/* El muro en corte: el núcleo con el color de siempre y
+                        cada capa de los lados como una franja más clara, con
+                        su espesor. Sin capas, el núcleo es todo el muro. Sin
+                        remate en las puntas: el cuerpo ya viene estirado lo
                         justo en cada esquina (`cuerpoDeMuro`). */}
-                    <line
-                      x1={cuerpo.a.x}
-                      y1={cuerpo.a.y}
-                      x2={cuerpo.b.x}
-                      y2={cuerpo.b.y}
-                      stroke={elegido ? ACENTO : encimados.has(m.id) ? ui.ROJO : "#111111"}
-                      strokeOpacity={elegido ? 0.9 : 0.7}
-                      strokeWidth={grosor}
-                      strokeLinecap="butt"
-                      style={{ pointerEvents: "none" }}
-                    />
                     {/* La línea que se marcó, cuando no es el eje: es la que
                         mide y la que tiene los puntos para mover. */}
                     {elegido && m.referencia !== "centro" && (
@@ -2377,6 +2854,66 @@ export default function EditorPlanta({
                   </g>
                 );
               })}
+
+              {/* Esquina: el primer muro, esperando el segundo. */}
+              {herramienta === "esquina" &&
+                primeroDeEsquina &&
+                (() => {
+                  const cuerpo = cuerpos.get(primeroDeEsquina);
+                  return cuerpo ? (
+                    <line
+                      x1={cuerpo.a.x}
+                      y1={cuerpo.a.y}
+                      x2={cuerpo.b.x}
+                      y2={cuerpo.b.y}
+                      stroke={ACENTO}
+                      strokeOpacity={0.55}
+                      strokeWidth={cuerpo.grosor}
+                      strokeLinecap="butt"
+                      style={{ pointerEvents: "none" }}
+                    />
+                  ) : null;
+                })()}
+
+              {/* Cortar: las líneas por donde se puede partir el muro —las
+                  caras de los muros que llegan a él—, y en rojo lleno la que
+                  se usaría con un clic. */}
+              {herramienta === "cortar" &&
+                corte &&
+                (() => {
+                  const cuerpo = cuerpos.get(corte.muroId);
+                  if (!cuerpo) return null;
+                  const largo = distancia(cuerpo.ejeA, cuerpo.ejeB);
+                  if (!(largo > 0)) return null;
+                  const nx = -(cuerpo.ejeB.y - cuerpo.ejeA.y) / largo;
+                  const ny = (cuerpo.ejeB.x - cuerpo.ejeA.x) / largo;
+                  const medio = cuerpo.grosor / 2 + 10 * u;
+                  const linea = (t: number, activa: boolean) => {
+                    const c = {
+                      x: cuerpo.ejeA.x + (cuerpo.ejeB.x - cuerpo.ejeA.x) * t,
+                      y: cuerpo.ejeA.y + (cuerpo.ejeB.y - cuerpo.ejeA.y) * t,
+                    };
+                    return (
+                      <line
+                        key={(activa ? "a" : "p") + t}
+                        x1={c.x - nx * medio}
+                        y1={c.y - ny * medio}
+                        x2={c.x + nx * medio}
+                        y2={c.y + ny * medio}
+                        stroke={ui.ROJO}
+                        strokeWidth={(activa ? 2 : 1) * u}
+                        strokeDasharray={activa ? undefined : `${4 * u} ${3 * u}`}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    );
+                  };
+                  return (
+                    <g>
+                      {corte.posibles.map((t) => linea(t, false))}
+                      {linea(corte.t, true)}
+                    </g>
+                  );
+                })()}
 
               {dibujo.aberturas.map((ab) => {
                 const muro = murosPorSuCuerpo.find((m) => m.id === ab.muroId);
@@ -2847,6 +3384,20 @@ export default function EditorPlanta({
                     }
                   />
                 ))}
+                {/* El medio de su línea: de ahí se lo mueve entero. */}
+                <rect
+                  x={(muroElegido.a.x + muroElegido.b.x) / 2 - 5 * u}
+                  y={(muroElegido.a.y + muroElegido.b.y) / 2 - 5 * u}
+                  width={10 * u}
+                  height={10 * u}
+                  fill={ACENTO}
+                  stroke="#ffffff"
+                  strokeWidth={1.5 * u}
+                  style={{ cursor: "move" }}
+                  onPointerDown={(e) =>
+                    agarrar(e, { tipo: "muroEntero", id: muroElegido.id, inicio: aPlano(e) })
+                  }
+                />
               </>
             )}
             {/* Las esquinas de la abertura elegida. Agarrada del medio se
@@ -3108,11 +3659,20 @@ export default function EditorPlanta({
                 <h3 style={tituloBloque}>Copiar</h3>
                 {copiado?.de === "muro" ? (
                   <>
-                    <p style={nota}>Tomado de un muro. Tocá los muros que son de lo mismo.</p>
-                    <Renglon nombre="Tipo de muro">
-                      {copiado.tarea === null
-                        ? "sin tipo"
-                        : tipoPorId.get(copiado.tarea)?.nombre ?? "Tarea eliminada"}
+                    <Renglon nombre="Tipo">
+                      {copiado.tipo
+                        ? mapaDeTipos.get(copiado.tipo)?.nombre ?? "Tipo eliminado"
+                        : copiado.tarea === null
+                          ? "sin tipo"
+                          : `${tipoPorId.get(copiado.tarea)?.nombre ?? "Tarea eliminada"} · ${formatEspesor(copiado.espesor)}`}
+                    </Renglon>
+                    <Renglon nombre="Zócalos">
+                      {[copiado.zocalo.exterior, copiado.zocalo.interior]
+                        .map((z) => (z ? nombreDeCapa.get(z) ?? "?" : "—"))
+                        .join(" / ")}
+                    </Renglon>
+                    <Renglon nombre="Altura">
+                      {copiado.altura === null ? "la de la planta" : formatMedida(copiado.altura)}
                     </Renglon>
                     <button type="button" onClick={() => setCopiado(null)} style={botonChico}>
                       Tomar otro
@@ -3143,11 +3703,14 @@ export default function EditorPlanta({
                     </button>
                   </>
                 ) : (
-                  <p style={nota}>
-                    Tocá el cuerpo de un muro para tomar su tipo; una cara, o adentro de un ambiente,
-                    para tomar su terminación.
-                  </p>
+                  <p style={nota}>Tocá un muro o un ambiente.</p>
                 )}
+              </section>
+            )}
+
+            {herramienta === "esquina" && avisoDeEsquina && (
+              <section style={bloque}>
+                <p style={alerta}>{avisoDeEsquina}</p>
               </section>
             )}
 
@@ -3368,26 +3931,60 @@ export default function EditorPlanta({
             {herramienta === "muro" && (
               <section style={bloque}>
                 <h3 style={tituloBloque}>Muro</h3>
-                <label style={campo}>
-                  <span style={rotulo}>Tipo de muro</span>
-                  <SelectorDeTipoDeMuro
-                    valor={tipoDeMuro}
-                    tipos={tiposDeMuro}
-                    alCambiar={setTipoDeMuro}
-                  />
-                </label>
-                <label style={campo}>
-                  <span style={rotulo}>Espesor</span>
-                  <SelectorEspesor valor={espesor} alCambiar={setEspesor} />
-                </label>
+                <SelectorDeTipo
+                  valor={tipoMolde}
+                  tipos={tipos}
+                  alCambiar={setTipoMolde}
+                  alCrear={() => crearTipo(null)}
+                />
+                {tipoDelMolde ? (
+                  <>
+                    <input
+                      type="text"
+                      value={tipoDelMolde.nombre}
+                      onChange={(e) => cambiarTipoDeMuro(tipoDelMolde.id, { nombre: e.target.value })}
+                      aria-label="Nombre del tipo"
+                      style={ui.input}
+                    />
+                    <TipoDeMuroEditor
+                      composicion={tipoDelMolde}
+                      tareas={tareasDeCapa}
+                      alCambiar={(composicion) => cambiarTipoDeMuro(tipoDelMolde.id, { composicion })}
+                    />
+                    {!dibujo.muros.some((m) => m.tipo === tipoDelMolde.id) && (
+                      <button
+                        type="button"
+                        onClick={() => borrarTipo(tipoDelMolde.id)}
+                        style={botonBorrar}
+                      >
+                        Borrar tipo
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div style={dosCampos}>
+                    <label style={campo}>
+                      <span style={rotulo}>Mampostería</span>
+                      <SelectorDeTipoDeMuro
+                        valor={tipoDeMuro}
+                        tipos={tiposDeMuro}
+                        alCambiar={setTipoDeMuro}
+                      />
+                    </label>
+                    <label style={campo}>
+                      <span style={rotulo}>Espesor</span>
+                      <SelectorEspesor valor={espesor} alCambiar={setEspesor} />
+                    </label>
+                  </div>
+                )}
+                {errorDeTipo && <p style={alerta}>{errorDeTipo}</p>}
                 <label style={campo}>
                   <span style={rotulo}>Línea de referencia</span>
-                  <SelectorReferencia valor={referencia} alCambiar={setReferencia} />
-                  <span style={nota}>
-                    {referencia === "centro"
-                      ? "Lo que marcás es el eje del muro."
-                      : "Lo que marcás es esa cara: el muro crece hacia el otro lado."}
-                  </span>
+                  <SelectorReferencia
+                    valor={referencia}
+                    opciones={REFERENCIAS_DE_MURO}
+                    alCambiar={setReferencia}
+                  />
                 </label>
               </section>
             )}
@@ -3542,55 +4139,97 @@ export default function EditorPlanta({
 
             {muroElegido && (
               <section style={bloque}>
-                <h3 style={tituloBloque}>Muro seleccionado</h3>
-                {mpp !== null && (
-                  <Renglon nombre="Largo">
-                    {formatMetros(distancia(muroElegido.a, muroElegido.b) * mpp)}
-                  </Renglon>
+                <h3 style={tituloBloque}>Muro</h3>
+                <SelectorDeTipo
+                  valor={muroElegido.tipo}
+                  tipos={tipos}
+                  alCambiar={(id) => ponerTipo(muroElegido, id)}
+                  alCrear={() => crearTipo(muroElegido)}
+                />
+                {tipoDelElegido ? (
+                  <>
+                    <input
+                      type="text"
+                      value={tipoDelElegido.nombre}
+                      onChange={(e) => cambiarTipoDeMuro(tipoDelElegido.id, { nombre: e.target.value })}
+                      aria-label="Nombre del tipo"
+                      style={ui.input}
+                    />
+                    <TipoDeMuroEditor
+                      composicion={tipoDelElegido}
+                      tareas={tareasDeCapa}
+                      alCambiar={(composicion) => cambiarTipoDeMuro(tipoDelElegido.id, { composicion })}
+                    />
+                    <div style={pieDeTipo}>
+                      <span style={nota}>
+                        {usosDelTipo === 1 ? "1 muro" : `${usosDelTipo} muros`} en esta planta
+                      </span>
+                      {sinTipoDelMismoEspesor.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            cambiarMuros(new Set(sinTipoDelMismoEspesor.map((m) => m.id)), {
+                              tipo: tipoDelElegido.id,
+                              ...medidasDelMuro(tipoDelElegido),
+                            })
+                          }
+                          style={botonChico}
+                        >
+                          + {sinTipoDelMismoEspesor.length} sin tipo de {formatEspesor(muroElegido.espesor)}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div style={dosCampos}>
+                    <label style={campo}>
+                      <span style={rotulo}>Mampostería</span>
+                      <SelectorDeTipoDeMuro
+                        valor={muroElegido.tarea}
+                        tipos={tiposDeMuro}
+                        alCambiar={(tarea) => cambiarMuros(new Set([muroElegido.id]), { tarea })}
+                      />
+                    </label>
+                    <label style={campo}>
+                      <span style={rotulo}>Espesor</span>
+                      <SelectorEspesor
+                        valor={muroElegido.espesor}
+                        alCambiar={(nuevo) =>
+                          cambiarMuros(new Set([muroElegido.id]), { espesor: nuevo })
+                        }
+                      />
+                    </label>
+                  </div>
                 )}
-                <label style={campo}>
-                  <span style={rotulo}>Tipo de muro</span>
-                  <SelectorDeTipoDeMuro
-                    valor={muroElegido.tarea}
-                    tipos={tiposDeMuro}
-                    alCambiar={(tarea) => cambiarMuros(new Set([muroElegido.id]), { tarea })}
-                  />
-                </label>
-                {/* El atajo de todos los días: los muros de un mismo espesor
-                    suelen ser de lo mismo. Sólo toca los que no tienen tipo, así
-                    no pisa uno que se eligió a mano. */}
-                {muroElegido.tarea !== null && sinTipoDelMismoEspesor.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      cambiarMuros(new Set(sinTipoDelMismoEspesor.map((m) => m.id)), {
-                        tarea: muroElegido.tarea,
-                      })
-                    }
-                    style={botonChico}
-                  >
-                    {sinTipoDelMismoEspesor.length === 1
-                      ? `Ponérselo al otro muro de ${formatEspesor(muroElegido.espesor)} sin tipo`
-                      : `Ponérselo a los ${sinTipoDelMismoEspesor.length} muros de ${formatEspesor(muroElegido.espesor)} sin tipo`}
-                  </button>
-                )}
-                <label style={campo}>
-                  <span style={rotulo}>Espesor</span>
-                  <SelectorEspesor
-                    valor={muroElegido.espesor}
-                    alCambiar={(nuevo) =>
-                      cambiar({
-                        escala,
-                        dibujo: {
-                          ...dibujo,
-                          muros: dibujo.muros.map((m) =>
-                            m.id === muroElegido.id ? { ...m, espesor: nuevo } : m
-                          ),
-                        },
-                      })
-                    }
-                  />
-                </label>
+                {errorDeTipo && <p style={alerta}>{errorDeTipo}</p>}
+                <div style={dosCampos}>
+                  <label style={campo}>
+                    <span style={rotulo}>Zócalo exterior</span>
+                    <SelectorDeTipoDeMuro
+                      valor={muroElegido.zocalo.exterior}
+                      tipos={tareasPorMetro}
+                      vacio="—"
+                      alCambiar={(t) =>
+                        cambiarMuros(new Set([muroElegido.id]), {
+                          zocalo: { ...muroElegido.zocalo, exterior: t },
+                        })
+                      }
+                    />
+                  </label>
+                  <label style={campo}>
+                    <span style={rotulo}>Zócalo interior</span>
+                    <SelectorDeTipoDeMuro
+                      valor={muroElegido.zocalo.interior}
+                      tipos={tareasPorMetro}
+                      vacio="—"
+                      alCambiar={(t) =>
+                        cambiarMuros(new Set([muroElegido.id]), {
+                          zocalo: { ...muroElegido.zocalo, interior: t },
+                        })
+                      }
+                    />
+                  </label>
+                </div>
                 <label style={campo}>
                   <span style={rotulo}>Altura (m)</span>
                   <CampoMetros
@@ -3602,20 +4241,22 @@ export default function EditorPlanta({
                   />
                 </label>
                 <label style={campo}>
-                  <span style={rotulo}>Línea de referencia</span>
+                  <span style={rotulo}>Se agarra de</span>
                   <SelectorReferencia
                     valor={muroElegido.referencia}
-                    alCambiar={(nueva) =>
+                    opciones={REFERENCIAS_DE_MURO}
+                    alCambiar={(nueva) => {
+                      // El muro no se mueve: se corre la línea con sus puntos.
+                      const muros = conOtraReferencia(dibujo.muros, muroElegido.id, nueva, mpp);
                       cambiar({
                         escala,
                         dibujo: {
                           ...dibujo,
-                          muros: dibujo.muros.map((m) =>
-                            m.id === muroElegido.id ? { ...m, referencia: nueva } : m
-                          ),
+                          muros,
+                          aberturas: aberturasEnSuLugar(dibujo.aberturas, dibujo.muros, muros, mpp, u),
                         },
-                      })
-                    }
+                      });
+                    }}
                   />
                 </label>
                 {muroUnido && (
@@ -3641,7 +4282,8 @@ export default function EditorPlanta({
                       Escuadrar
                     </button>
                   )}
-                {carasDelMuro.length > 0 && mpp !== null && (
+                {/* Con tipo, las caras llevan las capas del tipo: no hay nada que elegir cara por cara. */}
+                {!muroElegido.tipo && carasDelMuro.length > 0 && mpp !== null && (
                   <>
                     <p style={subtitulo}>Caras</p>
                     {carasDelMuro.map((cara) => (
@@ -3751,10 +4393,6 @@ export default function EditorPlanta({
                     sus capas, que es lo que no se entendía. */}
                 <div style={cajaDeCapas}>
                   <p style={tituloDeCaja}>Piso</p>
-                  <p style={nota}>
-                    Lo que va sobre la losa, en orden hacia arriba: la primera apoya en la losa y
-                    la última es la que se pisa. Se mide por la superficie del ambiente.
-                  </p>
                   <EditorDeCapas
                     capas={ambienteElegido.piso}
                     disponibles={capasDisponibles}
@@ -3791,11 +4429,6 @@ export default function EditorPlanta({
                       }
                     />
                   </label>
-                  <p style={nota}>
-                    {ambienteElegido.alturaCielorraso === null
-                      ? "Sin altura es un cielorraso aplicado: va contra la losa. Con altura es suspendido, y las capas de pared pueden llegar hasta él."
-                      : "Suspendido a esa altura. Las capas, en orden hacia abajo: la primera es la que cuelga de la losa y la última, la que se ve."}
-                  </p>
                   <EditorDeCapas
                     capas={ambienteElegido.cielorraso}
                     disponibles={capasDisponibles}
@@ -3807,20 +4440,47 @@ export default function EditorPlanta({
                   />
                 </div>
 
-                <p style={subtitulo}>Paredes</p>
-                <p style={nota}>Del muro hacia afuera: la última es la que queda a la vista.</p>
-                <EditorDeCapas
-                  capas={ambienteElegido.capas}
-                  disponibles={capasDisponibles}
-                  primero={RUBROS_DE_PARED}
-                  conAltura
-                  alturaCielorraso={ambienteElegido.alturaCielorraso}
-                  alCambiar={(capas) => cambiarAmbiente(ambienteElegido.id, { capas })}
-                />
-                <p style={nota}>
-                  Las llevan todas las caras de muro que dan a este ambiente, salvo la que tenga las
-                  suyas. La altura de cada capa se elige debajo de su nombre.
-                </p>
+                {/* Las paredes: las capas de los muros, o una terminación
+                    propia del ambiente que las reemplaza en todas sus caras
+                    —el baño, con su porcelanato y su revoque—. */}
+                <div style={cajaDeCapas}>
+                  <div style={cabezaDeParedes}>
+                    <p style={tituloDeCaja}>Paredes</p>
+                    <div style={selectorDeParedes}>
+                      <button
+                        type="button"
+                        onClick={() => cambiarAmbiente(ambienteElegido.id, { capas: [] })}
+                        style={ambienteElegido.capas.length === 0 ? opcionElegida : opcion}
+                      >
+                        Las del muro
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          ambienteElegido.capas.length === 0 &&
+                          cambiarAmbiente(ambienteElegido.id, {
+                            capas: aCapas(capasDeLosMurosDe(ambienteElegido.id)),
+                          })
+                        }
+                        style={ambienteElegido.capas.length > 0 ? opcionElegida : opcion}
+                      >
+                        Propias
+                      </button>
+                    </div>
+                  </div>
+                  {ambienteElegido.capas.length > 0 && (
+                    <ListaDeCapas
+                      capas={ambienteElegido.capas.map(aCapaDeMuro)}
+                      tareas={tareasDeCapa}
+                      alCambiar={(nuevas) =>
+                        cambiarAmbiente(ambienteElegido.id, {
+                          // Vaciarla del todo vuelve a "las del muro".
+                          capas: aCapas(nuevas),
+                        })
+                      }
+                    />
+                  )}
+                </div>
                 {carasConLasSuyas.length > 0 && mpp !== null && (
                   <>
                     <p style={nota}>
@@ -3925,6 +4585,18 @@ export default function EditorPlanta({
                     plural="columnas"
                     ponerA={(ids, tarea) => cambiarPiezas("columnas", ids, { tarea })}
                   />
+                )}
+                {columnaElegida.material !== "metalica" && (
+                  <label style={casilla}>
+                    <input
+                      type="checkbox"
+                      checked={columnaElegida.visto}
+                      onChange={(e) =>
+                        cambiarPieza("columnas", columnaElegida.id, { visto: e.target.checked })
+                      }
+                    />
+                    Hormigón visto
+                  </label>
                 )}
 
                 <div style={dosCampos}>
@@ -4417,6 +5089,16 @@ export default function EditorPlanta({
                           {formatM2(terminaciones.sinTerminacion)}
                         </Renglon>
                       )}
+                    </Grupo>
+                  )}
+
+                  {terminaciones && terminaciones.zocalos.length > 0 && (
+                    <Grupo titulo="Zócalos">
+                      {terminaciones.zocalos.map((z) => (
+                        <Renglon key={z.capa} nombre={nombreDeCapa.get(z.capa) ?? "?"}>
+                          {formatMetros(z.largo)}
+                        </Renglon>
+                      ))}
                     </Grupo>
                   )}
 
@@ -5042,6 +5724,62 @@ function FilasDeCapas({
 }
 
 /**
+ * El tipo de un muro, de los de la obra, con "+ Nuevo" al lado. Borrar un
+ * tipo va por el desplegable: "Sin tipo" lo suelta del muro.
+ */
+function SelectorDeTipo({
+  valor,
+  tipos,
+  alCambiar,
+  alCrear,
+}: {
+  valor: string | null;
+  tipos: TipoMuro[];
+  alCambiar: (id: string | null) => void;
+  alCrear: () => void;
+}) {
+  return (
+    <div style={filaDeTipo}>
+      <select
+        value={valor ?? ""}
+        onChange={(e) => alCambiar(e.target.value || null)}
+        style={ui.input}
+        aria-label="Tipo de muro"
+      >
+        <option value="">Sin tipo</option>
+        {tipos.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.nombre} · {Math.round(espesorTotal(t) * 1000) / 10} cm
+          </option>
+        ))}
+      </select>
+      <button type="button" onClick={alCrear} style={botonNuevoTipo} title="Nuevo tipo de muro">
+        + Nuevo
+      </button>
+    </div>
+  );
+}
+
+const filaDeTipo = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: "6px",
+};
+
+const botonNuevoTipo = {
+  ...ui.secondaryButton,
+  padding: "6px 10px",
+  fontSize: "12px",
+};
+
+const pieDeTipo = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "8px",
+};
+
+/**
  * De qué está hecho un muro. Las mamposterías y las estructuras van primero,
  * que es donde está casi todo lo que puede ser un muro; cada opción dice su
  * unidad, porque de ella depende qué se le cuenta.
@@ -5096,20 +5834,23 @@ function SelectorDeTipoDeMuro({
   );
 }
 
-function SelectorReferencia({
+function SelectorReferencia<T extends string>({
   valor,
   alCambiar,
+  opciones = REFERENCIAS as unknown as readonly { valor: T; nombre: string }[],
 }: {
-  valor: Referencia;
-  alCambiar: (nueva: Referencia) => void;
+  valor: T;
+  alCambiar: (nueva: T) => void;
+  /** Las de una viga, por defecto; un muro suma sus caras terminadas. */
+  opciones?: readonly { valor: T; nombre: string }[];
 }) {
   return (
     <select
       value={valor}
-      onChange={(e) => alCambiar(e.target.value as Referencia)}
+      onChange={(e) => alCambiar(e.target.value as T)}
       style={ui.input}
     >
-      {REFERENCIAS.map((r) => (
+      {opciones.map((r) => (
         <option key={r.valor} value={r.valor}>
           {r.nombre}
         </option>
@@ -6178,11 +6919,15 @@ function pistaDe(
     case "copiar":
       return copiado
         ? "Clic en cada muro, cara o ambiente que lleva lo mismo. Esc para tomar otra cosa."
-        : "Clic en un muro para tomar su tipo, o en una cara o adentro de un ambiente para tomar su terminación.";
+        : "Clic en un muro para tomar sus propiedades, o adentro de un ambiente para tomar su terminación.";
     case "seleccionar":
       return modo === "estructura"
         ? "Clic en una columna, una viga o una losa para verla y moverla. La punta de una viga se estira derecha; lejos de su línea, gira. Doble clic en un lado de una losa le suma un punto. Supr borra."
         : "Clic en algo para verlo y moverlo. La punta de un muro se estira derecha; lejos de su línea, gira. Doble clic parte un muro o suma un punto a un ambiente. Supr borra.";
+    case "esquina":
+      return "Clic en un muro y después en el otro: se alargan o se recortan hasta unirse en escuadra.";
+    case "cortar":
+      return "Pasá por un muro: el corte se engancha en las caras de los muros que llegan. Clic parte el muro.";
     case "columna":
       return "Clic donde va la columna: se pega a las esquinas y las caras de los muros por el punto del que se agarra.";
     case "viga":
@@ -6803,6 +7548,56 @@ const alturaDeCapa = {
 
 /** Una terminación del ambiente —su piso, su cielorraso— en su propia caja:
  *  lo que hay adentro es de ella y de nada más. */
+/** El color de las capas de un muro en la planta: el gris claro de un revoque. */
+const REVOQUE = "#b9b4ab";
+
+const cabezaDeParedes = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+const selectorDeParedes = {
+  display: "inline-flex",
+  border: "1px solid #dcdcdc",
+  borderRadius: "999px",
+  overflow: "hidden",
+};
+
+const opcion = {
+  background: "#ffffff",
+  border: "none",
+  padding: "4px 10px",
+  fontSize: "12px",
+  color: "#555555",
+  cursor: "pointer",
+};
+
+const opcionElegida = {
+  ...opcion,
+  background: "#111111",
+  color: "#ffffff",
+};
+
+/** Una capa del ambiente, como la edita la lista de capas. */
+function aCapaDeMuro(c: Capa): CapaDeMuro {
+  return { tarea: c.tarea || null, espesor: c.espesor ?? 0, desde: c.desde ?? 0, hasta: c.hasta };
+}
+
+/**
+ * Y de vuelta. Una capa sin tarea todavía se guarda con la tarea vacía: si se
+ * la descartara, la fila recién agregada desaparecería antes de elegirla. Las
+ * cuentas no la miden.
+ */
+function aCapas(capas: CapaDeMuro[]): Capa[] {
+  return capas.map((c) => ({
+    tarea: c.tarea ?? "",
+    espesor: c.espesor > 0 ? c.espesor : null,
+    hasta: c.hasta,
+    ...(c.desde > 0 ? { desde: c.desde } : {}),
+  }));
+}
+
 const cajaDeCapas = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr)",

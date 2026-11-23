@@ -16,11 +16,17 @@ import {
   type Dibujo,
   type Muro,
   type Punto,
-  type Referencia,
+  type ReferenciaDeMuro,
   areaDe,
   distancia,
 } from "@/lib/planta-dibujo";
-import { prismasDeHormigon, recortar } from "@/lib/planta-estructura";
+import {
+  huellaDeColumna,
+  medirEstructura,
+  prismasDeHormigon,
+  recortar,
+} from "@/lib/planta-estructura";
+import { ladoDeCara, type Composicion } from "@/lib/tipos-de-muro";
 
 export function mismoPunto(a: Punto, b: Punto) {
   return Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
@@ -258,10 +264,27 @@ export function ajustar(
  * afuera. Recorriendo al revés se invierten, y por eso el editor muestra el
  * cuerpo antes de soltar el punto.
  */
-function rangoDelCuerpo(referencia: Referencia, grosor: number): [number, number] {
-  if (referencia === "exterior") return [0, grosor];
-  if (referencia === "interior") return [-grosor, 0];
-  return [-grosor / 2, grosor / 2];
+function rangoDelCuerpo(
+  referencia: ReferenciaDeMuro,
+  grosor: number,
+  exterior = 0,
+  interior = 0
+): [number, number] {
+  // La referencia es del núcleo; las capas exteriores crecen hacia el −normal
+  // y las interiores hacia el +normal, sin correrlo.
+  const nucleo = Math.max(grosor - exterior - interior, 0);
+  // Las caras terminadas son los bordes del cuerpo entero.
+  if (referencia === "exteriorTerminada") return [0, exterior + nucleo + interior];
+  if (referencia === "interiorTerminada") return [-(exterior + nucleo + interior), 0];
+  if (referencia === "exterior") return [-exterior, nucleo + interior];
+  if (referencia === "interior") return [-nucleo - exterior, interior];
+  return [-nucleo / 2 - exterior, nucleo / 2 + interior];
+}
+
+/** Lo que crece un muro de cada lado de su núcleo, en píxeles. */
+function revestimientoDe(muro: Pick<Muro, "revestimiento">, mpp: number | null): [number, number] {
+  if (mpp === null || !muro.revestimiento) return [0, 0];
+  return [muro.revestimiento.exterior / mpp, muro.revestimiento.interior / mpp];
 }
 
 export type Cuerpo = {
@@ -274,6 +297,9 @@ export type Cuerpo = {
   ejeB: Punto;
   /** El espesor, en píxeles de la imagen. */
   grosor: number;
+  /** El eje y el espesor del núcleo solo —el ladrillo, sin sus capas—: es lo
+   *  que el hormigón reemplaza. Igual al cuerpo en un muro sin tipo. */
+  nucleo: { ejeA: Punto; ejeB: Punto; grosor: number };
 };
 
 function grosorDe(muro: Pick<Muro, "espesor">, mpp: number | null, u: number) {
@@ -302,16 +328,37 @@ export function cuerpoDeMuro(
   const grosor = grosorDe(muro, mpp, u);
   const largo = distancia(muro.a, muro.b);
   if (!(largo > 0)) {
-    return { a: muro.a, b: muro.b, ejeA: muro.a, ejeB: muro.b, grosor };
+    return {
+      a: muro.a,
+      b: muro.b,
+      ejeA: muro.a,
+      ejeB: muro.b,
+      grosor,
+      nucleo: { ejeA: muro.a, ejeB: muro.b, grosor },
+    };
   }
 
   const dx = (muro.b.x - muro.a.x) / largo;
   const dy = (muro.b.y - muro.a.y) / largo;
   // Sin escala la referencia no se puede dibujar: el trazo va sobre la línea.
-  const [desde, hasta] = rangoDelCuerpo(mpp !== null ? muro.referencia : "centro", grosor);
+  const [ext, int] = revestimientoDe(muro, mpp);
+  const [desde, hasta] = rangoDelCuerpo(
+    mpp !== null ? muro.referencia : "centro",
+    grosor,
+    ext,
+    int
+  );
   const corrimiento = (desde + hasta) / 2;
   const ejeA = { x: muro.a.x - dy * corrimiento, y: muro.a.y + dx * corrimiento };
   const ejeB = { x: muro.b.x - dy * corrimiento, y: muro.b.y + dx * corrimiento };
+  // El núcleo va entre el borde exterior más su revestimiento y el interior
+  // menos el suyo.
+  const enNucleo = (desde + ext + (hasta - int)) / 2;
+  const nucleo = {
+    ejeA: { x: muro.a.x - dy * enNucleo, y: muro.a.y + dx * enNucleo },
+    ejeB: { x: muro.b.x - dy * enNucleo, y: muro.b.y + dx * enNucleo },
+    grosor: Math.max(grosor - ext - int, 0),
+  };
 
   /** Cuánto hay que estirar una punta, mirando hacia (ax, ay). */
   const estirar = (punta: Punto, ax: number, ay: number): number => {
@@ -328,7 +375,8 @@ export function cuerpoDeMuro(
       const haciaAfuera = nx * ax + ny * ay;
       const [d, h] = rangoDelCuerpo(
         mpp !== null ? otro.referencia : "centro",
-        grosorDe(otro, mpp, u)
+        grosorDe(otro, mpp, u),
+        ...revestimientoDe(otro, mpp)
       );
       extra = Math.max(extra, d * haciaAfuera, h * haciaAfuera);
     }
@@ -344,7 +392,317 @@ export function cuerpoDeMuro(
     ejeA,
     ejeB,
     grosor,
+    nucleo,
   };
+}
+
+/**
+ * Los muros con uno de ellos **agarrado de otra línea**, sin moverlo: el
+ * cuerpo queda donde estaba y lo que se corre es la línea marcada —con sus
+ * dos puntos—, de la cara exterior al eje o a la interior. Es el ancla de una
+ * columna: se elige de dónde se lo toma para alinearlo con otro muro.
+ *
+ * Los muros que llegan a una de sus puntas la siguen: la punta se va a donde
+ * la nueva línea cruza la del vecino, así la esquina o la T no se despegan. Un
+ * vecino que sigue en línea —paralelo— no tiene dónde cruzarla y queda como
+ * estaba.
+ */
+export function conOtraReferencia(
+  muros: Muro[],
+  id: string,
+  nueva: ReferenciaDeMuro,
+  mpp: number | null
+): Muro[] {
+  const muro = muros.find((m) => m.id === id);
+  if (!muro || mpp === null || muro.referencia === nueva) {
+    return muros.map((m) => (m.id === id ? { ...m, referencia: nueva } : m));
+  }
+  const largo = distancia(muro.a, muro.b);
+  if (!(largo > 0)) return muros.map((m) => (m.id === id ? { ...m, referencia: nueva } : m));
+
+  const dx = (muro.b.x - muro.a.x) / largo;
+  const dy = (muro.b.y - muro.a.y) / largo;
+  const nx = -dy;
+  const ny = dx;
+  const grosor = muro.espesor / mpp;
+  const [ext, int] = revestimientoDe(muro, mpp);
+  const [antes] = rangoDelCuerpo(muro.referencia, grosor, ext, int);
+  const [despues] = rangoDelCuerpo(nueva, grosor, ext, int);
+  // El cuerpo va de la línea más `desde`: para que no se mueva, la línea se
+  // corre lo que cambió ese `desde`.
+  const corrimiento = antes - despues;
+  const nuevaA = { x: muro.a.x + nx * corrimiento, y: muro.a.y + ny * corrimiento };
+  const nuevaB = { x: muro.b.x + nx * corrimiento, y: muro.b.y + ny * corrimiento };
+
+  /** Dónde la línea nueva cruza la de otro muro, o null si son paralelas. */
+  const cruce = (otro: Muro): Punto | null => {
+    const ex = otro.b.x - otro.a.x;
+    const ey = otro.b.y - otro.a.y;
+    const largoOtro = Math.hypot(ex, ey);
+    if (!(largoOtro > 0)) return null;
+    const det = dx * ey - dy * ex;
+    if (Math.abs(det) / largoOtro < 0.1) return null;
+    const wx = otro.a.x - nuevaA.x;
+    const wy = otro.a.y - nuevaA.y;
+    const s = (wx * ey - wy * ex) / det;
+    return { x: nuevaA.x + dx * s, y: nuevaA.y + dy * s };
+  };
+
+  // Cada punta: donde la nueva línea cruza a un vecino que llega ahí, o
+  // corrida en paralelo si no hay.
+  const destinos = new Map<"a" | "b", Punto>();
+  const vecinos: { id: string; punta: "a" | "b"; punto: "a" | "b" }[] = [];
+  for (const punta of ["a", "b"] as const) {
+    let destino = punta === "a" ? nuevaA : nuevaB;
+    for (const otro of muros) {
+      if (otro.id === id) continue;
+      for (const suya of ["a", "b"] as const) {
+        if (!mismoPunto(otro[suya], muro[punta])) continue;
+        const x = cruce(otro);
+        if (!x) continue;
+        destino = x;
+        vecinos.push({ id: otro.id, punta: suya, punto: punta });
+      }
+    }
+    destinos.set(punta, destino);
+  }
+
+  return muros.map((m) => {
+    if (m.id === id) {
+      return { ...m, referencia: nueva, a: destinos.get("a")!, b: destinos.get("b")! };
+    }
+    const suyas = vecinos.filter((v) => v.id === m.id);
+    if (suyas.length === 0) return m;
+    const cambio = { ...m };
+    for (const v of suyas) cambio[v.punta] = destinos.get(v.punto)!;
+    return cambio;
+  });
+}
+
+/** Una franja de un muro en la planta: una capa o el núcleo, ya recortada. */
+export type FranjaEnPlanta = {
+  clase: "exterior" | "nucleo" | "interior";
+  /** Sus cuatro esquinas, en píxeles. */
+  puntos: Punto[];
+};
+
+/**
+ * Las franjas de un muro en la planta —la capa exterior, el núcleo y la capa
+ * interior— **cortadas en sus uniones como en un corte de obra**: en una
+ * esquina, cada capa se une con la misma capa del otro muro y forma su propia
+ * L; el ladrillo con el ladrillo, el revoque de afuera con el de afuera.
+ *
+ * En cada punta que comparte con otro muro (no paralelo), cada franja termina
+ * en una línea del otro:
+ *
+ *   esquina (L)   la capa del lado de afuera de la esquina, en la cara
+ *                 terminada de afuera del otro; el núcleo, en la cara de afuera
+ *                 de su núcleo; la capa del lado de adentro, en la cara de
+ *                 adentro de su núcleo, que es donde empieza la capa de adentro
+ *                 del otro.
+ *   T             cuando el otro sigue de largo —tiene un compañero en línea en
+ *                 esa punta—: el núcleo entra hasta la cara cercana del núcleo
+ *                 del otro, y las capas terminan en su cara terminada cercana.
+ *
+ * Una punta suelta, o una que sigue en línea con otro muro, termina donde se
+ * marcó. Como las uniones pueden no ser a 90°, cada borde de la franja se
+ * corta contra la línea que le toca: la punta queda en bisel si hace falta.
+ */
+export function franjasEnPlanta(muro: Muro, muros: Muro[], mpp: number | null): FranjaEnPlanta[] {
+  const largo = distancia(muro.a, muro.b);
+  if (!(largo > 0)) return [];
+  const d = { x: (muro.b.x - muro.a.x) / largo, y: (muro.b.y - muro.a.y) / largo };
+  const n = { x: -d.y, y: d.x };
+  const grosor = grosorDe(muro, mpp, 1);
+  const [ext, int] = revestimientoDe(muro, mpp);
+  const [desde, hasta] = rangoDelCuerpo(
+    mpp !== null ? muro.referencia : "centro",
+    grosor,
+    ext,
+    int
+  );
+  // Los bordes sobre la normal, desde la línea marcada: exterior (−n),
+  // núcleo, interior (+n).
+  const bordes = [desde, desde + ext, hasta - int, hasta];
+  const franjas: { clase: FranjaEnPlanta["clase"]; n0: number; n1: number }[] = [
+    { clase: "exterior" as const, n0: bordes[0], n1: bordes[1] },
+    { clase: "nucleo" as const, n0: bordes[1], n1: bordes[2] },
+    { clase: "interior" as const, n0: bordes[2], n1: bordes[3] },
+  ].filter((f) => f.n1 - f.n0 > 1e-6);
+
+  /** Las cuatro líneas de un muro, sobre su normal desde su línea marcada. */
+  const lineasDe = (otro: Muro) => {
+    const l = distancia(otro.a, otro.b);
+    const od = { x: (otro.b.x - otro.a.x) / l, y: (otro.b.y - otro.a.y) / l };
+    const on = { x: -od.y, y: od.x };
+    const g = grosorDe(otro, mpp, 1);
+    const [oe, oi] = revestimientoDe(otro, mpp);
+    const [od0, oh] = rangoDelCuerpo(mpp !== null ? otro.referencia : "centro", g, oe, oi);
+    return { a: otro.a, n: on, d: od, k: [od0, od0 + oe, oh - oi, oh] };
+  };
+
+  /**
+   * Hasta dónde llega, a lo largo del muro, el borde que está a `m` de su línea
+   * marcada, si se lo corta con la línea del otro que está a `k` de la suya.
+   */
+  const corteEn = (m: number, otro: ReturnType<typeof lineasDe>, k: number): number | null => {
+    // Punto del borde: muro.a + n·m + d·s. Sobre la línea del otro: (P − otro.a)·otro.n = k.
+    const base = (muro.a.x + n.x * m - otro.a.x) * otro.n.x + (muro.a.y + n.y * m - otro.a.y) * otro.n.y;
+    const paso = d.x * otro.n.x + d.y * otro.n.y;
+    if (Math.abs(paso) < 1e-9) return null;
+    return (k - base) / paso;
+  };
+
+  /** Para cada franja, dónde termina en una punta: [borde n0, borde n1], a lo largo. */
+  const finEn = (punta: "a" | "b"): ((f: (typeof franjas)[number]) => [number, number]) => {
+    const p = muro[punta];
+    const enLaPunta = punta === "a" ? 0 : largo;
+    const sinCambio = () => [enLaPunta, enLaPunta] as [number, number];
+    const vecinos = muros.filter(
+      (o) => o.id !== muro.id && (mismoPunto(o.a, p) || mismoPunto(o.b, p)) && distancia(o.a, o.b) > 0
+    );
+    const paralelo = (o: Muro) => {
+      const l = distancia(o.a, o.b);
+      return Math.abs(((o.b.x - o.a.x) / l) * n.x + ((o.b.y - o.a.y) / l) * n.y) < 0.1;
+    };
+    // Sigue en línea con otro muro: no hay unión que cortar.
+    if (vecinos.some(paralelo)) return sinCambio;
+    const cruzados = vecinos.filter((o) => !paralelo(o));
+    if (cruzados.length === 0) return sinCambio;
+    const otro = cruzados[0];
+    const lineas = lineasDe(otro);
+    // ¿El otro sigue de largo —una T—? Tiene un compañero en línea en esa punta.
+    const continua = muros.some(
+      (o) =>
+        o.id !== otro.id &&
+        o.id !== muro.id &&
+        (mismoPunto(o.a, p) || mismoPunto(o.b, p)) &&
+        Math.abs(
+          ((o.b.x - o.a.x) / distancia(o.a, o.b)) * lineas.n.x +
+            ((o.b.y - o.a.y) / distancia(o.a, o.b)) * lineas.n.y
+        ) < 0.1
+    );
+    // Hacia dónde va el muro en esta punta (e), y hacia dónde se va el otro (f).
+    const e = punta === "a" ? { x: -d.x, y: -d.y } : d;
+    const desdeP = mismoPunto(otro.a, p) ? 1 : -1;
+    const f = { x: lineas.d.x * desdeP, y: lineas.d.y * desdeP };
+    // Las líneas del otro, ordenadas de la más cercana a la más lejana yendo en e.
+    const enE = lineas.n.x * e.x + lineas.n.y * e.y;
+    const k = enE >= 0 ? lineas.k : [...lineas.k].reverse();
+    const [caraCerca, nucleoCerca, nucleoLejos, caraLejos] = k;
+    // De qué lado de la esquina queda cada lado de este muro: afuera es el
+    // que mira para el lado contrario a donde se va el otro.
+    const afuera = (lado: -1 | 1) => lado * (n.x * f.x + n.y * f.y) < 0;
+
+    return (franja) => {
+      let linea: number;
+      if (continua) {
+        linea = franja.clase === "nucleo" ? nucleoCerca : caraCerca;
+      } else if (franja.clase === "nucleo") {
+        linea = nucleoLejos;
+      } else {
+        const lado = franja.clase === "exterior" ? -1 : 1;
+        linea = afuera(lado) ? caraLejos : nucleoCerca;
+      }
+      const s0 = corteEn(franja.n0, lineas, linea);
+      const s1 = corteEn(franja.n1, lineas, linea);
+      return [s0 ?? enLaPunta, s1 ?? enLaPunta];
+    };
+  };
+
+  const enA = finEn("a");
+  const enB = finEn("b");
+  const punto = (s: number, m: number): Punto => ({
+    x: muro.a.x + d.x * s + n.x * m,
+    y: muro.a.y + d.y * s + n.y * m,
+  });
+  return franjas.map((f) => {
+    const [a0, a1] = enA(f);
+    const [b0, b1] = enB(f);
+    return {
+      clase: f.clase,
+      puntos: [punto(a0, f.n0), punto(b0, f.n0), punto(b1, f.n1), punto(a1, f.n1)],
+    };
+  });
+}
+
+/**
+ * Une dos muros en esquina, como el chaflán de distancia cero de un programa
+ * de dibujo: cada uno se alarga o se recorta hasta donde su línea cruza la del
+ * otro, y las dos puntas quedan en el mismo punto. Lo que sobraba de uno más
+ * allá del otro se va; lo que faltaba se completa.
+ *
+ * Con la punta compartida, el cuerpo de cada muro se estira lo justo para
+ * tapar el del otro (`cuerpoDeMuro`): la esquina queda llena, el revoque de
+ * afuera da la vuelta y adentro no queda ningún pedazo de cara suelto.
+ *
+ * De cada muro se mueve la punta que queda más cerca del cruce. Null si son
+ * paralelos: no tienen esquina.
+ */
+export function unirEnEsquina(muros: Muro[], idA: string, idB: string): Muro[] | null {
+  const a = muros.find((m) => m.id === idA);
+  const b = muros.find((m) => m.id === idB);
+  if (!a || !b || idA === idB) return null;
+
+  const ax = a.b.x - a.a.x;
+  const ay = a.b.y - a.a.y;
+  const bx = b.b.x - b.a.x;
+  const by = b.b.y - b.a.y;
+  const det = ax * by - ay * bx;
+  const largos = Math.hypot(ax, ay) * Math.hypot(bx, by);
+  if (!(largos > 0) || Math.abs(det) / largos < 0.05) return null;
+
+  const wx = b.a.x - a.a.x;
+  const wy = b.a.y - a.a.y;
+  const s = (wx * by - wy * bx) / det;
+  const cruce = { x: a.a.x + ax * s, y: a.a.y + ay * s };
+
+  const laMasCerca = (m: Muro): "a" | "b" =>
+    distancia(m.a, cruce) <= distancia(m.b, cruce) ? "a" : "b";
+  const puntaA = laMasCerca(a);
+  const puntaB = laMasCerca(b);
+
+  return muros.map((m) =>
+    m.id === idA ? { ...m, [puntaA]: cruce } : m.id === idB ? { ...m, [puntaB]: cruce } : m
+  );
+}
+
+/**
+ * Dónde se puede cortar un muro: donde las caras de los otros muros, llevadas
+ * hasta él, cruzan su línea. Es el tabique que llega a un medianero: sus dos
+ * caras, prolongadas, parten el medianero en el tramo del dormitorio, el del
+ * baño y el del pleno, cada uno con sus capas.
+ *
+ * Devuelve fracciones del largo del muro (0 a 1), ordenadas y sin las que caen
+ * en las puntas.
+ */
+export function cortesDeMuro(muro: Muro, muros: Muro[], mpp: number | null): number[] {
+  const largo = distancia(muro.a, muro.b);
+  if (!(largo > 0) || mpp === null) return [];
+  const dx = (muro.b.x - muro.a.x) / largo;
+  const dy = (muro.b.y - muro.a.y) / largo;
+  const margen = 0.01 / mpp;
+
+  const cortes: number[] = [];
+  for (const otro of muros) {
+    if (otro.id === muro.id) continue;
+    for (const cara of carasDeCuerpo(cuerpoDeMuro(otro, muros, mpp, 0))) {
+      const ex = cara.b.x - cara.a.x;
+      const ey = cara.b.y - cara.a.y;
+      const largoCara = Math.hypot(ex, ey);
+      if (!(largoCara > 0)) continue;
+      // Paralelas no se cruzan: un muro que sigue en línea no lo corta.
+      const det = dx * ey - dy * ex;
+      if (Math.abs(det) / largoCara < 0.1) continue;
+      const wx = cara.a.x - muro.a.x;
+      const wy = cara.a.y - muro.a.y;
+      const s = (wx * ey - wy * ex) / det;
+      if (s > margen && s < largo - margen) cortes.push(s / largo);
+    }
+  }
+  return cortes
+    .sort((p, q) => p - q)
+    .filter((t, i, todos) => i === 0 || (t - todos[i - 1]) * largo > margen);
 }
 
 /**
@@ -588,12 +946,13 @@ export function mamposteriaDeMuro(
   mpp: number,
   alto: number
 ): { superficie: number; hormigon: number } {
-  const cuerpo = cuerpoDeMuro(muro, [], mpp, 0);
-  const eje = { a: cuerpo.ejeA, b: cuerpo.ejeB };
+  // El hormigón reemplaza al ladrillo, no al revoque: se lo busca en el núcleo.
+  const { nucleo } = cuerpoDeMuro(muro, [], mpp, 0);
+  const eje = { a: nucleo.ejeA, b: nucleo.ejeB };
   const largo = distancia(eje.a, eje.b);
   const vanos = vanosDeMuro(aberturas, muro.id, largo, 0, mpp);
   const sombras = hormigon
-    .map((prisma) => sombraEnMuro(eje, cuerpo.grosor, prisma))
+    .map((prisma) => sombraEnMuro(eje, nucleo.grosor, prisma))
     .filter((s): s is Pano => s !== null);
 
   const medir = (huecos: Pano[]) =>
@@ -1058,7 +1417,12 @@ export function carasVisibles(
         x: cuerpo.a.x + nx * (cuerpo.grosor / 2),
         y: cuerpo.a.y + ny * (cuerpo.grosor / 2),
       };
-      const delante = { x: origen.x + nx * DELANTE, y: origen.y + ny * DELANTE };
+      // Cuánto por delante se mira: medio centímetro en el plano, para que
+      // un muro que llega a esta cara con un desfasaje de milímetros igual la
+      // tape —si no, queda un pedazo de cara "a la vista" adentro de la
+      // esquina, y se computa—.
+      const adelante = Math.max(DELANTE, 0.005 / mpp);
+      const delante = { x: origen.x + nx * adelante, y: origen.y + ny * adelante };
 
       // Los tramos tapados por el cuerpo de otro muro.
       const tapados: [number, number][] = [];
@@ -1096,21 +1460,64 @@ export function carasVisibles(
       }
       if (hasta < largo) vistos.push([hasta, largo]);
 
-      for (const [s0, s1] of vistos) {
+      /** El ambiente que hay delante de un punto de la cara, o null. */
+      const ambienteEn = (s: number): string | null => {
+        for (const metros of DONDE_BUSCAR_AMBIENTE) {
+          const sonda = {
+            x: origen.x + dx * s + (nx * metros) / mpp,
+            y: origen.y + dy * s + (ny * metros) / mpp,
+          };
+          const ambiente = ambientes.find((amb) => adentro(sonda, amb.puntos));
+          if (ambiente) return ambiente.id;
+        }
+        return null;
+      };
+
+      // Una cara que da a dos ambientes —el medianero entre un dormitorio y
+      // un baño— se corta donde cambia el ambiente: cada tramo lleva la
+      // terminación del suyo. Los cortes son donde la línea de delante de la
+      // cara cruza un borde de algún ambiente.
+      const sondaMedia = DONDE_BUSCAR_AMBIENTE[1] / mpp;
+      const cortes: number[] = [];
+      for (const amb of ambientes) {
+        for (let k = 0; k < amb.puntos.length; k++) {
+          const p = amb.puntos[k];
+          const q = amb.puntos[(k + 1) % amb.puntos.length];
+          // La línea: origen + d·s + n·sondaMedia. El borde: p + (q − p)·u.
+          const ex = q.x - p.x;
+          const ey = q.y - p.y;
+          const det = dx * -ey - dy * -ex;
+          if (Math.abs(det) < 1e-9) continue;
+          const wx = p.x - (origen.x + nx * sondaMedia);
+          const wy = p.y - (origen.y + ny * sondaMedia);
+          const s = (wx * -ey - wy * -ex) / det;
+          const u = (dx * wy - dy * wx) / det;
+          if (u >= 0 && u <= 1) cortes.push(s);
+        }
+      }
+
+      const tramos: [number, number, string | null][] = [];
+      for (const [v0, v1] of vistos) {
+        const puntos = [v0, ...cortes.filter((s) => s > v0 + minimo && s < v1 - minimo).sort((p, q) => p - q), v1];
+        for (let k = 0; k < puntos.length - 1; k++) {
+          const s0 = puntos[k];
+          const s1 = puntos[k + 1];
+          if (s1 - s0 < minimo) continue;
+          const ambienteId = ambienteEn((s0 + s1) / 2);
+          const anterior = tramos[tramos.length - 1];
+          // Dos tramos seguidos del mismo ambiente son la misma cara.
+          if (anterior && anterior[2] === ambienteId && Math.abs(anterior[1] - s0) < 1e-6) {
+            anterior[1] = s1;
+          } else {
+            tramos.push([s0, s1, ambienteId]);
+          }
+        }
+      }
+
+      for (const [s0, s1, ambienteId] of tramos) {
         if (s1 - s0 < minimo) continue;
         const a = { x: origen.x + dx * s0, y: origen.y + dy * s0 };
         const b = { x: origen.x + dx * s1, y: origen.y + dy * s1 };
-        const medio = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-
-        let ambienteId: string | null = null;
-        for (const metros of DONDE_BUSCAR_AMBIENTE) {
-          const sonda = { x: medio.x + (nx * metros) / mpp, y: medio.y + (ny * metros) / mpp };
-          const ambiente = ambientes.find((amb) => adentro(sonda, amb.puntos));
-          if (ambiente) {
-            ambienteId = ambiente.id;
-            break;
-          }
-        }
 
         caras.push({
           clave: `${muro.id}|${lado}|${ambienteId ?? ""}`,
@@ -1215,6 +1622,9 @@ export type ParteDeCara = {
 
 /** Una capa de una cara, con lo que mide ahí. */
 export type CapaMedida = Capa & {
+  /** Desde qué altura arranca, en metros: cero salvo en una capa de un tipo
+   *  de muro que va por encima de otra (el látex sobre el porcelanato). */
+  desde: number;
   /** Hasta qué altura sube de verdad en esta cara, en metros. */
   alto: number;
   superficie: number;
@@ -1264,6 +1674,59 @@ class Acumulado {
   }
 }
 
+/**
+ * Lo que las columnas de hormigón le cambian a la terminación de una cara.
+ *
+ * Una columna que **sobresale** de la cara del ladrillo más que el
+ * revestimiento de ese lado hace una mocheta: el revoque la envuelve, y suma
+ * sus dos costados —la profundidad que sobresale, dos veces— en cada capa,
+ * en su franja de altura. El frente de la columna ya está en la cara: el
+ * muro pasa por delante con el mismo largo. Si sobresale menos que el
+ * revoque, el revoque la absorbe y no hay mocheta.
+ *
+ * Una columna de **hormigón visto** que llega a la cara no se reviste: se le
+ * resta a cada capa el ancho de su frente; y no hace mochetas.
+ *
+ * Cada ajuste vale `metros` por metro de altura, entre `desde` y `hasta`:
+ * positivo lo que se suma, negativo lo que se resta.
+ */
+function columnasEnLaCara(
+  cara: Cara,
+  cuerpo: Cuerpo,
+  muro: Muro,
+  columnas: { huella: Punto[]; visto: boolean; desde: number; hasta: number }[],
+  mpp: number
+): { metros: number; desde: number; hasta: number }[] {
+  const { ejeA, ejeB, grosor } = cuerpo.nucleo;
+  const largo = distancia(ejeA, ejeB);
+  if (!(largo > 0) || columnas.length === 0) return [];
+  const dx = (ejeB.x - ejeA.x) / largo;
+  const dy = (ejeB.y - ejeA.y) / largo;
+  const medio = grosor / 2;
+  const revestimiento = muro.revestimiento?.[cara.lado === -1 ? "exterior" : "interior"] ?? 0;
+  const holgura = 0.005;
+
+  const ajustes: { metros: number; desde: number; hasta: number }[] = [];
+  for (const col of columnas) {
+    // A lo largo del muro y hacia el lado de la cara, desde el eje del núcleo.
+    const a = col.huella.map((p) => (p.x - ejeA.x) * dx + (p.y - ejeA.y) * dy);
+    const n = col.huella.map((p) => cara.lado * ((p.x - ejeA.x) * -dy + (p.y - ejeA.y) * dx));
+    const ancho = Math.min(Math.max(...a), cara.hasta) - Math.max(Math.min(...a), cara.desde);
+    if (ancho * mpp <= holgura) continue;
+    // Tiene que tocar el núcleo: una columna suelta delante del muro no es suya.
+    if (Math.min(...n) > medio + holgura / mpp) continue;
+    if (Math.max(...n) < -medio) continue;
+
+    const sobresale = (Math.max(...n) - medio) * mpp;
+    if (col.visto) {
+      if (sobresale >= -holgura) ajustes.push({ metros: -ancho * mpp, desde: col.desde, hasta: col.hasta });
+    } else if (sobresale > revestimiento + holgura) {
+      ajustes.push({ metros: 2 * sobresale, desde: col.desde, hasta: col.hasta });
+    }
+  }
+  return ajustes;
+}
+
 /** Sin repetir la misma tarea: dos manos de lo mismo no son el doble. */
 function sinRepetir(capas: Capa[]): Capa[] {
   const vistas = new Set<string>();
@@ -1308,6 +1771,9 @@ export type MedidaDeCaras = {
   /** m² que se les descontaron a los muros por el hormigón que tienen
    *  adentro: ya no están en `muros` ni en `murosSinTipo`. */
   hormigonEnMuros: number;
+  /** Los metros de zócalo de cada tarea: el largo de las caras que lo
+   *  llevan, sin las puertas. */
+  zocalos: { capa: string; largo: number }[];
 };
 
 /**
@@ -1343,7 +1809,8 @@ export function medirCaras(
   dibujo: Dibujo,
   mpp: number | null,
   altura: number,
-  pisoAPiso: number | null = null
+  pisoAPiso: number | null = null,
+  tipos: Map<string, Composicion> = new Map()
 ): MedidaDeCaras | null {
   if (mpp === null) return null;
 
@@ -1355,6 +1822,21 @@ export function medirCaras(
   /** Menos que esto no es un paño: un milímetro. */
   const minimo = 0.001 / mpp;
   const ambientes = new Map(dibujo.ambientes.map((amb) => [amb.id, amb] as const));
+
+  // Las columnas de hormigón, con su huella y entre qué alturas están: las que
+  // sobresalen de un muro hacen mochetas, y las vistas no se revisten.
+  const estructuraMedida = medirEstructura(dibujo.estructura, mpp, altura, pisoAPiso);
+  const columnas = dibujo.estructura.columnas
+    .filter((c) => c.material !== "metalica")
+    .map((c) => {
+      const medida = estructuraMedida?.columnas.find((x) => x.id === c.id);
+      return {
+        huella: huellaDeColumna(c, mpp),
+        visto: c.visto,
+        desde: medida?.desde ?? 0,
+        hasta: medida?.hasta ?? alturaDePlanta,
+      };
+    });
 
   const caras = carasVisibles(dibujo.muros, dibujo.ambientes, mpp).map((cara): CaraMedida => {
     const cuerpo = cuerpos.get(cara.muroId);
@@ -1431,10 +1913,42 @@ export function medirCaras(
 
     const ambiente = cara.ambienteId ? ambientes.get(cara.ambienteId) : undefined;
     const propias = dibujo.caras[cara.clave];
+    // Qué capas lleva la cara, de lo más particular a lo más general: las
+    // suyas, si se le pusieron; las del ambiente al que da, si el ambiente
+    // tiene terminación propia —el baño, con su porcelanato—; y si no, las
+    // del lado de su tipo de muro.
+    const muroDeLaCara = muros.get(cara.muroId);
+    const tipo = muroDeLaCara?.tipo ? tipos.get(muroDeLaCara.tipo) : undefined;
+    const delAmbiente = ambiente && ambiente.capas.length > 0 ? ambiente.capas : null;
+    const delTipo =
+      tipo && !propias && !delAmbiente
+        ? tipo[ladoDeCara(cara.lado, cara.punta)]
+            .filter((c) => c.tarea !== null)
+            .map((c) => ({
+              tarea: c.tarea as string,
+              hasta: c.hasta,
+              espesor: c.espesor > 0 ? c.espesor : null,
+              desde: c.desde,
+            }))
+        : null;
 
     // Una capa repetida en la misma cara cuenta una vez, la primera: dos
-    // manos de lo mismo no son el doble de superficie.
-    const capas = sinRepetir(propias ?? ambiente?.capas ?? []).map((capa): CapaMedida => {
+    // manos de lo mismo no son el doble de superficie. Salvo que vaya en
+    // franjas distintas: el mismo látex abajo y arriba de una guarda.
+    const lista =
+      delTipo ??
+      (propias ?? delAmbiente ?? [])
+        .filter((c) => c.tarea !== "")
+        .map((c) => ({ ...c, desde: c.desde ?? 0 }))
+        .filter(
+          (c, i, todas) =>
+            todas.findIndex((o) => o.tarea === c.tarea && o.desde === c.desde) === i
+        );
+    const ajustes = cara.punta === null && cuerpo && muroDeLaCara
+      ? columnasEnLaCara(cara, cuerpo, muroDeLaCara, columnas, mpp)
+      : [];
+
+    const capas = lista.map((capa): CapaMedida => {
       const tope =
         capa.hasta === "techo"
           ? alto
@@ -1442,13 +1956,28 @@ export function medirCaras(
             ? ambiente?.alturaCielorraso ?? alto
             : capa.hasta;
       const hasta = Math.min(tope, alto);
+      const desde = Math.min(Math.max(capa.desde, 0), hasta);
+      // Las mochetas suman sus dos costados y el frente de una columna vista
+      // se resta, en la franja de la capa y la altura de la columna.
+      const porColumnas = ajustes.reduce((t, a) => {
+        const franja = Math.max(0, Math.min(hasta, a.hasta) - Math.max(desde, a.desde));
+        return t + a.metros * franja;
+      }, 0);
       return {
         ...capa,
+        desde,
         alto: hasta,
-        // De cada parte, lo que queda por debajo de donde llega la capa.
-        superficie: partes.reduce(
-          (t, p) => t + p.ancho * Math.max(0, Math.min(hasta, p.desde + p.alto) - p.desde),
-          0
+        // De cada parte, lo que queda entre donde arranca la capa y donde
+        // llega.
+        superficie: Math.max(
+          0,
+          partes.reduce(
+            (t, p) =>
+              t +
+              p.ancho *
+                Math.max(0, Math.min(hasta, p.desde + p.alto) - Math.max(desde, p.desde)),
+            0
+          ) + porColumnas
         ),
       };
     });
@@ -1465,9 +1994,18 @@ export function medirCaras(
 
   const porCapa = new Acumulado();
   let sinTerminacion = 0;
+  // El zócalo va por el pie de cada cara que lo lleva: los paños y los
+  // antepechos, que arrancan en el piso; no las puertas.
+  const zocalos = new Map<string, number>();
   for (const cara of caras) {
     if (cara.capas.length === 0) sinTerminacion += cara.superficie;
     for (const capa of cara.capas) porCapa.sumar(capa, capa.superficie);
+
+    if (cara.punta !== null) continue;
+    const zocalo = muros.get(cara.muroId)?.zocalo[ladoDeCara(cara.lado, null)];
+    if (!zocalo) continue;
+    const largo = cara.partes.filter((p) => p.desde < 1e-9).reduce((t, p) => t + p.ancho, 0);
+    zocalos.set(zocalo, (zocalos.get(zocalo) ?? 0) + largo);
   }
 
   const pisos = new Acumulado();
@@ -1499,9 +2037,11 @@ export function medirCaras(
       continue;
     }
     const ya = porTipo.get(muro.tarea) ?? { superficie: 0, volumen: 0 };
+    // Con tipo, el volumen es el del núcleo: el ladrillo, sin sus revoques.
+    const delNucleo = muro.tipo ? tipos.get(muro.tipo)?.nucleo.espesor : undefined;
     porTipo.set(muro.tarea, {
       superficie: ya.superficie + superficie,
-      volumen: ya.volumen + superficie * muro.espesor,
+      volumen: ya.volumen + superficie * (delNucleo ?? muro.espesor),
     });
   }
 
@@ -1516,5 +2056,6 @@ export function medirCaras(
     muros: Array.from(porTipo, ([capa, m]) => ({ capa, ...m })),
     murosSinTipo,
     hormigonEnMuros,
+    zocalos: Array.from(zocalos, ([capa, largo]) => ({ capa, largo })),
   };
 }

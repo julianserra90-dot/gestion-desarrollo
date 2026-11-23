@@ -9,6 +9,7 @@ import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala } from "@/lib/planta-dibujo";
 import { aplicarCambio } from "@/lib/planta-edicion";
+import { leerComposicion, medidasDelMuro } from "@/lib/tipos-de-muro";
 import { createClient } from "@/lib/supabase/server";
 import { alternarTarea } from "../presupuestos/computo/actions";
 
@@ -426,6 +427,82 @@ export async function pasarAlComputo(
 
   revalidatePath("/", "layout");
   return { tareas: lineas.length, agregadas: faltan.length };
+}
+
+/**
+ * Guarda un tipo de muro de la obra —nuevo, o uno que se cambió— y lo lleva
+ * a **todos** los muros que lo usan, en todas las plantas de la obra: su
+ * espesor pasa a ser la suma de las capas y su tarea la del núcleo. Sin eso,
+ * una planta que no está abierta seguiría dibujando y midiendo el muro viejo.
+ *
+ * Devuelve el id, que es lo que el muro guarda.
+ */
+export async function guardarTipoDeMuro(
+  obraId: string,
+  tipo: { id: string | null; nombre: string; composicion: unknown }
+): Promise<Resultado & { id?: string }> {
+  const nombre = String(tipo.nombre ?? "").trim();
+  if (!nombre) return { error: "El tipo necesita un nombre." };
+  const composicion = leerComposicion(tipo.composicion);
+
+  const supabase = await createClient();
+  const fila = { obra_id: obraId, nombre, composicion: composicion as unknown as Json };
+  const { data, error } = tipo.id
+    ? await supabase.from("tipos_de_muro").update(fila).eq("id", tipo.id).select("id")
+    : await supabase.from("tipos_de_muro").insert(fila).select("id");
+  if (error?.code === "23505") return { error: "Ya hay un tipo con ese nombre." };
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("cambiar los tipos de muro") };
+  const id = data[0].id;
+
+  // Los muros que lo usan, en todas las plantas de la obra.
+  const { data: plantas, error: alLeer } = await supabase
+    .from("plantas")
+    .select("id, dibujo")
+    .eq("obra_id", obraId);
+  if (alLeer) return { error: alLeer.message };
+
+  const delTipo = medidasDelMuro(composicion);
+  for (const planta of plantas ?? []) {
+    const dibujo = leerDibujo(planta.dibujo);
+    if (!dibujo.muros.some((m) => m.tipo === id)) continue;
+    const muros = dibujo.muros.map((m) => (m.tipo === id ? { ...m, ...delTipo } : m));
+    const { error: alGuardar } = await supabase
+      .from("plantas")
+      .update({ dibujo: { ...dibujo, muros } as unknown as Json })
+      .eq("id", planta.id);
+    if (alGuardar) return { error: alGuardar.message };
+  }
+
+  revalidatePath("/", "layout");
+  return { id };
+}
+
+/** Borra un tipo de muro, si ningún muro de la obra lo usa. */
+export async function eliminarTipoDeMuro(obraId: string, id: string): Promise<Resultado> {
+  const supabase = await createClient();
+  const { data: plantas, error: alLeer } = await supabase
+    .from("plantas")
+    .select("nombre, dibujo")
+    .eq("obra_id", obraId);
+  if (alLeer) return { error: alLeer.message };
+
+  const usan = (plantas ?? []).filter((p) => leerDibujo(p.dibujo).muros.some((m) => m.tipo === id));
+  if (usan.length > 0) {
+    return { error: `Lo usan muros de ${usan.map((p) => p.nombre).join(", ")}.` };
+  }
+
+  const { data, error } = await supabase
+    .from("tipos_de_muro")
+    .delete()
+    .eq("id", id)
+    .eq("obra_id", obraId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("borrar tipos de muro") };
+
+  revalidatePath("/", "layout");
+  return {};
 }
 
 export async function eliminarPlanta(formData: FormData) {

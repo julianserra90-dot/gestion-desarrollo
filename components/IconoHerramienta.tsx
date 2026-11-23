@@ -15,6 +15,8 @@ export type NombreHerramienta =
   | "abertura"
   | "medir"
   | "copiar"
+  | "cortar"
+  | "esquina"
   | "columna"
   | "viga"
   | "losa"
@@ -91,6 +93,21 @@ const TRAZOS: Record<NombreHerramienta, React.ReactNode> = {
       <rect x="4" y="3.5" width="13" height="6" rx="1.5" />
       <path d="M17 6.5h3v5h-8v3" />
       <rect x="10.2" y="14.5" width="3.6" height="6" rx="1" />
+    </>
+  ),
+  // Dos muros que se encuentran en escuadra.
+  esquina: (
+    <>
+      <path d="M5 20V5h15" />
+      <path d="M9 20V9h11" />
+    </>
+  ),
+  // Una tijera: parte un muro en tramos.
+  cortar: (
+    <>
+      <circle cx="6.5" cy="17.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+      <path d="M8.3 15.7L18 4M15.7 15.7L6 4" />
     </>
   ),
   // La sección llena, como se rellena una columna en un plano.

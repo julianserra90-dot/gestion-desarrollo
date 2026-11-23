@@ -12,6 +12,7 @@ import {
   leerEscala,
 } from "@/lib/planta-dibujo";
 import type { Piso } from "@/lib/pisos";
+import { leerComposicion, type TipoMuro } from "@/lib/tipos-de-muro";
 import { createClient } from "@/lib/supabase/server";
 
 export type Planta = {
@@ -100,6 +101,43 @@ export async function getPisos(obraId: string): Promise<Piso[]> {
     altura: Number(p.altura),
     plantaId: p.planta_id,
   }));
+}
+
+/**
+ * Los tipos de muro de la obra, por nombre. Tolerante: si la tabla falla, la
+ * obra se dibuja sin tipos —los muros con tipo miden como uno sin—, y queda
+ * dicho en el log.
+ */
+export async function getTiposDeMuroDeObra(obraId: string): Promise<TipoMuro[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tipos_de_muro")
+    .select("id, nombre, composicion")
+    .eq("obra_id", obraId)
+    .order("nombre");
+
+  if (error) console.error("getTiposDeMuroDeObra:", error.message);
+
+  return (data ?? []).map((t) => ({ id: t.id, nombre: t.nombre, ...leerComposicion(t.composicion) }));
+}
+
+/**
+ * Las tareas que sirven de zócalo: las que se cotizan por metro lineal.
+ */
+export async function getTareasPorMetro(): Promise<
+  { id: string; nombre: string; rubro: string; unidad: string }[]
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tareas")
+    .select("id, nombre, rubro, unidad, orden")
+    .in("unidad", ["ml", "m"])
+    .order("rubro")
+    .order("orden");
+
+  if (error) console.error("getTareasPorMetro:", error.message);
+
+  return (data ?? []).map((t) => ({ id: t.id, nombre: t.nombre, rubro: t.rubro, unidad: t.unidad }));
 }
 
 export async function getPlanta(id: string): Promise<Planta | null> {
