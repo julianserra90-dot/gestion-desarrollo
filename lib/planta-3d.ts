@@ -43,10 +43,12 @@ import {
   huellaDeViga,
   medirEstructura,
   prismasDeHormigon,
+  recortar,
 } from "@/lib/planta-estructura";
 import {
   type Pano,
   cuerpoDeMuro,
+  franjasEnPlanta,
   mamposteriaDeMuro,
   panosDeMuro,
   sombraEnMuro,
@@ -215,7 +217,6 @@ export function modeloDePlanta(
     // un muro con capas no está al medio.
     const corrido =
       (cuerpo.nucleo.ejeA.x - cuerpo.ejeA.x) * -dy + (cuerpo.nucleo.ejeA.y - cuerpo.ejeA.y) * dx;
-    const medioNucleo = cuerpo.nucleo.grosor / 2;
 
     // Las aberturas van sobre el eje sin estirar; el cuerpo arranca antes.
     const arranque = distancia(cuerpo.a, cuerpo.ejeA);
@@ -263,29 +264,32 @@ export function modeloDePlanta(
       ],
     };
 
-    for (const pano of panosDeMuro(largo, alto, [...vanos, ...sombras])) {
-      sumar(
-        "muro",
-        objeto,
-        grupo,
-        tramoEntre(pano.desde, pano.hasta, corrido - medioNucleo, corrido + medioNucleo),
-        pano.abajo,
-        pano.arriba
+    // Cada franja del muro —capa exterior, núcleo, capa interior— con su
+    // planta ya cortada en las uniones, como en la planta (`franjasEnPlanta`):
+    // en una esquina cada capa forma su L con la del otro muro. Se la levanta
+    // en paños: el ladrillo sin los vanos ni el hormigón; las capas, una piel
+    // que sólo se corta en los vanos y pasa por delante del hormigón —el
+    // revoque tapa la columna igual que al ladrillo—. Todas del mismo grupo
+    // que el muro: se leen como una sola pieza.
+    for (const franja of franjasEnPlanta(muro, dibujo.muros, mpp)) {
+      // A lo largo del muro, desde la punta del cuerpo: una franja cortada en
+      // una esquina puede empezar antes o terminar después.
+      const aLoLargo = franja.puntos.map(
+        (p) => (p.x - cuerpo.a.x) * dx + (p.y - cuerpo.a.y) * dy
       );
-    }
-
-    // El revestimiento de cada lado: una piel continua que pasa por delante
-    // del hormigón —el revoque tapa la columna igual que al ladrillo— y sólo
-    // se corta en los vanos. Del mismo grupo que el muro: se lee como una
-    // sola pieza.
-    const pieles: [number, number][] = [
-      [-medio, corrido - medioNucleo],
-      [corrido + medioNucleo, medio],
-    ];
-    for (const [n0, n1] of pieles) {
-      if (n1 - n0 < 1e-6) continue;
-      for (const pano of panosDeMuro(largo, alto, vanos)) {
-        sumar("muro", objeto, grupo, tramoEntre(pano.desde, pano.hasta, n0, n1), pano.abajo, pano.arriba);
+      const inicio = Math.min(...aLoLargo);
+      const fin = Math.max(...aLoLargo);
+      if (!(fin - inicio > 1e-6)) continue;
+      const corrida = (h: Pano): Pano => ({ ...h, desde: h.desde - inicio, hasta: h.hasta - inicio });
+      const huecos =
+        franja.clase === "nucleo" ? [...vanos, ...sombras].map(corrida) : vanos.map(corrida);
+      for (const pano of panosDeMuro(fin - inicio, alto, huecos)) {
+        // El paño es un tramo a lo largo: se recorta la franja a ese tramo, así
+        // conserva el bisel de su punta.
+        const tramoDelPano = tramoEntre(inicio + pano.desde, inicio + pano.hasta, -1e4, 1e4);
+        const huella = recortar(franja.puntos, tramoDelPano);
+        if (huella.length < 3) continue;
+        sumar("muro", objeto, grupo, huella, pano.abajo, pano.arriba);
       }
     }
 

@@ -1199,8 +1199,8 @@ porcelanato de un lado y látex del otro es su propio tipo).
   capa forma su propia L, como lo dibujó el usuario. En una T (el otro sigue en
   línea con un compañero), el núcleo entra hasta el núcleo del otro y las capas
   terminan en su cara. Las capas se pintan en un grupo y los núcleos en otro,
-  con la transparencia en el grupo: donde se pisan no se oscurece. El 3D
-  todavía no usa estos cortes.
+  con la transparencia en el grupo: donde se pisan no se oscurece. El 3D usa
+  los mismos cortes.
 - **Esquinas con capas**: en la planta se dibujan primero las capas de todos
   los muros y encima los ladrillos, así en una esquina el ladrillo de uno corta
   las capas del otro (el revoque exterior da la vuelta, el interior se
@@ -1220,9 +1220,13 @@ porcelanato de un lado y látex del otro es su propio tipo).
 - **Planta en corte**: un muro con capas se dibuja con el núcleo con el color
   de siempre y una franja gris clara por cada lado con capas, con su espesor
   (`franjasDelMuro`).
-- **3D**: el ladrillo se dibuja con el espesor del núcleo y sin el hormigón, y
-  cada lado lleva su revestimiento como una piel continua que pasa por delante
-  de columnas y vigas (mismo grupo que el muro: se ve como una pieza).
+- **3D**: cada muro se levanta desde sus franjas de la planta
+  (`franjasEnPlanta`), ya cortadas en las uniones: en una esquina cada capa
+  forma su L con la del otro muro, igual que en la planta. El núcleo se arma en
+  paños sin los vanos ni el hormigón; cada capa, como una piel que sólo se
+  corta en los vanos y pasa por delante de columnas y vigas (cada paño se
+  recorta de la franja, así conserva el bisel de la punta). Mismo grupo que el
+  muro: se ve como una pieza.
 - Sin hacer todavía: mochetas de vigas que cuelgan bajo el muro y columnas
   sueltas (que no tocan ningún muro), que no llevan terminación.
 - Propiedades del muro, simple: tipo (+ Nuevo), la pila (exterior arriba,
