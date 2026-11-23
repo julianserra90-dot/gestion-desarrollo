@@ -1234,6 +1234,357 @@ porcelanato de un lado y látex del otro es su propio tipo).
   capa se despliega abajo), zócalos, altura y referencia. El editor de capas
   por cara queda sólo para muros sin tipo.
 
+#### Capas dibujadas sobre las caras, como polilíneas (23/11/2026)
+
+Idea del usuario: el muro se dibuja igual y cada capa de terminación se dibuja
+**encima de la cara**, como una polilínea de AutoCAD, con su tarea, espesor y
+alturas. Lo que se ve es lo que se computa.
+
+- **Modelo** (`Dibujo.capas: CapaDibujada[]`, `lib/planta-dibujo.ts`): tarea,
+  espesor (0 = pintura), desde y hasta (techo / cielorraso / número) y
+  **tramos**: `{muroId, cara: 1|-1|"a"|"b", desde, hasta}` en fracciones de la
+  línea marcada del muro, como una abertura. Así la capa sigue al muro si se
+  lo mueve o se lo alarga; al partir un muro (`partirEn`) cada tramo se
+  reparte entre las dos mitades. El orden de la lista es la pila.
+- **Geometría** (`lib/planta-capas.ts`): `piezasDeCapas` cruza cada tramo con
+  las caras a la vista (`carasVisibles`) —si después llega otro muro, ese
+  pedazo se va solo—, recorta la altura a la del muro (o al cielorraso del
+  ambiente al que da la cara) y **apila**: cada pieza arranca donde termina la
+  más alta de las capas anteriores que pisa en esa cara, tramo y franja de
+  altura (el porcelanato sobre el revoque; el látex de 2,10 para arriba también
+  sobre el revoque, no sobre el porcelanato). Las esquinas de una misma capa
+  van **a inglete** (`ingletes`): da la vuelta como una sola polilínea, sin
+  hueco afuera ni encimado adentro.
+- **Dos maneras de ponerla** (herramienta Capa): **Por ambiente** — clic
+  adentro de un ambiente y va por todo su perímetro (`tramosDeAmbiente`, caras
+  con ese `ambienteId`, cantos incluidos); clic afuera de todos, por las caras
+  que no dan a ningún ambiente (el revoque exterior). **A mano** — cada clic se
+  pega a la cara más cercana (`puntoEnCara`); entre dos clics en caras
+  distintas la polilínea dobla la esquina (`tramosDePolilinea`). Doble clic,
+  Enter o "Terminar" la cierran; Esc la descarta. Con el puntero se ve antes
+  la capa que saldría.
+- **Panel**: el mismo renglón que las capas de un tipo de muro (`FilaDeCapa`,
+  ahora exportado): tarea · espesor · altura. Con Seleccionar, tocar la capa
+  la elige (contorno negro), con su superficie y Borrar capa.
+- **Cómputo**: `medirCaras` mide cada pieza sobre las partes de su cara (sin
+  vanos, en su franja de altura) más las mochetas de las columnas que tiene
+  encima (`columnasEnLaCara` ahora dice dónde está cada columna), y la suma a
+  `cara.capas` con `dibujada: true` y `capaId`. De ahí va a `porCapa`, a
+  Medidas y al pase al cómputo sin nada aparte (`getPase` también junta sus
+  tareas).
+- **3D**: cada pieza con espesor es una piel entre sus alturas, sin los vanos
+  de su muro, con el inglete de la planta. La pintura no se levanta.
+- Probado con un ambiente de 4,00 × 3,00 con puerta: revoque 34,76 m²,
+  revoque exterior 37,88, porcelanato 0–2,10 27,76, látex 2,10–techo 7,00;
+  apoyos 0 / 0,02 / 0,02; ingletes exactos en planta y en 3D. En el baño de
+  Andonaegui la capa por ambiente da 18,66 m², lo mismo que su azotado por
+  terminación de ambiente.
+- **Editar una capa** (con Seleccionar, tocándola): cada punta de sus tramos
+  tiene un agarre, un poco hacia adentro del tramo —en un rincón caen dos y
+  así no se tapan—, que se arrastra a lo largo de su cara y se pega a las caras
+  de los muros que llegan, a las jambas y a las puntas de la cara. Tocar la
+  capa elige también **el tramo** tocado (contorno más grueso): "Quitar tramo"
+  lo saca. Sólo hay agarre donde termina el tramo, no donde lo corta otro muro.
+- **La pila**: el panel de la capa lista las capas que la pisan o que ella
+  pisa —en alguna cara, tramo y altura—, de la de contra el muro a la de
+  afuera, con ↑ ↓ en la elegida. Mover es saltar sobre la vecina de esa pila
+  en la lista de capas, que es lo que decide quién se apoya en quién.
+- **Se mide por la línea media de cada capa** (`proporcionAlLargo`): con las
+  esquinas a inglete, la capa de adentro de un rincón es más corta afuera que
+  contra el muro. Así la pintura sobre el revoque mide la cara terminada, y
+  superficie × espesor da el volumen justo.
+- **Contorno del ambiente**: un borde de ambiente a menos de **15 cm** de la
+  punta de una cara no la corta (`carasVisibles`): el contorno calcado sobre
+  la cara terminada, o que termina antes de la punta de un muro que sigue unos
+  centímetros, dejaba pedazos "sin ambiente" de 2 a 7 cm en rincones y puntas
+  —el muro de 3,58 del dormitorio de Andonaegui tenía 5 caras en vez de 3—.
+- **Qué cara es cuál**: en la lista de Caras del muro, pasar el puntero por una
+  la marca en azul en la planta (el muro elegido ya va en naranja), afuera de
+  sus capas dibujadas. La línea de color de cada cara que se dibujaba siempre
+  queda sólo para las caras con capas de antes: las dibujadas ya se ven.
+- **Pasar lo de antes** (`lib/capas-al-dibujo.ts`, acción
+  `pasarCapasAlDibujo`, botón "Pasar capas al dibujo" en la barra del editor,
+  sólo mientras haya algo que pasar y con el dibujo guardado): para **todas
+  las plantas de la obra** —los tipos son de la obra—, mide cada cara como
+  estaba, deja los muros con el núcleo **sin moverlos** (el que se agarraba de
+  una cara terminada pasa a la del ladrillo con `conOtraReferencia`, y las
+  aberturas quedan donde estaban), y le da a cada cara —reconocida por su
+  clave muro|lado|ambiente— sus capas como tramos enteros. Capas iguales en el
+  mismo lugar de la pila son una sola capa dibujada. Después vacía las capas
+  de los tipos. Primero las plantas y después los tipos: si algo falla a mitad
+  de camino ninguna planta pierde sus capas. Probado con un tipo de revoque 2
+  + ladrillo 12 + grueso 1,5 + látex y con un baño con terminación propia: las
+  capas pasan todas, el ladrillo no se corre y lo de antes queda vacío. Las
+  superficies cambian décimas de m² porque cada capa pasa a medirse donde
+  está (el revoque exterior antes se medía sobre la cara terminada).
+- **Lo de antes, sólo mientras exista**: el tipo de muro muestra sus capas
+  si las tiene pero ya no suma nuevas ("+ capa" no está: el tipo es el
+  núcleo); las "Paredes" del ambiente y el editor de capas de una cara
+  aparecen sólo si ese ambiente o esa cara tienen capas de antes. La lista de
+  caras del muro queda para todos los muros: dice qué lleva cada cara.
+- **La cara terminada incluye las capas dibujadas** (`Muro.acabado`, de
+  `conAcabado` en `planta-dibujo.ts`; se calcula al leer el dibujo y en el
+  editor cada vez, no se guarda): de cada lado, la pila más alta de capas
+  dibujadas, apiladas por sus tramos sin geometría. `rangoDelCuerpo` la
+  recibe aparte del revestimiento: cuenta para dónde está la cara terminada,
+  pero el cuerpo termina antes. Así un muro agarrado de la "cara exterior
+  terminada" tiene su línea —y sus puntos para moverlo— afuera de la última
+  capa, y cambiar el agarre no lo mueve. En una esquina marcada por las caras
+  terminadas, el ladrillo de cada muro llega al ladrillo del otro, no a la
+  línea (`cuerpoDeMuro` ahora puede acortar una punta), y la capa da la
+  vuelta con su inglete justo en la línea. Las esquinas y el borde de afuera
+  de las capas dibujadas atraen al dibujar y al mover. Probado: L de 12 con
+  2 de revoque exterior en los dos, agarrados de la cara terminada → ladrillo a
+  2 cm, revoque de 0 a 2 con el inglete en el cruce de las líneas.
+- **Capas por cara, desde Caras** (`CapasDeLaCara`): al elegir una cara del
+  muro en su lista —también un canto, la punta del muro—, abajo aparecen las
+  capas que lleva, con × para sacarlas de esa cara, y las que el muro lleva en
+  otras caras, con + para que ésta las lleve también: es como el revoque da la
+  vuelta por el canto de un muro partido, como la misma capa y no otra. Y "+
+  nueva", con lo del molde. Un canto va entero; un lado, de punta a punta.
+- **Un tipo nuevo desde un muro arranca igual al suyo** (`crearTipo`): con su
+  núcleo y sus capas, para cambiar sólo lo distinto —lo de partir un muro y
+  darle al tramo otro tipo—. Antes arrancaba sólo con ladrillo, del espesor
+  total del muro con sus capas: el tramo perdía las capas del tipo y engordaba.
+  Igual, las capas de un tipo son de todos sus muros; una vez pasadas al
+  dibujo, cada muro lleva las suyas y no hace falta un tipo por cada variante.
+- **Un tramo que llega a la punta marcada sigue hasta el final de la cara**
+  (`piezasDeCapas`): un tramo de 0 a 1 —el que deja Copiar o el "+" del corte
+  cuando la cara no pasaba de los puntos marcados— cortaba la capa en la
+  punta marcada, y en una esquina la cara sigue un poco más allá (el cuerpo
+  se estira hasta el del otro muro). La capa no llegaba al rincón: afuera
+  quedaba el canto pelado y adentro se encimaba, sin inglete. Encontrado en la
+  esquina del pasillo, el dormitorio y el estar de Andonaegui (muros de 8
+  agarrados de la cara terminada, con capas de 2 cm): ahora el revoque da la
+  vuelta por afuera y adentro hace el inglete.
+- **Ingletes entre capas distintas** (`ingletes`, segunda pasada): una punta
+  que no encontró pareja de su misma capa se une con la de otra capa que va a
+  la misma profundidad y con el mismo espesor. Es la punta suelta de un muro
+  con un revoque en el canto y otro en un lado —dos capas, el mismo revoque—,
+  y el rincón donde llegan capas distintas. Cada punta se une una sola vez, y
+  primero con las de su capa. Encontrado en la punta del muro de 0,61 entre
+  los dos pedazos del dormitorio de Andonaegui.
+- **Las aberturas en las capas**: en la planta, una capa se corta en los
+  vanos de su muro que la cruzan **a su altura** (`trozosEnPlanta`): una puerta
+  abre el revoque de piso a techo pero no el látex de 2,10 para arriba; las
+  puntas conservan su inglete. Es sólo el dibujo: en el cómputo cada capa ya
+  medía las partes de su cara —paños, y arriba de la puerta el dintel—, y el
+  3D ya cortaba el vano a su altura. Verificado: muro de 3,00 × 2,60 con una
+  puerta de 0,895 × 2,05 → revoque y mampostería 5,965 m² (7,80 − 1,835, con
+  el dintel de 0,49 contado); el látex de 2,10 arriba, 1,50 entero.
+- **Los costados de los vanos** (`costadosDeVanos`, en `medirCaras`): cada capa
+  dibujada suma lo que entra en las puertas y ventanas de su muro —las dos
+  jambas, el bajo del dintel y, en una ventana, el antepecho—, **hasta la mitad
+  del ladrillo** de cada lado: la carpintería va al medio y cada cara termina
+  lo suyo. Una jamba cuenta si la pieza llega hasta ella, en la franja de
+  altura de la capa; el bajo del dintel y el antepecho, si la capa llega a esa
+  altura (el revoque y el porcelanato hasta 2,10 sí sobre una puerta de 2,05;
+  el látex de 2,10 para arriba no). Va sumado a la superficie de la capa, sin
+  pasar por la línea media. Probado: muro de 12 con puerta de 0,895 × 2,05 →
+  revoque 6,265 (5,965 + 0,246 de jambas + 0,054 de dintel); ventana de 1,20 ×
+  1,10 con antepecho 0,90 → 6,756 (6,48 + 0,132 + 0,072 + 0,072).
+- **Copiar es copiar las propiedades de un elemento a otros del mismo
+  tipo** (como el igualar propiedades de AutoCAD): el primer clic toma y cada
+  clic siguiente pone. Sirve para **muros** (también tocando sus capas
+  dibujadas, que llevan a su muro), **aberturas** (nombre, medidas,
+  antepecho, cómo abre y mano; se quedan en su muro y su lugar) y
+  **ambientes** (piso y cielorraso). Ya no copia la terminación de una cara
+  sola: con Copiar, cada cara tenía una franja invisible pegada al muro que se
+  llevaba el clic, y se terminaba copiando la terminación de esa cara en vez
+  del muro. El panel de Copiar usa las piezas nuevas: qué se tomó y qué se
+  lleva, con × para tomar otro.
+- **Copiar un muro se lleva sus capas dibujadas**: a la misma cara, salvo que
+  cada muro tenga un solo lado que da afuera y no coincidan (se trazaron en
+  sentidos contrarios), y entonces lo de afuera va afuera. Una capa que cubría
+  toda su cara cubre toda la del otro; una parcial, la misma fracción. Lo que
+  el otro tenía dibujado se reemplaza, y los tramos nuevos se suman a las
+  mismas capas: siguen siendo una capa cada una.
+- **Ojo, la mampostería** se sigue midiendo por el largo de la línea marcada
+  (`mamposteriaDeMuro`): depende de qué línea se marcó. Al pasar, un muro
+  marcado por la cara terminada pasa a la del ladrillo y su mampostería baja un
+  poco. Medirla por el eje del ladrillo la haría independiente de eso.
+
+#### Cómo se ve la planta (23/11/2026)
+
+Pedido del usuario, con una planta de referencia: muros blancos con las capas
+en líneas finas y el contorno de afuera con un poco de espesor, la estructura
+con un rayado fino, los ambientes en pasteles, y poder ocultar el plano de
+fondo y lo que se va dibujando.
+
+- **Muros**: blancos. Cada pieza —núcleo, capas de un tipo de antes y capas
+  dibujadas (cortadas en los vanos)— se dibuja primero con un trazo grueso y
+  después todas llenas de blanco encima: de cada trazo queda la mitad de
+  afuera del conjunto, así los muros que se tocan se leen como uno, sin línea
+  en la juntura. Encima, las capas con línea fina gris; el núcleo no lleva
+  línea propia, sólo se tiñe el elegido (naranja claro) o el encimado (rojo
+  claro). Las capas dibujadas van blancas; la elegida y la que saldría con un
+  clic, en el color de su tarea. Una pintura sigue siendo una línea de color.
+- **Estructura**: columnas y vigas de hormigón con un rayado fino a 45°
+  (patrón `rayado-de-hormigon`, del mismo tamaño en pantalla a cualquier
+  zoom); la columna, blanca debajo para tapar lo que pisa. En modo
+  arquitectura, al 70 %.
+- **Las vigas, según el plano de corte** (`PLANO_DE_CORTE` = 1,20 m sobre el
+  piso terminado, `enElCorte` en `planta-estructura`): la que está toda por
+  encima va **en proyección**, sólo el contorno de trazos y sin relleno (es la
+  de la losa de arriba, casi todas); la que está toda por debajo —una
+  invertida, una de baranda— en **gris claro**, lleno; la que el plano
+  atraviesa, **cortada**: rayada como las columnas. Las alturas salen de
+  `medirEstructura` (las mismas del 3D y del cómputo). La metálica sigue
+  hueca, con su eje de trazos, en el color que le toca.
+- **Ambientes**: rellenos pastel (`PASTELES`), sin borde salvo el elegido.
+- **Capas de dibujo** (botón "Capas" arriba a la derecha del plano): mostrar u
+  ocultar el plano de fondo, ambientes, muros, capas, aberturas, cajones,
+  estructura y cotas. Lo oculto no se toca. El botón dice cuántas hay ocultas.
+- La línea de color de cada cara queda sólo para las del muro elegido.
+- **Puertas** (`puertaEnPlanta`): un **marco** blanco con su línea en cada
+  jamba —5 cm a lo largo—, la **hoja** como un rectángulo blanco de 4 cm,
+  abierta a 90° desde el marco de la bisagra y apoyada en la cara del marco
+  hacia donde abre, y el arco fino de la punta de la hoja al otro marco. Las
+  puntas del muro en el vano se cierran con una línea de cara terminada a cara
+  terminada (`jambas`), del grosor del contorno de los muros: los bordes del
+  muro y de sus capas llegan hasta el marco. El vano de una puerta va sin
+  borde de color. Las ventanas, como estaban.
+- **El marco de una puerta** (`Abertura.marco`, en metros, del tipo como el
+  ancho): de cara a cara. Se elige de una lista (`SelectorDeMarco`): el del
+  muro —con sus capas—, 8, 10, 12, 15, 18, 20 cm, u "Otro" para escribirlo.
+  Si es más angosto que el muro va al ras de la cara hacia donde abre. Se
+  carga en la herramienta y en la puerta elegida (cambia todas las de su
+  tipo).
+- **El vano tapa el muro entero**: el blanco de una abertura va de cara
+  terminada a cara terminada, capas dibujadas incluidas (`formaDeAbertura`).
+  Antes tapaba sólo el cuerpo y los bordes de las capas asomaban en las jambas
+  como un escalón al lado del marco.
+- **La cota del muro elegido** (`CotaDeMuro`): en vez del rótulo chico pegado
+  al muro —quedaba encima del punto del medio y de la línea marcada—, una
+  línea de cota de plano en naranja, afuera del muro pasando sus capas, del
+  lado de la línea marcada (arriba o a la izquierda si va por el eje), con
+  líneas de referencia, marcas a 45° y el largo en negrita en una pastilla.
+  Mide el **muro terminado**: la línea marcada más el revoque de los cantos
+  (las capas dibujadas en las puntas sueltas, `cantosDelElegido`): un
+  tabique de 0,60 con 2 cm en la punta dice 0,62.
+- **El largo a mano, desde la punta fija** (pedido del usuario): en Núcleo,
+  "Largo" muestra ese largo terminado y se puede escribir (`darLargo`). La
+  punta fija queda quieta y la otra corre por la línea del muro, descontando
+  los cantos. La fija es la última que se tocó (`puntaFija`); sin tocar
+  ninguna, la que está unida a otro muro. Se ve llena en el plano; la suelta,
+  hueca. Con "se mueven juntos", lo que llega a la punta suelta va con ella.
+- **En una T, ladrillo contra ladrillo** (pedido del usuario: "ahí pasa el
+  revoque por adelante del ladrillo y no es real"). Un muro que llega contra
+  otro —con la punta en el medio del otro (`muroQueLaRecibe`: la punta cae
+  entre la cara terminada que tiene enfrente y el eje del otro, lejos de sus
+  puntas), o donde el otro sigue de largo en un muro en línea— mete su
+  ladrillo hasta el ladrillo del otro, y **las capas del otro de ese lado se
+  cortan** entre las dos caras del ladrillo que llega (`franjasEnPlanta`,
+  `deUnLado`): el revoque de la pared llega hasta el tabique y el del tabique
+  termina contra él. Con capas dibujadas, el cuerpo del que llega se estira
+  hasta el ladrillo del otro (`cuerpoDeMuro`, nunca se acorta), así la cara
+  del otro queda tapada ahí y sus capas se cortan solas; las del tabique y
+  las de la pared se unen a inglete en el rincón. Una punta más adentro que el
+  eje del otro no es una T (un muro que nace en otro y sigue para el otro
+  lado): sin eso, la pared que arrancaba adentro del tabique perdía un pedazo.
+  Prueba: `prueba47` (T con revoque del tipo, con capas dibujadas, marcada al
+  eje y a la cara del ladrillo; la del revoque da 24,96 m² como a mano).
+- **Las capas que casi llegan al rincón, llegan** (`CASI_EN_LA_PUNTA` = 5 cm,
+  `planta-capas`): un tramo que termina a menos de 5 cm de donde termina la
+  cara va hasta ahí y hace su inglete con la del otro muro. A mano el rincón
+  se marca sobre la cara terminada y la capa quedaba 2 cm corta, escalonada.
+  Más de 5 cm se respeta: es que se quiso cortar ahí.
+- **Muro recortado, capas cortas en la jamba** (la puerta del baño): cuando
+  el vecino se toma por la cara terminada con capas dibujadas, el cuerpo del
+  muro arranca *después* de su línea (estirar negativo). `carasVisibles` y el
+  3D medían ese arranque con una distancia sin signo, así que las caras se
+  corrían el doble del recorte y las capas terminaban unos centímetros antes
+  del marco. Ahora usan `arranqueDe(cuerpo)`, con signo (`planta-trazo`).
+- **Tipologías de abertura, de la obra** (tabla `tipos_de_abertura`,
+  migración `20261124100000_las_aberturas_tienen_tipos_de_la_obra`; acción
+  `guardarTipoDeAbertura`): en la herramienta Abertura, debajo de Tipo, el
+  desplegable **Tipología** tiene los tipos —los de la obra, que mandan, más
+  los ya colocados en la planta— con sus medidas y su marco, y al final
+  "+ Nuevo tipo". Elegir uno lo pone en el molde; cambiarle ancho, alto, marco
+  o cómo abre cambia el tipo (en la obra y en todas las suyas). "+ Nuevo tipo"
+  propone el nombre que sigue (P3 después de P2; respeta los ceros: P03) y
+  muestra el campo Nombre; el tipo nuevo —o uno que era sólo de la planta— se
+  guarda en la obra solo al colocarlo, sin botón de guardar (`colocarAbertura`).
+  Guardar un tipo lleva sus medidas, cómo abre y su marco a todas
+  las aberturas de ese nombre en todas las plantas (como los tipos de muro);
+  la mano, el antepecho y hacia dónde abre son de cada una. Cambiar un tipo
+  de la obra desde una abertura lo guarda solo, un rato después de dejar de
+  tocarlo. `Dibujo.tiposDeAbertura` (por planta) se sigue leyendo pero ya no
+  se escribe. Un nombre que ya es tipo se coloca siempre con las medidas
+  del tipo, y al elegir la herramienta el molde trae las de su nombre: antes
+  quedaba en 0,80 aunque la P1 de la planta midiera 0,90. Cambiar medidas,
+  cómo abre o el marco cambia también el tipo guardado; Copiar y renombrar
+  llevan el marco.
+
+#### Cajones de cielorraso (23/11/2026)
+
+Pedido del usuario: el durlock puede cubrir todo el ambiente —eso ya estaba,
+el cielorraso del ambiente— o ser un **cajón**, como el de una cocina sobre la
+mesada, con un frente de 20 cm o más; hay que computar su fondo y también lo
+que baja.
+
+- **Modelo** (`Dibujo.cajones: Cajon[]`): su contorno, como un ambiente; la
+  altura de su **fondo**; y sus capas, como las de un cielorraso (placa,
+  pintura).
+- **Cómputo** (`medirCaras` → `cielorrasos` y `cajones`): a cada capa, el
+  fondo más **los frentes por lo que baja**. Frentes son los lados que no van
+  contra un muro (`bordeLibre`: se mira 6 cm afuera de cada lado, en ocho
+  puntos, si hay cuerpo de muro; un lado a medias cuenta a medias). Lo que
+  baja va de su techo —el cielorraso del ambiente donde está, si es más alto
+  que el fondo, o la losa— al fondo. Donde hay un cajón el cielorraso del
+  ambiente no se hace: se le descuenta su fondo. Probado: cocina de 3,00 ×
+  2,00; cajón de pared a pared de 0,60 a 2,40 → placa 2,40 (1,80 + 3,00 ×
+  0,20) y la pintura de la losa 4,20; uno de 1,20 contra el muro del fondo →
+  1,20 (0,72 + 2,40 × 0,20).
+- **Herramienta Cajón**: se contornea como un ambiente (clic en la primera
+  esquina o Enter para cerrar); el molde trae el fondo —vacío, 20 cm bajo el
+  techo de la planta— y las capas. Se dibuja punteado, como un cielorraso en
+  un plano, y se edita igual que un ambiente o una losa (puntos, lados, doble
+  clic). Su panel: fondo, frente que resulta, capas y las medidas (fondo, m de
+  frente, total). En el 3D es un volumen del fondo a su techo.
+
+#### El panel de propiedades, más simple (23/11/2026)
+
+Pedido del usuario, con una referencia de otro programa: un panel con
+secciones que se pliegan, íconos y dibujos, y poco texto. Las piezas están en
+`components/PanelPropiedades.tsx` y son para todo lo que se elige en la planta:
+
+- **Cabecera** (`Encabezado`): una tesela con el color y el ícono de lo que
+  es, el nombre, un detalle chico y las acciones como íconos (borrar,
+  escuadrar).
+- **Secciones** (`Seccion`) con su cuenta (Pila 2, Tramos 6), plegables; la
+  de Caras del muro arranca cerrada.
+- **Renglones** (`Fila`) en tres columnas fijas —ícono, nombre corto, valor en
+  una pastilla gris—: todo baja alineado. Campos en pastilla: `CampoNumero`
+  (se escribe en cm y se guarda en m), `SelectorDeTarea` (por rubro),
+  `Desplegable`, `Segmentado` (opciones con figura).
+- **Dibujos**: `AlturaDeCapa` (el muro de piso a techo con la franja de la
+  capa y dos bordes que se arrastran; va en la columna del nombre),
+  `Pila` (renglones que se arrastran para reordenar), `MiniPlanta` (la capa
+  de cerca en planta, con los muros de fondo; tocar una pieza elige su tramo)
+  y `CorteDeMuro` (núcleo al medio, lo de afuera a la izquierda y lo de
+  adentro a la derecha, cada capa con su espesor).
+- **Medidas** al pie, en tres cajas: de la capa superficie, volumen y largo
+  (por su línea media); del muro largo, mampostería sin vanos ni hormigón y su
+  volumen.
+
+Hecho para **la capa** (la nueva y la elegida) y **el muro**. El muro muestra
+el agarre como cinco figuras del muro en corte con la línea en rojo, y el
+zócalo de cada lado con el nombre del ambiente al que da. Elegir una
+herramienta de dibujar suelta lo elegido: el panel muestra sólo sus opciones.
+**Capas desde el corte del muro** (idea del usuario): arriba del corte,
+cada lado dice a qué da ("Pasillo", "Baño") con su "+". El "+" agrega una
+capa en esa cara de punta a punta del muro, con lo del molde de la
+herramienta Capa, encima de lo que ya tenga, y la abre para definirla.
+Tocar una capa dibujada en el corte la marca y abajo aparece con dos
+acciones: abrirla, o **quitarla de este muro** (`quitarCapaDelMuro`): sale
+de las caras de éste y sigue en los demás —"Borrar capa", en cambio, la borra
+en todos—. Si era el único muro que la llevaba, la capa se va. Desde una capa a la que
+se llegó así, el ícono de muro de la cabecera vuelve a ese muro. El núcleo
+va en gris oscuro, como en la planta, para no confundirse con las capas.
+
+Falta pasar al mismo diseño el ambiente, la abertura y la estructura.
+
 #### Del plano al cómputo (22/11/2026)
 Botón **Pasar al cómputo** en el listado de Plantas. Lleva lo que el dibujo
 mide a la medición de cada tarea (`computo_item_medicion`), y la cantidad de
@@ -2710,6 +3061,12 @@ acción de borrar el pago del lote viaja como prop.
   y las comparaciones "¿cubrió todo?" tienen tolerancia (ver Ingresos).
 
 ## Pendientes / decisiones abiertas
+
+- **Capas dibujadas, lo que sigue** (ver "Capas dibujadas sobre las caras").
+  Hecho: puntas, quitar tramo, pila y el pase de lo de antes. Falta que el
+  usuario pase las capas de Andonaegui (el botón escribe en la base de todas
+  las plantas de la obra). Pendiente de decidir: medir la mampostería por el
+  eje del ladrillo y no por la línea marcada.
 
 - **Plantas, lo que sigue** (decidido con el usuario el 22/11/2026; hecha sólo
   la etapa 1: plano, escala, muros, ambientes y sus medidas).

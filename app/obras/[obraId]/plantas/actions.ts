@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Json } from "@/lib/database.types";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { capasAlDibujo, soloNucleo, tieneCapasDeAntes } from "@/lib/capas-al-dibujo";
 import { getPase, type Pase } from "@/lib/pase-al-computo";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
-import { leerDibujo, leerEscala } from "@/lib/planta-dibujo";
+import { leerDibujo, leerEscala, leerTiposDeAbertura } from "@/lib/planta-dibujo";
+import { getTiposDeMuroDeObra } from "@/lib/plantas";
 import { aplicarCambio } from "@/lib/planta-edicion";
 import { leerComposicion, medidasDelMuro } from "@/lib/tipos-de-muro";
 import { createClient } from "@/lib/supabase/server";
@@ -476,6 +478,108 @@ export async function guardarTipoDeMuro(
 
   revalidatePath("/", "layout");
   return { id };
+}
+
+/**
+ * Pasa las capas de antes de **todas las plantas de la obra** a capas
+ * dibujadas (`capasAlDibujo`) y deja cada tipo de muro sólo con su núcleo.
+ *
+ * Es de la obra entera porque los tipos son de la obra: vaciar un tipo con
+ * una planta sin pasar le sacaría las capas. Primero las plantas y después los
+ * tipos: si algo falla a mitad de camino, ninguna planta pierde sus capas.
+ */
+export async function pasarCapasAlDibujo(obraId: string): Promise<Resultado> {
+  const supabase = await createClient();
+  const [{ data: plantas, error: alLeer }, tiposDeLaObra] = await Promise.all([
+    supabase.from("plantas").select("id, dibujo, escala, altura").eq("obra_id", obraId),
+    getTiposDeMuroDeObra(obraId),
+  ]);
+  if (alLeer) return { error: alLeer.message };
+  const tipos = new Map(tiposDeLaObra.map((t) => [t.id, t] as const));
+
+  for (const planta of plantas ?? []) {
+    const dibujo = leerDibujo(planta.dibujo);
+    if (!tieneCapasDeAntes(dibujo, tipos)) continue;
+    const pasado = capasAlDibujo(dibujo, leerEscala(planta.escala), Number(planta.altura), tipos);
+    const { data, error } = await supabase
+      .from("plantas")
+      .update({ dibujo: pasado as unknown as Json })
+      .eq("id", planta.id)
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(data)) return { error: sinPermisoPara("cambiar las plantas de esta obra") };
+  }
+
+  for (const tipo of tiposDeLaObra) {
+    if (tipo.exterior.length + tipo.interior.length === 0) continue;
+    const { data, error } = await supabase
+      .from("tipos_de_muro")
+      .update({ composicion: soloNucleo(tipo) as unknown as Json })
+      .eq("id", tipo.id)
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(data)) return { error: sinPermisoPara("cambiar los tipos de muro") };
+  }
+
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/**
+ * Guarda un tipo de abertura de la obra —nuevo o cambiado— y lo lleva a todas
+ * las aberturas de ese nombre en todas las plantas: sus medidas, cómo abre y
+ * su marco. La mano, el antepecho y hacia dónde abre son de cada una y no se
+ * tocan.
+ */
+export async function guardarTipoDeAbertura(obraId: string, crudo: unknown): Promise<Resultado> {
+  const [tipo] = leerTiposDeAbertura([crudo]);
+  if (!tipo) return { error: "El tipo necesita nombre, ancho y alto." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tipos_de_abertura")
+    .upsert(
+      {
+        obra_id: obraId,
+        tipo: tipo.tipo,
+        nombre: tipo.nombre,
+        ancho: tipo.ancho,
+        alto: tipo.alto,
+        antepecho: tipo.antepecho,
+        apertura: tipo.apertura,
+        hojas: tipo.hojas,
+        marco: tipo.marco,
+      },
+      { onConflict: "obra_id,tipo,nombre" }
+    )
+    .select("id");
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("cambiar los tipos de abertura") };
+
+  const { data: plantas, error: alLeer } = await supabase
+    .from("plantas")
+    .select("id, dibujo")
+    .eq("obra_id", obraId);
+  if (alLeer) return { error: alLeer.message };
+
+  const delTipo = (a: { tipo: string; nombre: string }) => a.tipo === tipo.tipo && a.nombre === tipo.nombre;
+  for (const planta of plantas ?? []) {
+    const dibujo = leerDibujo(planta.dibujo);
+    if (!dibujo.aberturas.some(delTipo)) continue;
+    const aberturas = dibujo.aberturas.map((a) =>
+      delTipo(a)
+        ? { ...a, ancho: tipo.ancho, alto: tipo.alto, apertura: tipo.apertura, hojas: tipo.hojas, marco: tipo.marco }
+        : a
+    );
+    const { error: alGuardar } = await supabase
+      .from("plantas")
+      .update({ dibujo: { ...dibujo, aberturas } as unknown as Json })
+      .eq("id", planta.id);
+    if (alGuardar) return { error: alGuardar.message };
+  }
+
+  revalidatePath("/", "layout");
+  return {};
 }
 
 /** Borra un tipo de muro, si ningún muro de la obra lo usa. */

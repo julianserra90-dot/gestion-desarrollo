@@ -2455,6 +2455,48 @@ export type Database = {
         }
         Relationships: []
       }
+      tipos_de_abertura: {
+        Row: {
+          ancho: number
+          alto: number
+          antepecho: number | null
+          apertura: string | null
+          creado_en: string
+          hojas: number | null
+          id: string
+          marco: number | null
+          nombre: string
+          obra_id: string
+          tipo: string
+        }
+        Insert: {
+          ancho: number
+          alto: number
+          antepecho?: number | null
+          apertura?: string | null
+          creado_en?: string
+          hojas?: number | null
+          id?: string
+          marco?: number | null
+          nombre: string
+          obra_id: string
+          tipo: string
+        }
+        Update: {
+          ancho?: number
+          alto?: number
+          antepecho?: number | null
+          apertura?: string | null
+          creado_en?: string
+          hojas?: number | null
+          id?: string
+          marco?: number | null
+          nombre?: string
+          obra_id?: string
+          tipo?: string
+        }
+        Relationships: []
+      }
       tipos_de_muro: {
         Row: {
           composicion: Json

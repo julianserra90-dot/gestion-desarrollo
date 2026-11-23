@@ -185,6 +185,25 @@ export function recortar(sujeto: Punto[], convexo: Punto[]): Punto[] {
   return salida;
 }
 
+// ---- El plano de corte ----------------------------------------------------
+
+/**
+ * A qué altura se corta la planta para dibujarla, en metros sobre el piso
+ * terminado: lo que el plano atraviesa va cortado (rayado), lo de arriba en
+ * proyección (en líneas de trazos) y lo de abajo se ve, en gris claro.
+ */
+export const PLANO_DE_CORTE = 1.2;
+
+/** Dónde queda una pieza respecto del plano de corte. */
+export type EnElCorte = "arriba" | "cortada" | "abajo";
+
+/** Si una pieza, entre esas alturas, queda arriba, cortada o abajo del plano. */
+export function enElCorte(desde: number, hasta: number, corte = PLANO_DE_CORTE): EnElCorte {
+  if (desde >= corte - 1e-6) return "arriba";
+  if (hasta <= corte + 1e-6) return "abajo";
+  return "cortada";
+}
+
 // ---- Los prismas ----------------------------------------------------------
 
 /** Una pieza como volumen: su huella y entre qué alturas está. */

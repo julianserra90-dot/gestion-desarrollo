@@ -34,6 +34,7 @@ import {
   type Escala,
   type Punto,
   areaDe,
+  centroDe as centroDeArea,
   distancia,
   metrosPorPixel,
   nombreDeApertura,
@@ -45,8 +46,12 @@ import {
   prismasDeHormigon,
   recortar,
 } from "@/lib/planta-estructura";
+import { piezasDeCapas } from "@/lib/planta-capas";
 import {
   type Pano,
+  adentro as dentro,
+  arranqueDe,
+  carasVisibles,
   cuerpoDeMuro,
   franjasEnPlanta,
   mamposteriaDeMuro,
@@ -219,7 +224,7 @@ export function modeloDePlanta(
       (cuerpo.nucleo.ejeA.x - cuerpo.ejeA.x) * -dy + (cuerpo.nucleo.ejeA.y - cuerpo.ejeA.y) * dx;
 
     // Las aberturas van sobre el eje sin estirar; el cuerpo arranca antes.
-    const arranque = distancia(cuerpo.a, cuerpo.ejeA);
+    const arranque = arranqueDe(cuerpo);
     const largoDelEje = distancia(cuerpo.ejeA, cuerpo.ejeB);
     const vanos = vanosDeMuro(dibujo.aberturas, muro.id, largoDelEje, arranque, mpp);
     // Y el hormigón le saca lugar al ladrillo: donde hay una columna o una
@@ -347,6 +352,84 @@ export function modeloDePlanta(
         ],
       };
     }
+  }
+
+  // ---- Las capas dibujadas sobre las caras --------------------------------
+  // Cada pieza, como una piel con su espesor entre sus alturas, sin los vanos
+  // de su muro. Una pintura no tiene espesor: en el 3D no se ve.
+  const caras = carasVisibles(dibujo.muros, dibujo.ambientes, mpp);
+  for (const pieza of piezasDeCapas(dibujo, caras, mpp, techo)) {
+    if (!(pieza.capa.espesor > 0)) continue;
+    const { cara } = pieza;
+    const muro = dibujo.muros.find((m) => m.id === cara.muroId);
+    if (!muro) continue;
+    const largo = cara.largo > 0 ? cara.largo : 1;
+    const d = { x: (cara.b.x - cara.a.x) / largo, y: (cara.b.y - cara.a.y) / largo };
+    const lado = cara.punta === null ? cara.lado : 1;
+    const o = { x: -d.y * lado, y: d.x * lado };
+    const en = (s: number, n: number): Punto => ({
+      x: cara.a.x + d.x * (s - cara.desde) + o.x * n,
+      y: cara.a.y + d.y * (s - cara.desde) + o.y * n,
+    });
+    // Los vanos de su muro, a lo largo de la pieza. Un canto no tiene.
+    const cuerpo = cuerpoDeMuro(muro, dibujo.muros, mpp, 0);
+    const arranque = arranqueDe(cuerpo);
+    const vanos =
+      cara.punta === null
+        ? vanosDeMuro(dibujo.aberturas, muro.id, distancia(cuerpo.ejeA, cuerpo.ejeB), arranque, mpp).map(
+            (v): Pano => ({ ...v, desde: v.desde - arranque - pieza.s0, hasta: v.hasta - arranque - pieza.s0 })
+          )
+        : [];
+    const objeto = `capa:${pieza.capa.id}`;
+    objetos[objeto] ??= {
+      titulo: "Capa",
+      nombre: tarea(pieza.capa.tarea),
+      renglones: [
+        ["Espesor", cm(pieza.capa.espesor)],
+        [
+          "Altura",
+          `${formatMetros(pieza.capa.desde)} a ${typeof pieza.capa.hasta === "number" ? formatMetros(pieza.capa.hasta) : pieza.capa.hasta}`,
+        ],
+      ],
+      campos: [],
+    };
+    const largoDePieza = pieza.s1 - pieza.s0;
+    for (const pano of panosDeMuro(largoDePieza, pieza.arriba, vanos)) {
+      const abajo = Math.max(pano.abajo, pieza.abajo);
+      const arriba = Math.min(pano.arriba, pieza.arriba);
+      if (!(arriba - abajo > MINIMO)) continue;
+      // El paño, a lo largo; en las puntas de la pieza, sin límite, para no
+      // cortarle el inglete de la esquina.
+      const s0 = pano.desde <= 1e-9 ? -1e4 : pieza.s0 + pano.desde;
+      const s1 = pano.hasta >= largoDePieza - 1e-9 ? 1e4 : pieza.s0 + pano.hasta;
+      const huella = recortar(pieza.puntos, [en(s0, -1e4), en(s1, -1e4), en(s1, 1e4), en(s0, 1e4)]);
+      if (huella.length < 3) continue;
+      sumar("muro", objeto, `capa|${pieza.capa.tarea ?? ""}`, huella, abajo, arriba);
+    }
+  }
+
+  // ---- Los cajones de cielorraso -----------------------------------------
+  // Del fondo al cielorraso del ambiente —o a la losa—: un volumen bajo el
+  // techo, como se lo ve.
+  for (const cajon of dibujo.cajones) {
+    const centro = centroDeArea(cajon.puntos);
+    const ambiente = dibujo.ambientes.find((a) => dentro(centro, a.puntos));
+    const tope =
+      ambiente && ambiente.alturaCielorraso !== null && ambiente.alturaCielorraso > cajon.fondo
+        ? ambiente.alturaCielorraso
+        : techo;
+    const objeto = `cajon:${cajon.id}`;
+    sumar("cielorraso", objeto, objeto, cajon.puntos, cajon.fondo, tope);
+    objetos[objeto] = {
+      titulo: "Cajón",
+      nombre: ambiente?.nombre ?? "",
+      renglones: [
+        ["Fondo a", formatMetros(cajon.fondo)],
+        ["Frente", formatMetros(Math.max(0, tope - cajon.fondo))],
+        ["Capas", capas(cajon.capas)],
+      ],
+      campos: [],
+    };
   }
 
   // ---- Los ambientes: su piso y su cielorraso ----------------------------

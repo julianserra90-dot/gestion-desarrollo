@@ -96,6 +96,14 @@ export type Muro = {
    * muro lleva zócalo de un lado y del otro no.
    */
   zocalo: { exterior: string | null; interior: string | null };
+  /**
+   * Cuánto suman de cada lado las **capas dibujadas** sobre sus caras, en
+   * metros: lo que va más allá del cuerpo. No se guarda —sale de las capas
+   * (`conAcabado`)—; es lo que hace que la cara terminada de un muro sea la de
+   * afuera de su última capa, y que agarrarlo de ahí sea agarrarlo de lo que
+   * se ve.
+   */
+  acabado?: { exterior: number; interior: number };
 };
 
 /**
@@ -152,6 +160,26 @@ export type Ambiente = {
   /** El piso, por capas desde la losa: contrapiso, carpeta, porcelanato. Se
    *  miden por la superficie del ambiente. */
   piso: Capa[];
+};
+
+/**
+ * Un cajón de cielorraso: un pedazo de cielorraso más bajo que el resto —el de
+ * una cocina sobre la mesada, el que tapa una viga o una cañería—. Se dibuja
+ * por su contorno, como un ambiente, y tiene la altura de su fondo.
+ *
+ * Se computa su fondo —el área— y sus **frentes**: los lados que no van
+ * contra un muro, por lo que baja desde el cielorraso del ambiente (o la losa)
+ * hasta el fondo. Un cajón de 20 cm de frente a lo largo de una mesada suma
+ * esos 20 cm por el largo de la mesada.
+ */
+export type Cajon = {
+  id: string;
+  /** El contorno, sin repetir el primer punto al final. */
+  puntos: Punto[];
+  /** A qué altura del piso está su fondo, en metros. */
+  fondo: number;
+  /** De qué es, por capas: placa de yeso y encima pintura. */
+  capas: Capa[];
 };
 
 export type TipoAbertura = "puerta" | "ventana";
@@ -235,7 +263,23 @@ export type Abertura = {
    */
   apertura: Apertura | null;
   hojas: number | null;
+  /**
+   * Sólo en puertas: cuánto mide el marco de cara a cara, en metros —el de un
+   * tabique de 10, 12 o 15—. Es del tipo, como el ancho. Null: el del muro,
+   * con sus capas.
+   */
+  marco: number | null;
 };
+
+/**
+ * Un tipo de abertura de la planta —P01, V02—: sus medidas y cómo es, para
+ * ponerlo de nuevo sin cargarlo otra vez. Existe aunque todavía no haya
+ * ninguna colocada.
+ */
+export type TipoDeAbertura = Pick<
+  Abertura,
+  "tipo" | "nombre" | "ancho" | "alto" | "antepecho" | "apertura" | "hojas" | "marco"
+>;
 
 // ---- La estructura --------------------------------------------------------
 //
@@ -417,11 +461,61 @@ export const COLUMNA_INICIAL = { ancho: 0.2, profundidad: 0.2 };
 export const VIGA_INICIAL = { ancho: 0.12, alto: 0.45 };
 export const LOSA_INICIAL = { espesor: 0.12 };
 
+/**
+ * Un tramo de una capa dibujada: un pedazo de una cara de un muro.
+ *
+ * No tiene coordenadas propias, como una abertura: vive en su muro, entre dos
+ * fracciones de su línea marcada. Así, si el muro se mueve o se alarga, la
+ * capa va con él. Puede salir apenas de 0..1: en una esquina la cara sigue un
+ * poco más allá de los puntos marcados.
+ */
+export type TramoDeCapa = {
+  muroId: string;
+  /** Qué cara: un lado sobre la normal del muro (1 o -1), o un canto —la
+   *  punta del muro— entero. */
+  cara: 1 | -1 | "a" | "b";
+  /** Entre dónde y dónde, a lo largo: 0 en el primer punto, 1 en el otro. En
+   *  un canto no se usa: va entero. */
+  desde: number;
+  hasta: number;
+};
+
+/**
+ * Una capa de terminación **dibujada sobre las caras de los muros**, como una
+ * polilínea de AutoCAD: el revoque, el porcelanato, la pintura. Se dibuja
+ * eligiendo un ambiente —y va por todo su perímetro— o a mano, tramo por
+ * tramo. Lo que se ve es lo que se computa.
+ *
+ * Se apilan en el orden de la lista: la primera va contra el muro y cada una
+ * se apoya sobre la cara de las que tiene debajo en ese tramo y esa altura. El
+ * porcelanato sobre el revoque, la pintura sobre el revoque de 2,10 para
+ * arriba.
+ */
+export type CapaDibujada = {
+  id: string;
+  /** Tarea del catálogo, por id. Null: todavía no se eligió. */
+  tarea: string | null;
+  /** En metros. Cero en una pintura: se ve como una línea de color. */
+  espesor: number;
+  /** Desde qué altura sube, en metros sobre el piso. */
+  desde: number;
+  /** Hasta dónde: la losa, el cielorraso del ambiente o una altura. */
+  hasta: "techo" | "cielorraso" | number;
+  tramos: TramoDeCapa[];
+};
+
 export type Dibujo = {
   muros: Muro[];
   ambientes: Ambiente[];
   aberturas: Abertura[];
   estructura: Estructura;
+  /** Las capas dibujadas sobre las caras de los muros, de la de abajo a la de
+   *  arriba. */
+  capas: CapaDibujada[];
+  /** Los cajones de cielorraso. */
+  cajones: Cajon[];
+  /** Los tipos de abertura guardados, además de los que ya están colocados. */
+  tiposDeAbertura: TipoDeAbertura[];
   /**
    * Las capas de las caras de muro que no llevan las de su ambiente: la pared
    * de la bañera que va con otro revestimiento, o una cara que no da a ningún
@@ -440,6 +534,9 @@ export const DIBUJO_VACIO: Dibujo = {
   ambientes: [],
   aberturas: [],
   estructura: ESTRUCTURA_VACIA,
+  capas: [],
+  cajones: [],
+  tiposDeAbertura: [],
   caras: {},
 };
 
@@ -453,9 +550,10 @@ export const ABERTURA_INICIAL: Record<
     antepecho: number | null;
     apertura: Apertura | null;
     hojas: number | null;
+    marco: number | null;
   }
 > = {
-  puerta: { nombre: "P1", ancho: 0.8, alto: 2.05, antepecho: null, apertura: null, hojas: null },
+  puerta: { nombre: "P1", ancho: 0.8, alto: 2.05, antepecho: null, apertura: null, hojas: null, marco: null },
   ventana: {
     nombre: "V1",
     ancho: 1.2,
@@ -463,6 +561,7 @@ export const ABERTURA_INICIAL: Record<
     antepecho: 0.9,
     apertura: "corrediza",
     hojas: 2,
+    marco: null,
   },
 };
 
@@ -838,6 +937,7 @@ export function leerDibujo(valor: unknown): Dibujo {
         tipo === "ventana" && hojas !== null && Number.isInteger(hojas) && hojas >= 1
           ? hojas
           : null,
+      marco: tipo === "puerta" ? marcoDe(r.marco) : null,
     });
   }
 
@@ -848,7 +948,146 @@ export function leerDibujo(valor: unknown): Dibujo {
     }
   }
 
-  return { muros, ambientes, aberturas, estructura: leerEstructura(crudo.estructura), caras };
+  const capas = leerCapasDibujadas(crudo.capas, idsDeMuros);
+  return {
+    muros: conAcabado(muros, capas),
+    ambientes,
+    aberturas,
+    estructura: leerEstructura(crudo.estructura),
+    capas,
+    cajones: leerCajones(crudo.cajones),
+    tiposDeAbertura: leerTiposDeAbertura(crudo.tiposDeAbertura),
+    caras,
+  };
+}
+
+/** El marco de una puerta, en metros, o null: el del muro. */
+function marcoDe(valor: unknown): number | null {
+  const n = numero(valor);
+  return n !== null && n > 0 && n < 1 ? n : null;
+}
+
+/** Los tipos de abertura guardados —en el dibujo o en la tabla de la obra—;
+ *  uno sin nombre o sin medidas no sirve. */
+export function leerTiposDeAbertura(valor: unknown): TipoDeAbertura[] {
+  const tipos: TipoDeAbertura[] = [];
+  for (const v of Array.isArray(valor) ? valor : []) {
+    if (typeof v !== "object" || v === null) continue;
+    const r = v as Record<string, unknown>;
+    const ancho = numero(r.ancho);
+    const alto = numero(r.alto);
+    if (typeof r.nombre !== "string" || r.nombre.trim() === "") continue;
+    if (ancho === null || ancho <= 0 || alto === null || alto <= 0) continue;
+    const tipo = r.tipo === "ventana" ? "ventana" : "puerta";
+    const antepecho = numero(r.antepecho);
+    const hojas = numero(r.hojas);
+    tipos.push({
+      tipo,
+      nombre: r.nombre.trim(),
+      ancho,
+      alto,
+      antepecho: tipo === "ventana" && antepecho !== null && antepecho >= 0 ? antepecho : null,
+      apertura: tipo === "ventana" ? APERTURAS.find((a) => a.valor === r.apertura)?.valor ?? null : null,
+      hojas: tipo === "ventana" && hojas !== null && Number.isInteger(hojas) && hojas >= 1 ? hojas : null,
+      marco: tipo === "puerta" ? marcoDe(r.marco) : null,
+    });
+  }
+  return tipos;
+}
+
+/** Los cajones de cielorraso; uno con menos de tres puntos no encierra nada. */
+function leerCajones(valor: unknown): Cajon[] {
+  const cajones: Cajon[] = [];
+  for (const c of Array.isArray(valor) ? valor : []) {
+    if (typeof c !== "object" || c === null) continue;
+    const r = c as Record<string, unknown>;
+    const puntos = (Array.isArray(r.puntos) ? r.puntos : [])
+      .map(punto)
+      .filter((p): p is Punto => p !== null);
+    const fondo = numero(r.fondo);
+    if (typeof r.id !== "string" || puntos.length < 3) continue;
+    cajones.push({
+      id: r.id,
+      puntos,
+      fondo: fondo !== null && fondo > 0 ? fondo : 2.4,
+      capas: leerCapas(r.capas),
+    });
+  }
+  return cajones;
+}
+
+/**
+ * Los muros con cuánto suman de cada lado sus capas dibujadas (`Muro.acabado`).
+ *
+ * Se apilan como en la planta (`piezasDeCapas`) pero sin geometría: por los
+ * tramos de cada lado, en el orden de la lista, cada uno sobre los de antes
+ * que pisa a lo largo y en altura. De cada lado vale la pila más alta: un
+ * porcelanato en un pedazo de la pared ya corre la cara terminada.
+ */
+export function conAcabado(muros: Muro[], capas: CapaDibujada[]): Muro[] {
+  const pilas = new Map<string, { desde: number; hasta: number; abajo: number; arriba: number; tope: number }[]>();
+  for (const capa of capas) {
+    const abajo = capa.desde;
+    const arriba = typeof capa.hasta === "number" ? capa.hasta : Infinity;
+    for (const t of capa.tramos) {
+      if (t.cara !== 1 && t.cara !== -1) continue;
+      const clave = `${t.muroId}|${t.cara}`;
+      const pila = pilas.get(clave) ?? [];
+      let base = 0;
+      for (const o of pila) {
+        if (Math.min(o.hasta, t.hasta) - Math.max(o.desde, t.desde) <= 1e-6) continue;
+        if (Math.min(o.arriba, arriba) - Math.max(o.abajo, abajo) <= 1e-6) continue;
+        base = Math.max(base, o.tope);
+      }
+      pila.push({ desde: t.desde, hasta: t.hasta, abajo, arriba, tope: base + capa.espesor });
+      pilas.set(clave, pila);
+    }
+  }
+  const alto = (clave: string) => Math.max(0, ...(pilas.get(clave) ?? []).map((o) => o.tope));
+  return muros.map((m) => {
+    const exterior = alto(`${m.id}|-1`);
+    const interior = alto(`${m.id}|1`);
+    if (exterior === 0 && interior === 0 && !m.acabado) return m;
+    return { ...m, acabado: { exterior, interior } };
+  });
+}
+
+/**
+ * Las capas dibujadas. Un tramo sin su muro no está en ningún lado y se va; una
+ * capa que se queda sin tramos, también.
+ */
+function leerCapasDibujadas(valor: unknown, muros: Set<string>): CapaDibujada[] {
+  const capas: CapaDibujada[] = [];
+  for (const c of Array.isArray(valor) ? valor : []) {
+    if (typeof c !== "object" || c === null) continue;
+    const r = c as Record<string, unknown>;
+    if (typeof r.id !== "string") continue;
+    const tramos: TramoDeCapa[] = [];
+    for (const t of Array.isArray(r.tramos) ? r.tramos : []) {
+      if (typeof t !== "object" || t === null) continue;
+      const q = t as Record<string, unknown>;
+      const desde = numero(q.desde);
+      const hasta = numero(q.hasta);
+      const cara = q.cara === 1 || q.cara === -1 || q.cara === "a" || q.cara === "b" ? q.cara : null;
+      if (typeof q.muroId !== "string" || !muros.has(q.muroId) || cara === null) continue;
+      if (desde === null || hasta === null) continue;
+      tramos.push({ muroId: q.muroId, cara, desde: Math.min(desde, hasta), hasta: Math.max(desde, hasta) });
+    }
+    if (tramos.length === 0) continue;
+    const espesor = numero(r.espesor);
+    const desde = numero(r.desde);
+    const hasta = numero(r.hasta);
+    capas.push({
+      id: r.id,
+      tarea: idDeTarea(r.tarea),
+      espesor: espesor !== null && espesor >= 0 && espesor < 1 ? espesor : 0,
+      desde: desde !== null && desde >= 0 ? desde : 0,
+      hasta:
+        r.hasta === "cielorraso" ? "cielorraso" : hasta !== null && hasta > 0 ? hasta : "techo",
+      tramos,
+    });
+  }
+  return capas;
 }
 
 /** Una medida en metros que tiene que ser mayor que cero, o lo de siempre. */

@@ -9,6 +9,7 @@ import {
   getPlanta,
   getPlantas,
   getTareasPorMetro,
+  getTiposDeAberturaDeObra,
   getTiposDeMuro,
   getTiposDeMuroDeObra,
 } from "@/lib/plantas";
@@ -17,7 +18,9 @@ import {
   eliminarTipoDeMuro,
   guardarPisos,
   guardarPlanta,
+  guardarTipoDeAbertura,
   guardarTipoDeMuro,
+  pasarCapasAlDibujo,
 } from "../actions";
 
 export default async function PlantaPage({
@@ -33,16 +36,25 @@ export default async function PlantaPage({
   }
 
   // El id llega por la URL y no tiene por qué ser de esta obra.
-  const [planta, capasDisponibles, tiposDeMuro, pisos, plantas, tiposDeLaObra, tareasPorMetro] =
-    await Promise.all([
-      getPlanta(plantaId),
-      getCapasDisponibles(),
-      getTiposDeMuro(),
-      getPisos(obra.id),
-      getPlantas(obra.id),
-      getTiposDeMuroDeObra(obra.id),
-      getTareasPorMetro(),
-    ]);
+  const [
+    planta,
+    capasDisponibles,
+    tiposDeMuro,
+    pisos,
+    plantas,
+    tiposDeLaObra,
+    tareasPorMetro,
+    tiposDeAbertura,
+  ] = await Promise.all([
+    getPlanta(plantaId),
+    getCapasDisponibles(),
+    getTiposDeMuro(),
+    getPisos(obra.id),
+    getPlantas(obra.id),
+    getTiposDeMuroDeObra(obra.id),
+    getTareasPorMetro(),
+    getTiposDeAberturaDeObra(obra.id),
+  ]);
 
   if (!planta || planta.obraId !== obra.id) {
     return (
@@ -90,6 +102,9 @@ export default async function PlantaPage({
         tareasPorMetro={tareasPorMetro}
         guardarTipo={guardarTipoDeMuro.bind(null, obra.id)}
         eliminarTipo={eliminarTipoDeMuro.bind(null, obra.id)}
+        pasarCapas={pasarCapasAlDibujo.bind(null, obra.id)}
+        tiposDeAberturaDeLaObra={tiposDeAbertura}
+        guardarTipoDeAberturaEnLaObra={guardarTipoDeAbertura.bind(null, obra.id)}
       />
     </AppShell>
   );

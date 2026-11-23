@@ -12,6 +12,8 @@ export type NombreHerramienta =
   | "escala"
   | "muro"
   | "ambiente"
+  | "capa"
+  | "cajon"
   | "abertura"
   | "medir"
   | "copiar"
@@ -73,6 +75,21 @@ const TRAZOS: Record<NombreHerramienta, React.ReactNode> = {
   ),
   // Un contorno cerrado, en L: un ambiente no es siempre un rectángulo.
   ambiente: <path d="M4 4h16v9h-7v7H4z" />,
+  // Un muro en esquina y, pegada a su cara, la capa que da la vuelta.
+  capa: (
+    <>
+      <path d="M3 21V3h18" />
+      <path d="M8 21V8h13" strokeWidth={3} />
+    </>
+  ),
+  // Un cajón de cielorraso en corte: el techo, y el cajón que baja con su frente.
+  cajon: (
+    <>
+      <path d="M3 5h18" />
+      <path d="M3 5v8h11V5" />
+      <path d="M14 13h7" strokeDasharray="2 2" />
+    </>
+  ),
   // Una puerta en planta: el muro cortado, la hoja y su barrido.
   abertura: (
     <>

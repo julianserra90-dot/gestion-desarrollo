@@ -85,6 +85,8 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
       for (const c of [...a.capas, ...a.piso, ...a.cielorraso]) usadas.add(c.tarea);
     }
     for (const capas of Object.values(d.caras)) for (const c of capas) usadas.add(c.tarea);
+    for (const c of d.capas) if (c.tarea) usadas.add(c.tarea);
+    for (const cajon of d.cajones) for (const c of cajon.capas) usadas.add(c.tarea);
     for (const m of d.muros) {
       if (m.zocalo.exterior) usadas.add(m.zocalo.exterior);
       if (m.zocalo.interior) usadas.add(m.zocalo.interior);

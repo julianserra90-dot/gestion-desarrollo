@@ -8,8 +8,10 @@
 import {
   type Dibujo,
   type Escala,
+  type TipoDeAbertura,
   leerDibujo,
   leerEscala,
+  leerTiposDeAbertura,
 } from "@/lib/planta-dibujo";
 import type { Piso } from "@/lib/pisos";
 import { leerComposicion, type TipoMuro } from "@/lib/tipos-de-muro";
@@ -108,6 +110,23 @@ export async function getPisos(obraId: string): Promise<Piso[]> {
  * obra se dibuja sin tipos —los muros con tipo miden como uno sin—, y queda
  * dicho en el log.
  */
+/**
+ * Los tipos de puerta y ventana de la obra —P01, V02—, para ponerlos en
+ * cualquier planta. Vacío si la tabla todavía no existe.
+ */
+export async function getTiposDeAberturaDeObra(obraId: string): Promise<TipoDeAbertura[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tipos_de_abertura")
+    .select("tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco")
+    .eq("obra_id", obraId)
+    .order("nombre");
+
+  if (error) console.error("getTiposDeAberturaDeObra:", error.message);
+
+  return leerTiposDeAbertura(data ?? []);
+}
+
 export async function getTiposDeMuroDeObra(obraId: string): Promise<TipoMuro[]> {
   const supabase = await createClient();
   const { data, error } = await supabase

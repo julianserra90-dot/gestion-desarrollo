@@ -39,8 +39,6 @@ export default function TipoDeMuroEditor({
     });
   const quitar = (lado: Lado, i: number) =>
     alCambiar({ ...composicion, [lado]: composicion[lado].filter((_, k) => k !== i) });
-  const agregar = (lado: Lado) =>
-    alCambiar({ ...composicion, [lado]: [...composicion[lado], { ...CAPA_NUEVA }] });
 
   const fila = (lado: Lado, i: number) => (
     <FilaDeCapa
@@ -54,13 +52,14 @@ export default function TipoDeMuroEditor({
 
   return (
     <div style={caja}>
-      <div style={encabezado}>
-        <span>Exterior</span>
-        <button type="button" onClick={() => agregar("exterior")} style={botonAgregar}>
-          + capa
-        </button>
-      </div>
-      {composicion.exterior.map((_, i) => composicion.exterior.length - 1 - i).map((i) => fila("exterior", i))}
+      {composicion.exterior.length > 0 && (
+        <>
+          <div style={encabezado}>
+            <span>Exterior</span>
+          </div>
+          {composicion.exterior.map((_, i) => composicion.exterior.length - 1 - i).map((i) => fila("exterior", i))}
+        </>
+      )}
 
       <div style={nucleo}>
         <div style={grilla}>
@@ -80,13 +79,14 @@ export default function TipoDeMuroEditor({
         </div>
       </div>
 
-      <div style={encabezado}>
-        <span>Interior</span>
-        <button type="button" onClick={() => agregar("interior")} style={botonAgregar}>
-          + capa
-        </button>
-      </div>
-      {composicion.interior.map((_, i) => fila("interior", i))}
+      {composicion.interior.length > 0 && (
+        <>
+          <div style={encabezado}>
+            <span>Interior</span>
+          </div>
+          {composicion.interior.map((_, i) => fila("interior", i))}
+        </>
+      )}
 
       <div style={total}>
         <span>Espesor total</span>
@@ -136,7 +136,7 @@ export function ListaDeCapas({
 }
 
 /** Una capa: tarea, espesor, altura —que se despliega abajo— y quitar. */
-function FilaDeCapa({
+export function FilaDeCapa({
   capa,
   tareas,
   alCambiar,
@@ -145,7 +145,8 @@ function FilaDeCapa({
   capa: CapaDeMuro;
   tareas: TareaOpcion[];
   alCambiar: (cambios: Partial<CapaDeMuro>) => void;
-  alQuitar: () => void;
+  /** Sin esto no hay ×: la capa no se quita desde acá. */
+  alQuitar?: () => void;
 }) {
   const [abierta, setAbierta] = useState(false);
   return (
@@ -161,9 +162,13 @@ function FilaDeCapa({
         >
           {textoDeAltura(capa)}
         </button>
-        <button type="button" onClick={alQuitar} style={botonQuitar} aria-label="Quitar capa">
-          ×
-        </button>
+        {alQuitar ? (
+          <button type="button" onClick={alQuitar} style={botonQuitar} aria-label="Quitar capa">
+            ×
+          </button>
+        ) : (
+          <span />
+        )}
       </div>
       {abierta && (
         <div style={grillaAltura}>
