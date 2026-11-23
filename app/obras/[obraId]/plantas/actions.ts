@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Json } from "@/lib/database.types";
 import { eliminarArchivo, subirArchivo } from "@/lib/drive";
+import { getPase, type Pase } from "@/lib/pase-al-computo";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala } from "@/lib/planta-dibujo";
 import { aplicarCambio } from "@/lib/planta-edicion";
 import { createClient } from "@/lib/supabase/server";
+import { alternarTarea } from "../presupuestos/computo/actions";
 
 type Resultado = { error?: string };
 
@@ -286,6 +288,144 @@ export async function editarEnPlanta(
 
   revalidatePath("/", "layout");
   return {};
+}
+
+/**
+ * Lo que pasaría si se pasa el plano al cómputo: tarea por tarea, lo que tiene
+ * hoy y con lo que queda. No escribe nada: es lo que se muestra antes.
+ */
+export async function verPaseAlComputo(
+  obraId: string
+): Promise<{ pase?: Pase; error?: string }> {
+  const resultado = await getPase(obraId);
+  return "error" in resultado ? { error: resultado.error } : { pase: resultado.pase };
+}
+
+/** De a cuántos se borran los renglones viejos: los ids van en la dirección. */
+const TANDA = 80;
+
+/**
+ * Pasa al cómputo lo que miden las plantas.
+ *
+ * Reemplaza **sólo lo que había venido del plano**: lo medido a mano o pegado
+ * desde Excel no se toca, y la cantidad de cada tarea queda en la suma de las
+ * dos cosas. Las tareas que el dibujo usa y el cómputo no tenía se agregan,
+ * con su desglose de modelo, igual que al tildarlas en el catálogo.
+ *
+ * No recibe los números: los rehace acá, con lo guardado. Lo que se mostró en
+ * la vista previa pudo cambiar mientras estaba abierta, y la cantidad de una
+ * tarea multiplica todos los precios del cómputo.
+ *
+ * Primero se escriben los renglones nuevos y recién después se borran los
+ * viejos: si algo falla en el medio, la medición queda con renglones de más
+ * —que se ven, y se arreglan pasando de nuevo— y no sin ninguno.
+ */
+export async function pasarAlComputo(
+  slug: string,
+  obraId: string
+): Promise<Resultado & { tareas?: number; agregadas?: number }> {
+  const resultado = await getPase(obraId);
+  if ("error" in resultado) return { error: resultado.error };
+  const { pase } = resultado;
+
+  const lineas = pase.lineas.filter((l) => l.cambia || Math.abs(l.hoy - l.queda) > 0.0005);
+  if (lineas.length === 0) return { tareas: 0, agregadas: 0 };
+
+  const supabase = await createClient();
+
+  if (!pase.hayComputo) {
+    const { error } = await supabase
+      .from("computos")
+      .upsert({ obra_id: obraId }, { onConflict: "obra_id", ignoreDuplicates: true });
+    if (error) return { error: error.message };
+  }
+
+  // Las tareas que el cómputo todavía no tiene.
+  const faltan = lineas.filter((l) => l.itemId === null && l.renglones.length > 0);
+  for (const l of faltan) {
+    const { error } = await alternarTarea(obraId, l.tareaId, true);
+    if (error) return { error: `No se pudo agregar "${l.nombre}" al cómputo: ${error}` };
+  }
+
+  const itemDe = new Map<string, string>();
+  for (const l of lineas) if (l.itemId) itemDe.set(l.tareaId, l.itemId);
+  if (faltan.length > 0) {
+    const { data: agregados, error } = await supabase
+      .from("computo_items")
+      .select("id, tarea_id")
+      .eq("obra_id", obraId)
+      .in(
+        "tarea_id",
+        faltan.map((l) => l.tareaId)
+      );
+    if (error) return { error: error.message };
+    for (const i of agregados ?? []) if (i.tarea_id) itemDe.set(i.tarea_id, i.id);
+    // Agregar una tarea sin permiso no da error: no la agrega.
+    if (faltan.some((l) => !itemDe.has(l.tareaId))) {
+      return { error: sinPermisoPara("agregar tareas al cómputo de esta obra") };
+    }
+  }
+
+  const itemIds = [...new Set(itemDe.values())];
+
+  // Lo que hoy está guardado como del plano en estas tareas: es lo que se va.
+  const { data: viejos, error: alLeerViejos } = await supabase
+    .from("computo_item_medicion")
+    .select("id")
+    .eq("origen", "plano")
+    .in("item_id", itemIds);
+  if (alLeerViejos) return { error: alLeerViejos.message };
+
+  const nuevos = lineas.flatMap((l) =>
+    l.renglones.map((r) => ({
+      item_id: itemDe.get(l.tareaId)!,
+      origen: "plano",
+      nivel: r.nivel,
+      etiqueta: r.etiqueta,
+      forma: r.forma,
+      a: r.a,
+      b: r.b,
+      c: r.c,
+      unidades: r.unidades,
+      cantidad: r.cantidad,
+    }))
+  );
+  if (nuevos.length > 0) {
+    const { data: escritos, error } = await supabase
+      .from("computo_item_medicion")
+      // Después de lo medido a mano, en el orden del edificio.
+      .insert(nuevos.map((n, i) => ({ ...n, orden: 100000 + i })))
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(escritos)) return { error: sinPermisoPara("modificar el cómputo de esta obra") };
+  }
+
+  const aBorrar = (viejos ?? []).map((v) => v.id);
+  for (let i = 0; i < aBorrar.length; i += TANDA) {
+    const { data: borrados, error } = await supabase
+      .from("computo_item_medicion")
+      .delete()
+      .in("id", aBorrar.slice(i, i + TANDA))
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(borrados)) return { error: sinPermisoPara("modificar el cómputo de esta obra") };
+  }
+
+  // La cantidad de cada tarea: lo del plano más lo que tenía medido a mano.
+  for (const l of lineas) {
+    const id = itemDe.get(l.tareaId);
+    if (!id) continue;
+    const { data: tocados, error } = await supabase
+      .from("computo_items")
+      .update({ cantidad: l.queda })
+      .eq("id", id)
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(tocados)) return { error: sinPermisoPara("modificar el cómputo de esta obra") };
+  }
+
+  revalidatePath("/", "layout");
+  return { tareas: lineas.length, agregadas: faltan.length };
 }
 
 export async function eliminarPlanta(formData: FormData) {

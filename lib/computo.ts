@@ -86,6 +86,11 @@ export type ItemComputo = {
    * En cero, la cantidad de la tarea se escribe a mano como siempre.
    */
   elementosMedidos: number;
+  /**
+   * Cuántos de esos elementos vinieron del dibujo de las plantas. Con alguno,
+   * la planilla marca la cantidad: ese número se corrige en el dibujo.
+   */
+  elementosDelPlano: number;
 };
 
 export type RenglonItem = {
@@ -164,13 +169,21 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
   // Cuántos elementos midió cada tarea. Va aparte y después de los items
   // porque necesita sus ids, y trae sólo el id: es un conteo, no la medición.
   const ids = (items ?? []).map((i) => i.id);
-  const { data: medidos } = ids.length
-    ? await supabase.from("computo_item_medicion").select("item_id").in("item_id", ids)
-    : { data: [] as { item_id: string }[] };
+  const { data: medidos, error: alContar } = ids.length
+    ? await supabase.from("computo_item_medicion").select("item_id, origen").in("item_id", ids)
+    : { data: [] as { item_id: string; origen: string }[], error: null };
+
+  // Sin el conteo la planilla muestra las tareas medidas como si su cantidad
+  // se escribiera a mano: que al menos quede dicho por qué.
+  if (alContar) console.error("getComputo, medición:", alContar.message);
 
   const elementosPorItem = new Map<string, number>();
+  const delPlanoPorItem = new Map<string, number>();
   for (const m of medidos ?? []) {
     elementosPorItem.set(m.item_id, (elementosPorItem.get(m.item_id) ?? 0) + 1);
+    if (m.origen === "plano") {
+      delPlanoPorItem.set(m.item_id, (delPlanoPorItem.get(m.item_id) ?? 0) + 1);
+    }
   }
 
   return {
@@ -242,6 +255,7 @@ export async function getComputo(obraId: string): Promise<Computo | null> {
         tipos: { mat: i.usa_materiales, mo: i.usa_mano_obra, int: i.usa_integrado },
         renglones,
         elementosMedidos: elementosPorItem.get(i.id) ?? 0,
+        elementosDelPlano: delPlanoPorItem.get(i.id) ?? 0,
       };
     }),
   };

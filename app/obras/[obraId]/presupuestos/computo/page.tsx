@@ -23,6 +23,7 @@ import { nombreMes } from "@/lib/meses";
 import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getResumenPorNivel } from "@/lib/niveles";
 import { getObraPorSlug } from "@/lib/obras";
+import { tareasDesactualizadas } from "@/lib/pase-al-computo";
 import { createClient } from "@/lib/supabase/server";
 import {
   alternarTarea,
@@ -164,6 +165,7 @@ export default async function ComputoPage({
       precioIntegrado: i.precioIntegrado,
       renglones: i.renglones,
       elementosMedidos: i.elementosMedidos,
+      elementosDelPlano: i.elementosDelPlano,
     });
   }
   const planilla = [...porRubro.values()].sort(
@@ -221,6 +223,13 @@ export default async function ComputoPage({
     : referencia
       ? `A valores de ${nombreMes(referencia)} (último índice CAC cargado).`
       : "Sin índice CAC cargado: los montos van en pesos de cada fecha.";
+
+  // Si el plano ya se pasó alguna vez, cuántas tareas quedaron distintas de lo
+  // que el dibujo mide ahora. Sólo entonces se miden las plantas: una obra
+  // que nunca pasó el plano no paga esa cuenta en cada carga.
+  const conPlano = computo.items.some((i) => i.elementosDelPlano > 0);
+  const desactualizadas =
+    vista === "tabla" && conPlano ? await tareasDesactualizadas(obra.id) : 0;
 
   // Sólo se arma la del cuadro que se está mirando: cada una pide lo suyo.
   const porNivel = vista === "niveles" ? await getResumenPorNivel(computo) : null;
@@ -294,6 +303,19 @@ export default async function ComputoPage({
           </Link>
         </div>
       </div>
+
+      {desactualizadas > 0 && (
+        <p style={avisoPlano} data-no-imprimir>
+          El dibujo de las plantas cambió desde que se pasó al cómputo:{" "}
+          {desactualizadas === 1
+            ? "una tarea quedó distinta"
+            : `${desactualizadas} tareas quedaron distintas`}
+          .{" "}
+          <Link href={`/obras/${obra.slug}/plantas`} style={enlaceAviso}>
+            Ir a Plantas para pasarlo de nuevo
+          </Link>
+        </p>
+      )}
 
       {vista === "tabla" && (
         <div style={editor}>
@@ -640,6 +662,21 @@ function colorDesvio(d: number | null) {
   if (d === null || Math.abs(d) < 0.05) return {};
   return { color: d > 0 ? ui.ROJO : ui.VERDE };
 }
+
+// El plano y el cómputo no dicen lo mismo: no es un error, es un pendiente.
+const avisoPlano = {
+  background: "#fff4d6",
+  color: "#8a5a00",
+  borderRadius: "12px",
+  padding: "12px 16px",
+  fontSize: "14px",
+  margin: "0 0 20px",
+};
+
+const enlaceAviso = {
+  color: "inherit",
+  fontWeight: 600,
+};
 
 const errorBox = {
   border: "1px solid #111111",

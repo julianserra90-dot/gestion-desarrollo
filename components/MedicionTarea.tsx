@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import SignoDelPlano, { AMBAR } from "@/components/SignoDelPlano";
 import * as ui from "@/components/ui";
 import {
   cantidadDeElemento,
@@ -14,6 +15,8 @@ import {
 } from "@/lib/medicion";
 
 export type ElementoInicial = {
+  /** De dónde salió. Sin decirlo, es de mano: lo pegado desde Excel. */
+  origen?: "mano" | "plano";
   nivel: string | null;
   etiqueta: string | null;
   forma: Forma;
@@ -106,6 +109,11 @@ const MUCHOS = 24;
  * Los elementos se piden al abrir y no vienen con la planilla: pueden ser
  * doscientos cincuenta y pico y casi nunca se miran.
  *
+ * Lo que **vino del plano** va aparte, arriba, y no se edita: son los
+ * renglones que midió el dibujo de las plantas, uno por piso, y se corrigen
+ * en el dibujo. Suman a la cantidad igual que los de mano; si los dos miden
+ * lo mismo la tarea queda contada dos veces, y eso se avisa.
+ *
  * No es un formulario: vive adentro del de la planilla y se guarda solo, con
  * su botón, sin mandar las cantidades que se estén cargando en otras filas.
  */
@@ -128,6 +136,8 @@ export default function MedicionTarea({
 }) {
   const router = useRouter();
   const [filas, setFilas] = useState<Fila[] | null>(null);
+  /** Lo que midió el plano: se muestra, no se toca. */
+  const [delPlano, setDelPlano] = useState<ElementoInicial[]>([]);
   const [niveles, setNiveles] = useState<Record<string, string>>({});
   /**
    * Los bloques plegados.
@@ -153,7 +163,9 @@ export default function MedicionTarea({
         setFilas([]);
         return;
       }
-      const { filas, niveles } = agrupar(r.elementos ?? []);
+      const todos = r.elementos ?? [];
+      const { filas, niveles } = agrupar(todos.filter((e) => e.origen !== "plano"));
+      setDelPlano(todos.filter((e) => e.origen === "plano"));
       setFilas(filas);
       setNiveles(niveles);
       // Una medición cargada llega plegada; una que se está armando, no. El
@@ -261,8 +273,10 @@ export default function MedicionTarea({
     else grupos.push({ clave: f.grupo, nivel: niveles[f.grupo] ?? "", filas: [f] });
   }
 
-  const total = totalDeMedicion(filas.map(comoElemento));
-  const sinMedir = filas.map(comoElemento).filter(leFaltaMedida).length;
+  const totalDelPlano = totalDeMedicion(delPlano);
+  const total = totalDeMedicion(filas.map(comoElemento)) + totalDelPlano;
+  const sinMedir =
+    filas.map(comoElemento).filter(leFaltaMedida).length + delPlano.filter(leFaltaMedida).length;
 
   const enviar = () =>
     iniciar(async () => {
@@ -300,7 +314,7 @@ export default function MedicionTarea({
         </span>
         <span style={dato}>
           <span style={ui.label}>Elementos</span>
-          <strong>{filas.length}</strong>
+          <strong>{filas.length + delPlano.length}</strong>
         </span>
         {sinMedir > 0 && (
           <span style={dato}>
@@ -310,17 +324,55 @@ export default function MedicionTarea({
         )}
       </div>
 
-      {filas.length > 0 && Math.abs(total - cantidadTarea) > 0.0005 && (
+      {filas.length + delPlano.length > 0 && Math.abs(total - cantidadTarea) > 0.0005 && (
         <p style={notaCambio}>
           Al guardar, la cantidad de la tarea pasa de {cantidadAR.format(cantidadTarea)} a{" "}
           {cantidadAR.format(total)} {unidadTarea}.
         </p>
       )}
 
+      {delPlano.length > 0 && (
+        <div style={cajaDelPlano}>
+          <p style={tituloDelPlano}>
+            <SignoDelPlano /> Del plano · {cantidadAR.format(totalDelPlano)} {unidadTarea}
+            <span style={ayudaDelPlano}>
+              Lo midió el dibujo de las plantas. Se corrige ahí y se vuelve a pasar al cómputo.
+            </span>
+          </p>
+          <table style={tablaDelPlano}>
+            <tbody>
+              {delPlano.map((e, i) => {
+                const cantidad = cantidadDeElemento(e);
+                return (
+                  <tr key={i}>
+                    <td style={celdaDelPlano}>{e.nivel ?? "Sin nivel"}</td>
+                    <td style={celdaDelPlano}>{e.etiqueta ?? ""}</td>
+                    <td style={cuentaDelPlano}>{cuentaDe(e, unidadTarea)}</td>
+                    <td style={cantidad > 0 ? cantidadDelPlano : faltaDelPlano}>
+                      {cantidad > 0
+                        ? `${cantidadAR.format(cantidad)} ${unidadTarea}`
+                        : "falta el espesor"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filas.length > 0 && (
+            <p style={avisoConvive}>
+              Esta tarea tiene medición del plano y también a mano, y las dos suman. Si miden lo
+              mismo está contada dos veces: quitá abajo los elementos que sobran.
+            </p>
+          )}
+        </div>
+      )}
+
       {filas.length === 0 ? (
-        <p style={vacio}>
-          Sin medición: la cantidad de la tarea se escribe a mano en la planilla.
-        </p>
+        delPlano.length === 0 && (
+          <p style={vacio}>
+            Sin medición: la cantidad de la tarea se escribe a mano en la planilla.
+          </p>
+        )
       ) : (
         <div style={scroll}>
           <table style={tabla}>
@@ -511,6 +563,21 @@ export default function MedicionTarea({
 }
 
 /**
+ * La cuenta de un renglón del plano, para leerla: "0,08 × 12 m²", o "× 3
+ * pisos" en una planta que se repite sin tener pisos asignados.
+ */
+function cuentaDe(e: ElementoInicial, unidadTarea: string): string {
+  const partes: string[] = [];
+  if (e.forma === "superficie" && e.b !== null && e.c !== null) {
+    partes.push(`${cantidadAR.format(e.b)} m × ${cantidadAR.format(e.c)} m²`);
+  } else if (e.unidades !== 1 && e.c !== null) {
+    partes.push(`${cantidadAR.format(e.c)} ${unidadTarea}`);
+  }
+  if (e.unidades !== 1) partes.push(`× ${cantidadAR.format(e.unidades)} pisos`);
+  return partes.join(" ");
+}
+
+/**
  * Reparte una lista de elementos en bloques por nivel.
  *
  * Un nivel que ya apareció recupera su bloque aunque entre otro en el medio:
@@ -551,6 +618,62 @@ const caja = {
   borderRadius: "12px",
   padding: "18px 20px",
   margin: "4px 0 12px",
+};
+
+// Lo que vino del plano: apartado, con el azul de su marca, y sin campos.
+const cajaDelPlano = {
+  background: "#f5f8ff",
+  border: "1px solid #dbe5fb",
+  borderRadius: "10px",
+  padding: "10px 14px",
+  margin: "0 0 14px",
+};
+
+const tituloDelPlano = {
+  fontSize: "13px",
+  fontWeight: 600,
+  margin: "0 0 6px",
+};
+
+const ayudaDelPlano = {
+  display: "block",
+  fontSize: "12px",
+  fontWeight: 400,
+  color: "#777777",
+  marginTop: "2px",
+};
+
+const tablaDelPlano = {
+  borderCollapse: "collapse" as const,
+  fontSize: "13px",
+};
+
+const celdaDelPlano = {
+  padding: "3px 18px 3px 0",
+  whiteSpace: "nowrap" as const,
+};
+
+const cuentaDelPlano = {
+  ...celdaDelPlano,
+  color: "#888888",
+};
+
+const cantidadDelPlano = {
+  ...celdaDelPlano,
+  textAlign: "right" as const,
+  fontWeight: 600,
+};
+
+const faltaDelPlano = {
+  ...cantidadDelPlano,
+  fontWeight: 400,
+  color: AMBAR,
+};
+
+const avisoConvive = {
+  fontSize: "12px",
+  color: AMBAR,
+  margin: "8px 0 0",
 };
 
 const resumen = {

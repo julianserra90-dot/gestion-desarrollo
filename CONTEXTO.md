@@ -452,8 +452,8 @@ números eran correctos y ninguno se podía verificar.
 Solapa **Plantas** del grupo Obra (`/obras/<slug>/plantas`). Una planta es el
 plano de un piso —subido como PDF o imagen— con lo que se calca encima: muros
 y ambientes. De ahí salen los metros de muro, los m² de pared y los m² de cada
-ambiente sin medir a mano. Es el paso previo a que el dibujo le cargue las
-cantidades al cómputo; hoy **todavía no lo hace** (ver Pendientes).
+ambiente sin medir a mano. Y esas cantidades **se pasan al cómputo** con un
+botón (ver "Del plano al cómputo", más abajo).
 
 Se llama "Plantas" y no "Planos" para que no se lea como Documentos: allá el
 plano se archiva, acá se mide. Va en solapa propia y no adentro del Cómputo
@@ -1054,6 +1054,63 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
 - El editor recibe la **dirección** de la imagen, no el id de Drive: la página
   arma `/archivos/<id>`, que es la ruta que verifica el permiso
   (`buscarArchivoVisible` conoce la tabla nueva).
+
+#### Del plano al cómputo (22/11/2026)
+Botón **Pasar al cómputo** en el listado de Plantas. Lleva lo que el dibujo
+mide a la medición de cada tarea (`computo_item_medicion`), y la cantidad de
+la tarea sale de ahí como siempre. No hay nada que emparejar: el tipo de un
+muro y cada capa **ya son tareas del catálogo**.
+
+Decidido con el usuario:
+- **Con un botón, no solo al guardar.** La cantidad de una tarea multiplica
+  todos los precios, y un dibujo a medio hacer no tiene por qué moverlos. El
+  botón muestra antes, tarea por tarea, lo que tiene hoy y con lo que queda.
+- **Un renglón por tarea y por piso** —"Revoque grueso · 2.º piso · Paredes ·
+  85,40 m²"—, no uno por cara: la cuenta cara por cara ya se revisa en el
+  editor. El `nivel` es el nombre del piso (`nombreDePiso`), así el cuadro
+  "Por nivel" los agrupa solo; la `etiqueta` dice de qué parte del dibujo
+  sale (Muros, Paredes, Pisos, Cielorrasos). Una planta **sin piso asignado**
+  va con su nombre y `unidades` = sus pisos iguales.
+- **Lo que vino del plano lleva una marca** (`SignoDelPlano`, la plantita
+  azul) al lado de la cantidad en la planilla, y dentro de la medición va
+  aparte y **no se edita**: se corrige en el dibujo y se vuelve a pasar.
+- **Lo de mano y lo del plano conviven, y se avisa.** Pasar el plano
+  reemplaza **sólo** lo que había venido del plano; las vigas pegadas desde
+  Excel no se tocan. La cantidad es la suma de las dos cosas. Si una tarea
+  tiene de las dos, la marca va en ámbar y la medición lo dice: puede estar
+  contada dos veces, y cuál sobra lo sabe quien computa.
+
+Cómo está hecho:
+- **Columna `origen`** en `computo_item_medicion` (`mano` | `plano`). Texto y
+  no booleano: puede haber una tercera fuente. `guardarMedicionDe` borra y
+  reescribe sólo lo de mano, y suma lo del plano a la cantidad.
+- **`lib/planta-computo.ts`** (puro): `delPlano()` arma los renglones y
+  `compararConComputo()` dice qué cambia. La unidad manda: en **m²** va la
+  superficie; en **m³**, espesor × superficie (con un espesor único el renglón
+  muestra la cuenta; una capa sin espesor queda en cero, a la vista); en otra
+  unidad —ml, u— **no se pasa** y se avisa. Vale la unidad que la tarea tiene
+  en el cómputo de la obra antes que la del catálogo.
+- **`lib/pase-al-computo.ts`** (servidor): junta plantas, pisos, cómputo y
+  catálogo. Lo usan la vista previa, el pase —que **rehace los números** y no
+  toma los del navegador— y el cómputo.
+- **`pasarAlComputo`** agrega al cómputo las tareas que faltan (con
+  `alternarTarea`, o sea con su desglose de modelo) y crea el cómputo si la
+  obra no tenía. Escribe los renglones nuevos **antes** de borrar los viejos:
+  si falla en el medio quedan de más, que se ve, y no de menos.
+- **Una tarea que el plano dejó de medir** y no tiene nada a mano queda en
+  **cero**: su cantidad había salido del dibujo. Una que tenía la cantidad
+  **escrita a mano, sin medición**, la pierde al pasar; la vista previa lo
+  dice en la fila.
+- **El cómputo avisa si el dibujo cambió** después del último pase: compara
+  lo guardado como del plano con lo que el plano mide ahora (no hay fecha de
+  pase que mantener). Sólo si alguna vez se pasó: una obra que no usa el plano
+  no paga esa cuenta ni ve el aviso.
+- Cada piso se mide con **su** altura de piso a piso, porque de ahí cuelga la
+  estructura que le saca lugar al muro: dos pisos de la misma planta con
+  distinta altura dan distinta mampostería.
+
+No va todavía: el **hormigón** (falta que cada pieza lleve su tarea), lo que
+se mide por perímetro (zócalos) y las aberturas por unidad.
 
 ### Contratistas y proveedores (el catálogo)
 Proveedores, contratistas y "varios" viven en una sola tabla (`proveedores`)
@@ -2451,15 +2508,13 @@ acción de borrar el pago del lote viaja como prop.
 - **Plantas, lo que sigue** (decidido con el usuario el 22/11/2026; hecha sólo
   la etapa 1: plano, escala, muros, ambientes y sus medidas).
   **Etapa 2 — terminaciones y cómputo.** Hecho: las terminaciones de pared,
-  por capas (ver "Las caras de los muros y sus capas"). **Falta mandarlas al
-  cómputo**: por cada capa —que ya es una tarea del catálogo— escribir filas
-  en `computo_item_medicion` (`nivel` = la planta, `forma` = superficie,
-  `unidades` = los pisos que la repiten), tildando la tarea en el cómputo de
-  la obra si no estaba. Lo que hay que resolver ahí es marcar el **origen** de
-  cada fila, para que volver a mandar reemplace sólo las que vinieron del
-  plano y no las cargadas a mano. Los vanos ya vienen descontados cara por
-  cara (`medirCaras`), así que no hay cantidades negativas que escribir.
-  Falta también lo que se mide **por el perímetro del ambiente** —el
+  por capas (ver "Las caras de los muros y sus capas"), y **mandarlas al
+  cómputo** junto con la mampostería, los pisos y los cielorrasos (ver "Del
+  plano al cómputo"). **La escritura del pase no está probada contra la
+  base**: se probaron las cuentas, las pantallas con acciones de mentira y la
+  vista previa con la planta tipo de Andonaegui, que sólo lee. Falta que
+  alguien lo pase de verdad y mire cómo queda el cómputo.
+  Falta lo que se mide **por el perímetro del ambiente** —el
   zócalo, que en el catálogo va en metros lineales—: es el mismo mecanismo de
   capas, con otra unidad. Y las **mochetas**: los
   costados de un vano tienen superficie —el espesor del muro por el alto de
@@ -2472,9 +2527,13 @@ acción de borrar el pago del lote viaja como prop.
   techo y terreno; y decidir si hace falta verlo también adentro del editor,
   con lo que se está dibujando y no sólo con lo guardado.
   **Estructura, lo que falta**: mandar el hormigón al cómputo (m³ de
-  columnas, vigas y losas contra las tareas de Estructuras), bases y
-  fundaciones, encadenados, y que una pieza lleve su tarea del catálogo como
-  los muros llevan su tipo.
+  columnas, vigas y losas contra las tareas de Estructuras) por el mismo pase
+  que la mampostería —ahí sí pieza por pieza, que tienen nombre—, para lo
+  que una pieza tiene que llevar su tarea del catálogo como los muros llevan
+  su tipo; lo metálico se cotiza en kg y necesita el peso por metro del
+  perfil. Y bases, fundaciones y encadenados. Ojo con Andonaegui: su hormigón
+  ya está medido a mano (251 elementos pegados desde Excel), así que al
+  pasarlo van a convivir las dos mediciones hasta que se borre una.
   **No detecta muros solo**: el plano se calca a mano, y es a propósito —la
   detección automática desde un PDF o un JPG no es confiable—.
 

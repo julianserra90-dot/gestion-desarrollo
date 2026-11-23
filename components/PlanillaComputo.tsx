@@ -11,6 +11,7 @@ import MedicionTarea, {
   type LeerMedicion,
 } from "@/components/MedicionTarea";
 import { type MaterialOpcion } from "@/components/SelectorMaterial";
+import SignoDelPlano from "@/components/SignoDelPlano";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
 import { formatMoney } from "@/lib/format";
@@ -29,6 +30,8 @@ export type FilaPlanilla = {
   renglones: RenglonInicial[];
   /** Cuántos elementos se midieron para llegar a la cantidad. */
   elementosMedidos: number;
+  /** Cuántos de ellos vinieron del dibujo de las plantas. */
+  elementosDelPlano: number;
 };
 
 export type RubroPlanilla = {
@@ -335,6 +338,9 @@ export default function PlanillaComputo({
                       const abierto = abiertos.has(f.id);
                       const midiendoEsta = midiendo.has(f.id);
                       const medida = f.elementosMedidos > 0;
+                      const delPlano = f.elementosDelPlano > 0;
+                      // Del plano y además a mano: puede estar contada dos veces.
+                      const convive = delPlano && f.elementosMedidos > f.elementosDelPlano;
 
                       return (
                         <Fragment key={f.id}>
@@ -420,8 +426,16 @@ export default function PlanillaComputo({
                                   type="button"
                                   onClick={() => conmutar(setMidiendo, f.id)}
                                   style={cantidadMedida}
-                                  title={`Sale de ${f.elementosMedidos} elementos medidos`}
+                                  title={
+                                    convive
+                                      ? "Tiene medición del plano y también a mano: puede estar contada dos veces"
+                                      : delPlano
+                                        ? "Viene del plano: se corrige en el dibujo de las plantas"
+                                        : `Sale de ${f.elementosMedidos} elementos medidos`
+                                  }
                                 >
+                                  {delPlano && <SignoDelPlano conAviso={convive} />}
+                                  {delPlano && " "}
                                   {v.cantidad || "0"}
                                 </button>
                               ) : (

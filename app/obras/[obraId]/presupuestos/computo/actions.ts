@@ -1043,6 +1043,8 @@ export type ElementoParaGuardar = {
 };
 
 export type ElementoGuardado = {
+  /** De dónde salió: cargado a mano, o medido por el dibujo de las plantas. */
+  origen: "mano" | "plano";
   nivel: string | null;
   etiqueta: string | null;
   forma: Forma;
@@ -1067,7 +1069,7 @@ export async function leerMedicionDe(
 
   const { data, error } = await supabase
     .from("computo_item_medicion")
-    .select("nivel, etiqueta, forma, a, b, c, unidades, cantidad, orden")
+    .select("origen, nivel, etiqueta, forma, a, b, c, unidades, cantidad, orden")
     .eq("item_id", itemId)
     .order("orden");
 
@@ -1075,6 +1077,7 @@ export async function leerMedicionDe(
 
   return {
     elementos: (data ?? []).map((e) => ({
+      origen: e.origen === "plano" ? "plano" : "mano",
       nivel: e.nivel,
       etiqueta: e.etiqueta,
       forma: e.forma as Forma,
@@ -1095,9 +1098,14 @@ export async function leerMedicionDe(
  * que multiplica todos los precios del cómputo y de ahí sale el peso del
  * avance físico de la obra, así que no se toma la que vino del navegador.
  *
- * Una medición vacía borra los elementos pero **deja la cantidad como está**.
- * Abrir la medición de una tarea que tiene su cantidad escrita a mano, mirarla
- * y cerrarla no tiene por qué ponerla en cero: para eso está el campo.
+ * **Lo que vino del plano no se toca**: la lista que llega es la de mano, y
+ * los renglones que midió el dibujo de las plantas siguen donde están y
+ * siguen sumando. Se cambian pasando el plano de nuevo, no desde acá.
+ *
+ * Una medición vacía borra los elementos pero **deja la cantidad como está**,
+ * si tampoco hay nada del plano. Abrir la medición de una tarea que tiene su
+ * cantidad escrita a mano, mirarla y cerrarla no tiene por qué ponerla en
+ * cero: para eso está el campo.
  *
  * Devuelve la cantidad que quedó. La planilla la escribió una vez en su estado
  * al abrirse y no se entera sola de que cambió: sin esto, guardar la medición
@@ -1141,31 +1149,44 @@ export async function guardarMedicionDe(
     .maybeSingle();
   if (!item) return { error: "La tarea ya no está en el cómputo." };
 
+  // Lo que midió el plano: se queda, y entra en la cantidad.
+  const { data: delPlano, error: errorPlano } = await supabase
+    .from("computo_item_medicion")
+    .select("cantidad")
+    .eq("item_id", itemId)
+    .eq("origen", "plano");
+  if (errorPlano) return { error: errorPlano.message };
+
   const { error: errorBorrado } = await supabase
     .from("computo_item_medicion")
     .delete()
-    .eq("item_id", itemId);
+    .eq("item_id", itemId)
+    .eq("origen", "mano");
   if (errorBorrado) return { error: errorBorrado.message };
 
-  // Sin elementos la cantidad se queda como estaba, y es la que se devuelve.
-  if (elementos.length === 0) return cerrar(Number(item.cantidad));
+  // Sin ningún elemento, ni de mano ni del plano, la cantidad se queda como
+  // estaba, y es la que se devuelve.
+  if (elementos.length === 0 && !delPlano?.length) return cerrar(Number(item.cantidad));
 
-  const { data: guardados, error } = await supabase
-    .from("computo_item_medicion")
-    .insert(
-      elementos.map((e, orden) => ({
-        item_id: itemId,
-        ...e,
-        cantidad: cantidadDeElemento(e),
-        orden,
-      }))
-    )
-    .select("id");
-  if (error) return { error: error.message };
-  if (noTocoNada(guardados)) return { error: sinPermisoPara("guardar la medición") };
+  if (elementos.length > 0) {
+    const { data: guardados, error } = await supabase
+      .from("computo_item_medicion")
+      .insert(
+        elementos.map((e, orden) => ({
+          item_id: itemId,
+          ...e,
+          cantidad: cantidadDeElemento(e),
+          orden,
+        }))
+      )
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(guardados)) return { error: sinPermisoPara("guardar la medición") };
+  }
 
   // La cantidad de la tarea, con los tres decimales que guarda su columna.
-  const total = Math.round(totalDeMedicion(elementos) * 1000) / 1000;
+  const sumaDelPlano = (delPlano ?? []).reduce((t, r) => t + Number(r.cantidad), 0);
+  const total = Math.round((totalDeMedicion(elementos) + sumaDelPlano) * 1000) / 1000;
   const { data: actualizado, error: errorCantidad } = await supabase
     .from("computo_items")
     .update({ cantidad: total })

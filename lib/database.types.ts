@@ -281,6 +281,7 @@ export type Database = {
           item_id: string
           nivel: string | null
           orden: number
+          origen: string
           unidades: number
         }
         Insert: {
@@ -295,6 +296,7 @@ export type Database = {
           item_id: string
           nivel?: string | null
           orden?: number
+          origen?: string
           unidades?: number
         }
         Update: {
@@ -309,6 +311,7 @@ export type Database = {
           item_id?: string
           nivel?: string | null
           orden?: number
+          origen?: string
           unidades?: number
         }
         Relationships: [

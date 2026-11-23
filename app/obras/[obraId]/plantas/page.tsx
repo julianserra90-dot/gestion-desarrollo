@@ -4,13 +4,14 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import BotonDefinirPisos from "@/components/BotonDefinirPisos";
+import BotonPasarAlComputo from "@/components/BotonPasarAlComputo";
 import { formatM2, formatM3, formatMetros, formatNiveles } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
 import { medir, metrosPorPixel } from "@/lib/planta-dibujo";
 import { medirEstructura } from "@/lib/planta-estructura";
 import { solapesDeMuros } from "@/lib/planta-trazo";
 import { getPisos, getPlantas } from "@/lib/plantas";
-import { guardarPisos } from "./actions";
+import { guardarPisos, pasarAlComputo, verPaseAlComputo } from "./actions";
 
 export default async function PlantasPage({
   params,
@@ -86,6 +87,14 @@ export default async function PlantasPage({
           <Link href={`/obras/${obra.slug}/plantas/3d`} style={ui.secondaryButton}>
             Ver en 3D
           </Link>
+          {/* Sin plantas no hay nada que pasar. */}
+          {todas.length > 0 && (
+            <BotonPasarAlComputo
+              ver={verPaseAlComputo.bind(null, obra.id)}
+              pasar={pasarAlComputo.bind(null, obra.slug, obra.id)}
+              rutaDelComputo={`/obras/${obra.slug}/presupuestos/computo`}
+            />
+          )}
           <Link href={`/obras/${obra.slug}/plantas/nueva`} style={ui.button}>
             Nueva planta
           </Link>
