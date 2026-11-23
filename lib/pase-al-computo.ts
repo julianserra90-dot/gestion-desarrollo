@@ -19,7 +19,7 @@ import {
   type LineaDelPase,
   type Pendientes,
 } from "@/lib/planta-computo";
-import { getPisos, getPlantas, getTiposDeMuroDeObra } from "@/lib/plantas";
+import { getPisos, getPlantas, getSubtareas, getTiposDeMuroDeObra } from "@/lib/plantas";
 import { conSusTipos } from "@/lib/tipos-de-muro";
 import { createClient } from "@/lib/supabase/server";
 
@@ -57,6 +57,7 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
     tiposDeMuro,
     { data: computo, error: alLeerComputo },
     { data: items, error: alLeerItems },
+    subtareas,
   ] =
     await Promise.all([
       getPlantas(obraId),
@@ -70,6 +71,7 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
         )
         .eq("obra_id", obraId)
         .order("orden"),
+      getSubtareas(),
     ]);
 
   if (alLeerComputo) return { error: alLeerComputo.message };
@@ -93,6 +95,7 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
     }
     const { columnas, vigas, losas } = d.estructura;
     for (const p of [...columnas, ...vigas, ...losas]) if (p.tarea) usadas.add(p.tarea);
+    for (const a of d.aberturas) for (const t of a.tareas) usadas.add(t);
   }
   // Las que el cómputo tiene con renglones del plano también hacen falta por
   // su nombre, aunque el dibujo ya no las use.
@@ -125,6 +128,8 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
   for (const t of tiposDeMuro) {
     for (const c of [...t.exterior, ...t.interior]) if (c.tarea) usadas.add(c.tarea);
   }
+  // Y las subtareas de todo lo que el dibujo lleva.
+  for (const id of Array.from(usadas)) for (const hija of subtareas.get(id) ?? []) usadas.add(hija);
   const mapaDeTipos = new Map(tiposDeMuro.map((t) => [t.id, t]));
   const plano = delPlano(
     // Los muros con lo de su tipo al día, aunque la planta no se haya vuelto
@@ -132,7 +137,8 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
     plantas.map((p) => ({ ...p, dibujo: { ...p.dibujo, muros: conSusTipos(p.dibujo.muros, mapaDeTipos) } })),
     pisos,
     unidadDe,
-    mapaDeTipos
+    mapaDeTipos,
+    subtareas
   );
 
   const guardados: ItemGuardado[] = (items ?? []).map((i) => ({

@@ -22,6 +22,7 @@
  * Sin React y sin base: recibe lo dibujado y lo guardado, y devuelve cuentas.
  */
 
+import { esPorMetro, esPorUnidad, queMide } from "@/lib/avance-del-plano";
 import { cantidadDeElemento, type Forma } from "@/lib/medicion";
 import { nombreDePiso, type Piso } from "@/lib/pisos";
 import { metrosPorPixel, type Dibujo, type Escala } from "@/lib/planta-dibujo";
@@ -107,7 +108,7 @@ const alCentimetroCubico = (n: number) => Math.round(n * 1e6) / 1e6;
 
 const esSuperficie = (unidad: string) => /^m[²2]$/i.test(unidad.trim());
 const esVolumen = (unidad: string) => /^m[³3]$/i.test(unidad.trim());
-const esLargo = (unidad: string) => /^(ml|m)$/i.test(unidad.trim());
+const esLargo = esPorMetro;
 
 /**
  * En qué pisos está una planta.
@@ -146,7 +147,13 @@ function ubicacionesDe(planta: PlantaParaComputar, pisos: Piso[]) {
  *   m³   la superficie por el espesor. Con un espesor único el renglón muestra
  *        la cuenta —0,02 × 85,40—; con varios, el volumen ya sumado. Una capa
  *        sin espesor cargado queda en cero, a la vista: es lo que falta.
- *   otra no se pasa, y se avisa: el plano no da metros lineales ni unidades.
+ *   otra no se pasa, y se avisa.
+ *
+ * Una subtarea —el pastinado del porcelanato— lleva los mismos renglones que
+ * su madre, si se cotiza en algo que mide lo mismo.
+ *
+ * Las aberturas van **un renglón por tipo** —"V01 · 2.º piso"—, con cuántas
+ * hay: por unidad cuentan una cada una, en m² su vano y en metros su perímetro.
  *
  * Los renglones salen en el orden del edificio: los pisos de abajo hacia
  * arriba, y en cada uno los muros, las paredes, los pisos y los cielorrasos.
@@ -155,7 +162,9 @@ export function delPlano(
   plantas: PlantaParaComputar[],
   pisos: Piso[],
   unidadDe: (tareaId: string) => string | null,
-  tipos: Map<string, Composicion> = new Map()
+  tipos: Map<string, Composicion> = new Map(),
+  /** Las subtareas de cada tarea: llevan los renglones de su madre. */
+  subtareas: Map<string, string[]> = new Map()
 ): LoDelPlano {
   const renglones: (RenglonDelPlano & { orden: number })[] = [];
   const noSeMiden = new Map<string, string | null>();
@@ -338,12 +347,61 @@ export function delPlano(
         if (cantidad <= 0) continue;
         renglones.push({ tareaId: z.capa, nivel, etiqueta: ETIQUETAS.zocalos, ...elemento, cantidad, orden });
       }
+
+      // Las aberturas, por tipo: todas las V01 del piso en un renglón.
+      const porTipo = new Map<string, { nombre: string; ancho: number; alto: number; tareas: string[]; cuantas: number }>();
+      for (const ab of planta.dibujo.aberturas) {
+        if (ab.tareas.length === 0) continue;
+        const nombre = ab.nombre.trim() || (ab.tipo === "ventana" ? "Ventanas" : "Puertas");
+        const clave = `${ab.tipo}|${nombre}|${ab.ancho}|${ab.alto}|${ab.tareas.join(",")}`;
+        const ya = porTipo.get(clave);
+        if (ya) ya.cuantas += 1;
+        else porTipo.set(clave, { nombre, ancho: ab.ancho, alto: ab.alto, tareas: ab.tareas, cuantas: 1 });
+      }
+      for (const tipo of porTipo.values()) {
+        for (const tareaId of tipo.tareas) {
+          const unidad = unidadDe(tareaId);
+          const medidas: { forma: Forma; a: number | null; b: number | null; c: number | null } | null =
+            unidad === null
+              ? null
+              : esPorUnidad(unidad)
+                ? { forma: "directo", a: null, b: null, c: 1 }
+                : esSuperficie(unidad)
+                  ? { forma: "superficie", a: null, b: tipo.alto, c: tipo.ancho }
+                  : esLargo(unidad)
+                    ? { forma: "directo", a: null, b: null, c: alCentimetro(2 * (tipo.ancho + tipo.alto)) }
+                    : null;
+          if (!medidas) {
+            noSeMiden.set(tareaId, unidad);
+            continue;
+          }
+          const elemento = { ...medidas, unidades: tipo.cuantas * unidades };
+          const cantidad = cantidadDeElemento(elemento);
+          if (cantidad <= 0) continue;
+          renglones.push({ tareaId, nivel, etiqueta: tipo.nombre, ...elemento, cantidad, orden });
+        }
+      }
     }
   });
 
+  // Cada subtarea, detrás de su madre y con sus mismos renglones: el
+  // pastinado mide lo que mide el porcelanato. Sólo si se cotiza en algo que
+  // mide lo mismo; una en gl no se pasa, y se avisa.
+  const conSubtareas = renglones.flatMap((r) => [
+    r,
+    ...(subtareas.get(r.tareaId) ?? []).flatMap((hija) => {
+      const mide = queMide(unidadDe(hija));
+      if (mide === null || mide !== queMide(unidadDe(r.tareaId))) {
+        noSeMiden.set(hija, unidadDe(hija));
+        return [];
+      }
+      return [{ ...r, tareaId: hija }];
+    }),
+  ]);
+
   return {
     // `sort` es estable: dentro de un piso queda el orden en que se agregaron.
-    renglones: renglones
+    renglones: conSubtareas
       .sort((a, b) => a.orden - b.orden)
       .map((r) => ({
         tareaId: r.tareaId,

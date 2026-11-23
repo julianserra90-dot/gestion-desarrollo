@@ -74,31 +74,38 @@ const DE_A_UNO = ["un", "bolsa", "pallet", "barra", "chapa", "rollo", "caja"];
 /**
  * Las presentaciones que se pueden comparar, de la más grande a la más chica.
  *
- * Sin ninguna cargada vale el envase del material —"bolsa" de 25 kg—, que es
- * lo que se compraba hasta que existieron las presentaciones. Sin envase, lo
- * que se compra de a uno va por la unidad entera (15,5 ladrillos son 16), y lo
- * demás —kg, m³ a granel— no tiene forma comercial que decir.
+ * El envase del material —"bolsa" de 25 kg— **siempre** es una de ellas, y
+ * las presentaciones cargadas se le suman: el Sika que viene en bolsa de 25 y
+ * también de 5, el ladrillo que se compra suelto o por pallet. Sin envase, lo
+ * que se compra de a uno va por la unidad entera (15,5 ladrillos son 16); lo
+ * demás —kg, m³ a granel— no tiene forma comercial salvo las cargadas. Dos del
+ * mismo tamaño son una.
  */
 export function tamanosDe(m: MaterialConPresentaciones): Tamano[] {
-  const declaradas = m.presentaciones.length
-    ? m.presentaciones
-    : m.contenido && m.contenido > 0 && m.contenidoUnidad
-      ? [
-          {
-            // "3 un de 25 kg" no se entiende: un envase sin nombre es un envase.
-            nombre: mismaUnidad(m.unidad, "un") ? "envase" : m.unidad,
-            contenido: m.contenido,
-            unidad: m.contenidoUnidad,
-          },
-        ]
-      : DE_A_UNO.some((u) => mismaUnidad(u, m.unidad))
-        ? [{ nombre: m.unidad, contenido: 1, unidad: m.unidad }]
-        : [];
+  const propia = envaseDe(m);
+  const declaradas = [...(propia ? [propia] : []), ...m.presentaciones];
 
-  return declaradas
+  const tamanos = declaradas
     .map((p) => ({ presentacion: p, enBase: aBase(p.contenido, p.unidad, m) }))
     .filter((t): t is Tamano => t.enBase !== null && t.enBase > EPS)
     .sort((a, b) => b.enBase - a.enBase);
+  return tamanos.filter((t, i) => i === 0 || Math.abs(t.enBase - tamanos[i - 1].enBase) > EPS);
+}
+
+/**
+ * La forma de comprar que el material trae de por sí: su envase —bolsa de
+ * 25 kg— o, si se compra de a uno, la unidad suelta. Null si no tiene.
+ */
+export function envaseDe(m: Omit<MaterialConPresentaciones, "presentaciones">): Presentacion | null {
+  if (m.contenido && m.contenido > 0 && m.contenidoUnidad) {
+    return {
+      // "3 un de 25 kg" no se entiende: un envase sin nombre es un envase.
+      nombre: mismaUnidad(m.unidad, "un") ? "envase" : m.unidad,
+      contenido: m.contenido,
+      unidad: m.contenidoUnidad,
+    };
+  }
+  return DE_A_UNO.some((u) => mismaUnidad(u, m.unidad)) ? { nombre: m.unidad, contenido: 1, unidad: m.unidad } : null;
 }
 
 /**
@@ -158,6 +165,8 @@ const numero = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
  */
 function plural(palabra: string): string {
   if (!/^[a-záéíóúñ]{3,}$/i.test(palabra)) return palabra;
+  // Las prestadas terminadas en t o k hacen el plural con s: pallets, packs.
+  if (/[tk]$/i.test(palabra)) return `${palabra}s`;
   return /[aeiouáéíóú]$/i.test(palabra) ? `${palabra}s` : `${palabra}es`;
 }
 

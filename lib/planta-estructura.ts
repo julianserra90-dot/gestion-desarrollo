@@ -137,6 +137,62 @@ export function huellaDeViga(viga: Pick<Viga, "a" | "b" | "ancho" | "referencia"
   ];
 }
 
+/** Entre qué distancias de su línea, sobre su normal, va el ancho de una viga. */
+function rangoDeViga(viga: Pick<Viga, "ancho" | "referencia">, mpp: number): [number, number] {
+  const ancho = viga.ancho / mpp;
+  return viga.referencia === "exterior"
+    ? [0, ancho]
+    : viga.referencia === "interior"
+      ? [-ancho, 0]
+      : [-ancho / 2, ancho / 2];
+}
+
+const mismo = (p: Punto, q: Punto) => Math.abs(p.x - q.x) < 1e-6 && Math.abs(p.y - q.y) < 1e-6;
+
+/**
+ * La huella de una viga **unida a las que llegan a sus puntas**: en cada
+ * punta que comparte con otra viga (o tabique) que no sigue en línea, se
+ * estira lo justo para tapar el ancho de la otra, como un muro
+ * (`cuerpoDeMuro`). Así el rincón de una L siempre está lleno, se la haya
+ * marcado por el eje, por la cara de adentro o por la de afuera. Lo que las
+ * dos pisan se cuenta una vez: el nudo es de la que se dibujó primero
+ * (`medirEstructura`).
+ */
+export function huellaDeVigaUnida(
+  viga: Pick<Viga, "id" | "a" | "b" | "ancho" | "referencia">,
+  vigas: Pick<Viga, "id" | "a" | "b" | "ancho" | "referencia">[],
+  mpp: number
+): Punto[] {
+  const largo = distancia(viga.a, viga.b);
+  if (!(largo > 0)) return [];
+  const dx = (viga.b.x - viga.a.x) / largo;
+  const dy = (viga.b.y - viga.a.y) / largo;
+  const estirar = (punta: Punto, ex: number, ey: number) => {
+    let extra = 0;
+    for (const otra of vigas) {
+      if (otra.id === viga.id || (!mismo(otra.a, punta) && !mismo(otra.b, punta))) continue;
+      const l = distancia(otra.a, otra.b);
+      if (!(l > 0)) continue;
+      const nx = -(otra.b.y - otra.a.y) / l;
+      const ny = (otra.b.x - otra.a.x) / l;
+      const haciaAfuera = nx * ex + ny * ey;
+      const [d, h] = rangoDeViga(otra, mpp);
+      extra = Math.max(extra, d * haciaAfuera, h * haciaAfuera);
+    }
+    return extra;
+  };
+  const enA = estirar(viga.a, -dx, -dy);
+  const enB = estirar(viga.b, dx, dy);
+  return huellaDeViga(
+    {
+      ...viga,
+      a: { x: viga.a.x - dx * enA, y: viga.a.y - dy * enA },
+      b: { x: viga.b.x + dx * enB, y: viga.b.y + dy * enB },
+    },
+    mpp
+  );
+}
+
 // ---- Recortar polígonos ---------------------------------------------------
 
 /**
@@ -432,8 +488,11 @@ export function medirEstructura(
   });
 
   const vigas = estructura.vigas.map((viga) => {
-    const huella = huellaDeViga(viga, mpp);
+    const huella = huellaDeVigaUnida(viga, estructura.vigas, mpp);
     const metalica = viga.material === "metalica";
+    // El largo es el de la huella ya unida a sus vecinas: el que tiene de
+    // hormigón, rincón incluido.
+    const largoUnido = viga.ancho > 0 ? (areaDe(huella) * pixel2) / viga.ancho : distancia(viga.a, viga.b) * mpp;
     if (viga.tabique) {
       // Un tabique va como una columna: de la cara de arriba de la losa de
       // abajo al fondo de la losa más alta que tiene encima.
@@ -444,7 +503,7 @@ export function medirEstructura(
       }
       const hasta = fondoDeSuLosa ?? sinLosa;
       const prisma: Prisma = { huella, convexa: true, desde: arranque, hasta: Math.max(arranque, hasta) };
-      const largo = distancia(viga.a, viga.b) * mpp;
+      const largo = largoUnido;
       return {
         viga,
         prisma,
@@ -476,7 +535,7 @@ export function medirEstructura(
     // Sin losa encima, su cara de arriba va adonde iría la de la estructura.
     const tope = arriba ?? sinLosa;
     const prisma: Prisma = { huella, convexa: true, desde: tope - viga.alto, hasta: tope };
-    const largo = distancia(viga.a, viga.b) * mpp;
+    const largo = largoUnido;
     return {
       viga,
       prisma,
@@ -618,7 +677,7 @@ export function prismasDeHormigon(
     if (c.material === "hormigon") sumar(c.id, huellaDeColumna(c, mpp));
   }
   for (const v of estructura.vigas) {
-    if (v.material === "hormigon") sumar(v.id, huellaDeViga(v, mpp));
+    if (v.material === "hormigon") sumar(v.id, huellaDeVigaUnida(v, estructura.vigas, mpp));
   }
   for (const l of estructura.losas) sumar(l.id, l.puntos);
   return prismas;

@@ -539,6 +539,11 @@ export default function PlanillaComputo({
                                 <div style={aLaVista}>
                                   <MedicionTarea
                                     itemId={f.id}
+                                    enEl3D={
+                                      f.tareaId
+                                        ? `/obras/${slug}/plantas/3d?desde=computo&tarea=${f.tareaId}`
+                                        : undefined
+                                    }
                                     unidadTarea={v.unidad}
                                     cantidadTarea={num(v.cantidad)}
                                     leer={leerMedicion}

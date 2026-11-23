@@ -871,7 +871,11 @@ export function franjasEnPlanta(muro: Muro, muros: Muro[], mpp: number | null): 
  * De cada muro se mueve la punta que queda más cerca del cruce. Null si son
  * paralelos: no tienen esquina.
  */
-export function unirEnEsquina(muros: Muro[], idA: string, idB: string): Muro[] | null {
+export function unirEnEsquina<T extends { id: string; a: Punto; b: Punto }>(
+  muros: T[],
+  idA: string,
+  idB: string
+): T[] | null {
   const a = muros.find((m) => m.id === idA);
   const b = muros.find((m) => m.id === idB);
   if (!a || !b || idA === idB) return null;
@@ -889,7 +893,7 @@ export function unirEnEsquina(muros: Muro[], idA: string, idB: string): Muro[] |
   const s = (wx * by - wy * bx) / det;
   const cruce = { x: a.a.x + ax * s, y: a.a.y + ay * s };
 
-  const laMasCerca = (m: Muro): "a" | "b" =>
+  const laMasCerca = (m: T): "a" | "b" =>
     distancia(m.a, cruce) <= distancia(m.b, cruce) ? "a" : "b";
   const puntaA = laMasCerca(a);
   const puntaB = laMasCerca(b);

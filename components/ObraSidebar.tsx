@@ -25,6 +25,7 @@ const ICONOS: Record<string, NombreIcono> = {
   plantas: "plantas",
   rubros: "rubros",
   materiales: "materiales",
+  gremios: "usuarios",
 };
 
 const ICONO_GRUPO: Record<string, NombreIcono> = {

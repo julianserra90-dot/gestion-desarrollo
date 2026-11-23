@@ -31,6 +31,8 @@ export type TareaDeAvance = {
   unidad: string;
   /** Si está en el cómputo: sin eso no hay con qué pesarla en el avance. */
   enComputo: boolean;
+  /** Si es subtarea, el id de su madre: el pastinado va debajo del porcelanato. */
+  madre: string | null;
 };
 
 /** Una cosa marcada como hecha, en un piso, de una tarea. */
@@ -74,7 +76,14 @@ export default function Edificio3D({
   tareasDeAvance = [],
   marcas = [],
   marcar,
+  inicial,
 }: {
+  /**
+   * Con qué abre: una tarea —se la ve como en Avance, sólo lo que la lleva—,
+   * un piso por su nombre y una pieza por el suyo. Es lo que manda el cómputo
+   * para mostrar de dónde sale un número del plano.
+   */
+  inicial?: { tarea: string | null; nivel: string | null; cosa: string | null };
   /** El modelo de cada planta, por su id. */
   modelos: Record<string, Modelo>;
   pisos: PisoEn3D[];
@@ -121,14 +130,32 @@ export default function Edificio3D({
     .map((o) => o.clave)
     .join(",");
   /** El piso que se mira solo, por su número; null son todos. */
-  const [soloElPiso, setSoloElPiso] = useState<number | null>(null);
+  const [soloElPiso, setSoloElPiso] = useState<number | null>(() =>
+    inicial?.nivel ? pisos.find((p) => nombreDe(p) === inicial.nivel)?.numero ?? null : null
+  );
   const [modo, setModo] = useState<Modo>("girar");
-  const [elegido, setElegido] = useState<Elegido | null>(null);
+  const [elegido, setElegido] = useState<Elegido | null>(() => {
+    // La pieza que se pidió —"C03", "V07"—, en el piso pedido, si lleva la tarea.
+    if (!inicial?.cosa || !inicial.tarea) return null;
+    const piso = pisos.find((p) => nombreDe(p) === inicial.nivel && p.planta !== null);
+    const modelo = piso?.planta ? modelos[piso.planta] : undefined;
+    if (!piso?.planta || !modelo) return null;
+    const objeto = Object.keys(modelo.objetos).find(
+      (o) =>
+        modelo.objetos[o].nombre === inicial.cosa &&
+        modelo.objetos[o].tareas?.some((t) => t.tarea === inicial.tarea)
+    );
+    return objeto ? { piso: piso.numero, planta: piso.planta, objeto } : null;
+  });
   const [errorAlEditar, setErrorAlEditar] = useState<string | null>(null);
   const [guardando, iniciarGuardado] = useTransition();
-  const [vista, setVista] = useState<Vista>("ver");
+  const [vista, setVista] = useState<Vista>(() =>
+    inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea) ? "avance" : "ver"
+  );
   /** La tarea cuyo avance se mira, por su id. */
-  const [tareaVista, setTareaVista] = useState<string | null>(null);
+  const [tareaVista, setTareaVista] = useState<string | null>(() =>
+    inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea) ? inicial.tarea : null
+  );
   /** El día con que se marca lo hecho. */
   const [dia, setDia] = useState(hoy);
   const [marcando, iniciarMarcado] = useTransition();
@@ -569,28 +596,50 @@ export default function Edificio3D({
     const t = modelos[planta]?.objetos[objeto]?.tareas?.find((x) => x.tarea === tareaElegida?.id);
     return t && tareaElegida ? cantidadEnUnidad(t, tareaElegida.unidad) ?? 0 : 0;
   };
-  // Todo lo que el edificio tiene de la tarea, piso por piso, y lo hecho.
+  // Todo lo que el edificio tiene de la tarea, y lo hecho: en los pisos que
+  // se miran —uno solo, o todos—, así coincide con el renglón del cómputo.
+  const pisosQueSeMiran = conPlanta.filter((p) => soloElPiso === null || p.numero === soloElPiso);
   let totalDeLaTarea = 0;
   if (tareaElegida) {
-    for (const p of conPlanta) {
+    for (const p of pisosQueSeMiran) {
       for (const objeto of Object.keys(modelos[p.planta!].objetos)) totalDeLaTarea += cuantoDe(p.planta!, objeto);
     }
   }
   const marcasDeLaTarea = marcas.filter((m) => m.tarea === tareaElegida?.id);
-  const hechoDeLaTarea = marcasDeLaTarea.reduce((s, m) => s + m.cantidad, 0);
-  const marcaDelElegido = elegido
-    ? marcasDeLaTarea.find(
-        (m) => m.planta === elegido.planta && m.piso === elegido.piso && m.objeto === elegido.objeto
-      ) ?? null
-    : null;
-  const elegidoLleva = elegido !== null && tareaElegida !== null && cuantoDe(elegido.planta, elegido.objeto) > 0;
+  const hechoDeLaTarea = marcasDeLaTarea
+    .filter((m) => soloElPiso === null || m.piso === soloElPiso)
+    .reduce((s, m) => s + m.cantidad, 0);
+  /**
+   * Las tareas de lo elegido, con lo que mide de cada una: una ventana lleva
+   * el amure de su premarco y su colocación, y cada una se tilda aparte.
+   */
+  // En el orden de la lista de tareas: cada subtarea detrás de su madre.
+  const tareasDelElegido = tareasDeAvance.flatMap((tarea) => {
+    const medida = ficha?.tareas?.find((x) => x.tarea === tarea.id);
+    return medida ? [{ tarea, cantidad: cantidadEnUnidad(medida, tarea.unidad) }] : [];
+  });
+  /** Si va sangrada: es subtarea y su madre está en la lista. */
+  const esHija = (tarea: TareaDeAvance) =>
+    tarea.madre !== null && tareasDelElegido.some((x) => x.tarea.id === tarea.madre);
+  /** Si lo elegido ya tiene hecha una tarea, y desde qué día. */
+  const marcaDe = (tareaId: string) =>
+    elegido
+      ? marcas.find(
+          (m) =>
+            m.tarea === tareaId &&
+            m.planta === elegido.planta &&
+            m.piso === elegido.piso &&
+            m.objeto === elegido.objeto
+        ) ?? null
+      : null;
 
-  /** Marca o desmarca lo elegido como hecho; el edificio vuelve con el avance rehecho. */
-  const alternarHecho = () => {
-    if (!elegido || !tareaElegida || !marcar) return;
+  /** Marca o desmarca una tarea de lo elegido; el edificio vuelve con el avance rehecho. */
+  const alternarHecho = (tareaId: string) => {
+    if (!elegido || !marcar) return;
     const { planta, piso, objeto } = elegido;
+    const hecho = marcaDe(tareaId) === null;
     iniciarMarcado(async () => {
-      const r = await marcar({ planta, piso, objeto, tarea: tareaElegida.id, hecho: !marcaDelElegido, fecha: dia });
+      const r = await marcar({ planta, piso, objeto, tarea: tareaId, hecho, fecha: dia });
       setErrorAlMarcar(r.error ?? null);
       if (!r.error) router.refresh();
     });
@@ -680,7 +729,7 @@ export default function Edificio3D({
                   .filter((t) => t.rubro === rubroElegido)
                   .map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.nombre}
+                      {t.madre ? `↳ ${t.nombre}` : t.nombre}
                     </option>
                   ))}
               </select>
@@ -711,51 +760,43 @@ export default function Edificio3D({
 
         <aside style={panel}>
           {vista === "avance" ? (
-            tareaElegida ? (
+            tareaElegida || (ficha && elegido) ? (
               <>
-                <div>
-                  <p style={sobretitulo}>{tareaElegida.rubro}</p>
-                  <h3 style={tituloDeFicha}>{tareaElegida.nombre}</h3>
-                </div>
-                <div style={{ display: "grid", gap: "6px" }}>
-                  <div style={barraDeAvance}>
-                    <div
-                      style={{
-                        ...rellenoDeAvance,
-                        width: `${totalDeLaTarea > 0 ? Math.min(100, (hechoDeLaTarea / totalDeLaTarea) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <p style={dondeEsta}>
-                    {formatCantidad(hechoDeLaTarea)} de {formatCantidad(totalDeLaTarea)} {tareaElegida.unidad}
-                    {totalDeLaTarea > 0 && ` · ${Math.round((hechoDeLaTarea / totalDeLaTarea) * 100)} %`}
-                  </p>
-                </div>
-                {!tareaElegida.enComputo && <p style={errorDeCampo}>No está en el cómputo</p>}
-                {ficha && elegido && elegidoLleva && (
-                  <div style={modificar}>
+                {tareaElegida && (
+                  <>
+                    <div>
+                      <p style={sobretitulo}>{tareaElegida.rubro}</p>
+                      <h3 style={tituloDeFicha}>{tareaElegida.nombre}</h3>
+                    </div>
+                    <div style={{ display: "grid", gap: "6px" }}>
+                      <div style={barraDeAvance}>
+                        <div
+                          style={{
+                            ...rellenoDeAvance,
+                            width: `${totalDeLaTarea > 0 ? Math.min(100, (hechoDeLaTarea / totalDeLaTarea) * 100) : 0}%`,
+                          }}
+                        />
+                      </div>
+                      <p style={dondeEsta}>
+                        {formatCantidad(hechoDeLaTarea)} de {formatCantidad(totalDeLaTarea)} {tareaElegida.unidad}
+                        {totalDeLaTarea > 0 && ` · ${Math.round((hechoDeLaTarea / totalDeLaTarea) * 100)} %`}
+                      </p>
+                    </div>
+                    {!tareaElegida.enComputo && <p style={errorDeCampo}>No está en el cómputo</p>}
+                  </>
+                )}
+                {ficha && elegido && (
+                  <div style={tareaElegida ? modificar : { display: "grid", gap: "10px" }}>
                     <div>
                       {/* De una capa por cara, la cara: a qué ambiente da. */}
                       <p style={sobretitulo}>{ficha.titulo === "Capa" ? "Cara" : ficha.titulo}</p>
                       <h3 style={tituloDeFicha}>
                         {ficha.renglones.find(([que]) => que === "Cara")?.[1] ?? (ficha.nombre || ficha.titulo)}
                       </h3>
-                      {pisoElegido && (
-                        <p style={dondeEsta}>
-                          {nombreDe(pisoElegido)} · {formatCantidad(cuantoDe(elegido.planta, elegido.objeto))}{" "}
-                          {tareaElegida.unidad}
-                        </p>
-                      )}
+                      {pisoElegido && <p style={dondeEsta}>{nombreDe(pisoElegido)}</p>}
                     </div>
-                    {marcaDelElegido ? (
-                      <>
-                        <p style={{ ...cuantoEs, color: HECHO, fontWeight: 600 }}>
-                          Realizado el {formatDia(marcaDelElegido.fecha)}
-                        </p>
-                        <button type="button" onClick={alternarHecho} disabled={marcando} style={botonSecundario}>
-                          {marcando ? "…" : "Desmarcar"}
-                        </button>
-                      </>
+                    {tareasDelElegido.length === 0 ? (
+                      <p style={vacio}>Sin tareas.</p>
                     ) : (
                       <>
                         <input
@@ -765,14 +806,43 @@ export default function Edificio3D({
                           style={ui.input}
                           aria-label="Día"
                         />
-                        <button
-                          type="button"
-                          onClick={alternarHecho}
-                          disabled={marcando || !tareaElegida.enComputo || !marcar}
-                          style={botonPrincipal}
-                        >
-                          {marcando ? "Marcando…" : "Marcar realizado"}
-                        </button>
+                        <ul style={tareasDeLaCosa}>
+                          {tareasDelElegido.map(({ tarea, cantidad }) => {
+                            const marca = marcaDe(tarea.id);
+                            const sePuede = marca !== null || (tarea.enComputo && (cantidad ?? 0) > 0);
+                            return (
+                              <li key={tarea.id}>
+                                <label
+                                  style={{
+                                    ...tareaDeLaCosa,
+                                    ...(tarea.id === tareaElegida?.id ? tareaQueSeMira : {}),
+                                    ...(esHija(tarea) ? subtareaDeLaCosa : {}),
+                                    cursor: sePuede && marcar ? "pointer" : "default",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={marca !== null}
+                                    disabled={marcando || !marcar || !sePuede}
+                                    onChange={() => alternarHecho(tarea.id)}
+                                    style={tilde}
+                                  />
+                                  <span style={queTarea}>
+                                    <span style={nombreDeTarea}>{tarea.nombre}</span>
+                                    <span style={detalleDeTarea}>
+                                      {tarea.rubro}
+                                      {cantidad !== null && ` · ${formatCantidad(cantidad)} ${tarea.unidad}`}
+                                      {!tarea.enComputo && " · no está en el cómputo"}
+                                    </span>
+                                  </span>
+                                  <span style={marca ? estadoHecho : estadoPendiente}>
+                                    {marca ? formatDia(marca.fecha) : "Pendiente"}
+                                  </span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
                       </>
                     )}
                     {errorAlMarcar && <p style={errorDeCampo}>{errorAlMarcar}</p>}
@@ -780,7 +850,7 @@ export default function Edificio3D({
                 )}
               </>
             ) : (
-              <p style={vacio}>Elegí un rubro y una tarea.</p>
+              <p style={vacio}>Elegí un rubro y una tarea, o tocá algo del edificio.</p>
             )
           ) : ficha && elegido ? (
             <>
@@ -1170,25 +1240,6 @@ const rellenoDeAvance = {
   background: HECHO,
 };
 
-const botonPrincipal = {
-  background: "#111111",
-  color: "#ffffff",
-  border: "none",
-  borderRadius: "10px",
-  padding: "10px 14px",
-  fontSize: "14px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const botonSecundario = {
-  ...botonPrincipal,
-  background: "#ffffff",
-  color: "#111111",
-  border: "1px solid #dddddd",
-  fontWeight: 500,
-};
-
 const enlace = {
   fontSize: "13px",
   color: "#111111",
@@ -1205,6 +1256,43 @@ const campoEditable = {
   display: "grid",
   gap: "4px",
 };
+
+/** Las tareas de lo elegido: una por renglón, con su tilde y su estado. */
+const tareasDeLaCosa = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "grid",
+  gap: "6px",
+};
+
+const tareaDeLaCosa = {
+  display: "grid",
+  gridTemplateColumns: "18px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "10px",
+  padding: "8px 10px",
+  border: "1px solid #eeeeee",
+  borderRadius: "10px",
+};
+
+/** Una subtarea, debajo de su madre: el pastinado, del porcelanato. */
+const subtareaDeLaCosa = { marginLeft: "22px" };
+
+/** La que se está mirando en el 3D, para ubicarla en la lista. */
+const tareaQueSeMira = { borderColor: "#cfcfcf", background: "#fafafa" };
+
+const tilde = { width: "16px", height: "16px", margin: 0, accentColor: HECHO };
+
+const queTarea = { display: "grid", gap: "2px", minWidth: 0 };
+
+const nombreDeTarea = { fontSize: "13px", color: "#111111", overflowWrap: "anywhere" as const };
+
+const detalleDeTarea = { fontSize: "12px", color: "#777777" };
+
+const estadoHecho = { fontSize: "12px", fontWeight: 600, color: HECHO, whiteSpace: "nowrap" as const };
+
+const estadoPendiente = { fontSize: "12px", color: "#9a9a9a", whiteSpace: "nowrap" as const };
 
 const errorDeCampo = {
   fontSize: "13px",

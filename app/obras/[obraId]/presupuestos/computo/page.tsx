@@ -1,6 +1,5 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import BotonImprimir from "@/components/BotonImprimir";
 import CatalogoComputo, { type RubroCatalogo } from "@/components/CatalogoComputo";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
@@ -22,7 +21,6 @@ import {
 import { formatMoney } from "@/lib/format";
 import { nombreMes } from "@/lib/meses";
 import { getMaterialesCatalogo } from "@/lib/materiales";
-import { getResumenPorNivel } from "@/lib/niveles";
 import { getObraPorSlug } from "@/lib/obras";
 import { tareasDesactualizadas } from "@/lib/pase-al-computo";
 import { createClient } from "@/lib/supabase/server";
@@ -41,7 +39,6 @@ import {
 /** Las pestañas del cómputo, en la URL para poder volver a la misma. */
 const VISTAS = [
   { clave: "tabla", nombre: "Tabla de cómputo" },
-  { clave: "niveles", nombre: "Por nivel" },
   { clave: "materiales", nombre: "Listado de materiales" },
   { clave: "incidencia", nombre: "Incidencia de costos" },
   { clave: "comparacion", nombre: "Estimado vs. cotizado" },
@@ -254,7 +251,6 @@ export default async function ComputoPage({
     vista === "tabla" && conPlano ? await tareasDesactualizadas(obra.id) : 0;
 
   // Sólo se arma la del cuadro que se está mirando: cada una pide lo suyo.
-  const porNivel = vista === "niveles" ? await getResumenPorNivel(computo) : null;
 
   const materiales =
     vista === "materiales"
@@ -322,7 +318,9 @@ export default async function ComputoPage({
           >
             Excel
           </a>
-          <BotonImprimir />
+          <Link href={`${base}/presupuesto`} style={ui.secondaryButton}>
+            Presupuesto PDF
+          </Link>
           <Link href={`${base}/cac`} style={ui.secondaryButton}>
             Índice CAC
           </Link>
@@ -374,88 +372,6 @@ export default async function ComputoPage({
             />
           </div>
         </div>
-      )}
-
-      {vista === "niveles" && porNivel && (
-        <section style={ui.panel}>
-          <h3 style={ui.sectionTitle}>Qué lleva cada nivel</h3>
-          <p style={{ ...ui.note, marginTop: 0 }}>
-            Sale de la medición de cada tarea: cada elemento dice a qué piso
-            pertenece. Las cantidades van en la unidad de su tarea y no se suman
-            entre sí; lo que se suma es la última columna, que está en pesos.
-          </p>
-
-          {porNivel.filas.length === 0 ? (
-            <p style={ui.vacio}>
-              Todavía no hay nada medido. En la tabla de cómputo, el botón
-              &ldquo;Medir&rdquo; de cada tarea abre su medición, y ahí los
-              elementos se cargan por nivel.
-            </p>
-          ) : (
-            <>
-              <div style={scroll}>
-                <table style={{ ...ui.table, minWidth: "720px" }}>
-                  <thead>
-                    <tr>
-                      <th style={ui.th}>Nivel</th>
-                      {porNivel.tareas.map((t) => (
-                        <th key={t.itemId} style={ui.thRight}>
-                          {t.nombre}
-                          <span style={unidadColumna}>{t.unidad}</span>
-                        </th>
-                      ))}
-                      <th style={thCentro}>Elementos</th>
-                      <th style={ui.thRight}>Costo estimado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {porNivel.filas.map((n) => (
-                      <tr key={n.nivel || "(sin nivel)"}>
-                        <td style={ui.td}>
-                          {n.nivel || "Sin nivel"}
-                          {n.sinMedir > 0 && (
-                            <span style={faltaMedir}>
-                              {n.sinMedir === 1
-                                ? "1 sin medir"
-                                : `${n.sinMedir} sin medir`}
-                            </span>
-                          )}
-                        </td>
-                        {porNivel.tareas.map((t) => (
-                          <td key={t.itemId} style={ui.tdRight}>
-                            {n.cantidades[t.itemId]
-                              ? n.cantidades[t.itemId].toLocaleString("es-AR", {
-                                  maximumFractionDigits: 2,
-                                })
-                              : "—"}
-                          </td>
-                        ))}
-                        <td style={tdCentro}>{n.elementos}</td>
-                        <td style={tdFuerte}>{formatMoney(n.costo)}</td>
-                      </tr>
-                    ))}
-                    <tr>
-                      <td style={pie} colSpan={porNivel.tareas.length + 2}>
-                        Total medido
-                      </td>
-                      <td style={pieNumero}>{formatMoney(porNivel.costoTotal)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {porNivel.sinMedicion.tareas > 0 && (
-                <p style={avisoSinMedir}>
-                  {porNivel.sinMedicion.tareas === 1
-                    ? "Hay 1 tarea con cantidad cargada y sin medir"
-                    : `Hay ${porNivel.sinMedicion.tareas} tareas con cantidad cargada y sin medir`}
-                  , por {formatMoney(porNivel.sinMedicion.costo)}. No se sabe a qué
-                  nivel va lo suyo, así que este cuadro no las cuenta.
-                </p>
-              )}
-            </>
-          )}
-        </section>
       )}
 
       {vista === "materiales" && (
@@ -847,28 +763,3 @@ const porcentaje = {
   textAlign: "right" as const,
 };
 
-// La unidad de cada columna, abajo del nombre de la tarea: sin ella el cuadro
-// invita a sumar metros cúbicos con metros cuadrados.
-const unidadColumna = {
-  display: "block",
-  fontSize: "10px",
-  fontWeight: 400,
-  color: "#999999",
-  textTransform: "none" as const,
-  letterSpacing: 0,
-};
-
-const faltaMedir = {
-  display: "block",
-  fontSize: "11px",
-  color: "#b45309",
-};
-
-const avisoSinMedir = {
-  ...ui.note,
-  background: "#fff4d6",
-  color: "#8a5a00",
-  borderRadius: "8px",
-  padding: "10px 12px",
-  marginBottom: 0,
-};

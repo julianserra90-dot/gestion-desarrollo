@@ -9,6 +9,7 @@ import {
   getPlanta,
   getPlantas,
   getTareasPorMetro,
+  getTareasDelCatalogo,
   getTiposDeAberturaDeObra,
   getTiposDeMuro,
   getTiposDeMuroDeObra,
@@ -45,6 +46,7 @@ export default async function PlantaPage({
     tiposDeLaObra,
     tareasPorMetro,
     tiposDeAbertura,
+    tareasDelCatalogo,
   ] = await Promise.all([
     getPlanta(plantaId),
     getCapasDisponibles(),
@@ -54,6 +56,7 @@ export default async function PlantaPage({
     getTiposDeMuroDeObra(obra.id),
     getTareasPorMetro(),
     getTiposDeAberturaDeObra(obra.id),
+    getTareasDelCatalogo(),
   ]);
 
   if (!planta || planta.obraId !== obra.id) {
@@ -105,6 +108,7 @@ export default async function PlantaPage({
         pasarCapas={pasarCapasAlDibujo.bind(null, obra.id)}
         tiposDeAberturaDeLaObra={tiposDeAbertura}
         guardarTipoDeAberturaEnLaObra={guardarTipoDeAbertura.bind(null, obra.id)}
+        tareasDelCatalogo={tareasDelCatalogo}
       />
     </AppShell>
   );

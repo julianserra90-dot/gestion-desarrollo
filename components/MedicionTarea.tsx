@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import SignoDelPlano, { AMBAR } from "@/components/SignoDelPlano";
@@ -7,7 +8,6 @@ import * as ui from "@/components/ui";
 import {
   cantidadDeElemento,
   FORMAS,
-  leerPegado,
   leFaltaMedida,
   medidasDe,
   totalDeMedicion,
@@ -124,7 +124,13 @@ export default function MedicionTarea({
   leer,
   guardar,
   alGuardar,
+  enEl3D,
 }: {
+  /**
+   * Adónde se ve lo que midió el plano: el 3D abierto en esta tarea. Cada
+   * renglón le suma su piso, y si es una pieza de la estructura, la pieza.
+   */
+  enEl3D?: string;
   itemId: string;
   unidadTarea: string;
   /** La cantidad que hoy tiene la tarea, para avisar si la medición la cambia. */
@@ -150,8 +156,6 @@ export default function MedicionTarea({
    */
   const [plegados, setPlegados] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
-  const [pegado, setPegado] = useState<string | null>(null);
-  const [aviso, setAviso] = useState("");
   const [guardando, iniciar] = useTransition();
 
   useEffect(() => {
@@ -247,24 +251,6 @@ export default function MedicionTarea({
   const quitar = (clave: string) =>
     setFilas((antes) => (antes ?? []).filter((f) => f.clave !== clave));
 
-  const desdeExcel = (reemplazar: boolean) => {
-    const leidas = leerPegado(pegado ?? "");
-    if (leidas.length === 0) {
-      setAviso("No encontré elementos ahí. ¿Pegaste las columnas con sus tabulaciones?");
-      return;
-    }
-
-    const nuevo = agrupar(leidas);
-    setFilas((antes) => (reemplazar ? nuevo.filas : [...(antes ?? []), ...nuevo.filas]));
-    setNiveles((antes) => (reemplazar ? nuevo.niveles : { ...antes, ...nuevo.niveles }));
-    if (nuevo.filas.length > MUCHOS) {
-      const recien = new Set(nuevo.filas.map((f) => f.grupo));
-      setPlegados((antes) => (reemplazar ? recien : new Set([...antes, ...recien])));
-    }
-    setAviso(leidas.length === 1 ? "Leí 1 elemento." : `Leí ${leidas.length} elementos.`);
-    setPegado(null);
-  };
-
   // Los bloques, en el orden en que aparece su primer elemento.
   const grupos: Grupo[] = [];
   for (const f of filas) {
@@ -333,17 +319,38 @@ export default function MedicionTarea({
 
       {delPlano.length > 0 && (
         <div style={cajaDelPlano}>
-          <p style={tituloDelPlano}>
-            <SignoDelPlano /> Del plano · {cantidadAR.format(totalDelPlano)} {unidadTarea}
-
-          </p>
+          <div style={cabezaDelPlano}>
+            <p style={tituloDelPlano}>
+              <SignoDelPlano /> Del plano · {cantidadAR.format(totalDelPlano)} {unidadTarea}
+            </p>
+            {enEl3D && (
+              <Link href={enEl3D} style={enlaceAl3D}>
+                Ver en el 3D
+              </Link>
+            )}
+          </div>
           <table style={tablaDelPlano}>
             <tbody>
               {delPlano.map((e, i) => {
                 const cantidad = cantidadDeElemento(e);
+                // El renglón en el 3D: su piso, y la pieza si es una de la
+                // estructura (las paredes, los pisos y los muros van juntos).
+                const href = enEl3D
+                  ? `${enEl3D}${e.nivel ? `&nivel=${encodeURIComponent(e.nivel)}` : ""}${
+                      e.etiqueta && !GENERICAS.has(e.etiqueta) ? `&cosa=${encodeURIComponent(e.etiqueta)}` : ""
+                    }`
+                  : null;
                 return (
                   <tr key={i}>
-                    <td style={celdaDelPlano}>{e.nivel ?? "Sin nivel"}</td>
+                    <td style={celdaDelPlano}>
+                      {href ? (
+                        <Link href={href} style={enlaceDeRenglon}>
+                          {e.nivel ?? "Sin nivel"}
+                        </Link>
+                      ) : (
+                        (e.nivel ?? "Sin nivel")
+                      )}
+                    </td>
                     <td style={celdaDelPlano}>{e.etiqueta ?? ""}</td>
                     <td style={cuentaDelPlano}>{cuentaDe(e, unidadTarea)}</td>
                     <td style={cantidad > 0 ? cantidadDelPlano : faltaDelPlano}>
@@ -505,46 +512,11 @@ export default function MedicionTarea({
         </div>
       )}
 
-      {pegado !== null && (
-        <div style={cajaPegado}>
-          <p style={ui.note}>
-            Copiá las filas de tu planilla y pegalas acá, con las columnas en el orden en
-            que están: tipo, ID, ancho, alto, largo, unidades, volumen, estado, fuente y
-            nivel. Se usan el tipo, el ID, las tres medidas, las unidades y el nivel; los
-            títulos, los subtotales y el resumen del final se saltean solos.
-          </p>
-          <textarea
-            value={pegado}
-            onChange={(e) => setPegado(e.target.value)}
-            rows={6}
-            placeholder="Viga → V-201 → 0,12 → 0,45 → 4,49 → 1 → …   (separado por tabulaciones)"
-            style={areaPegado}
-          />
-          <div style={botonesPegado}>
-            <button type="button" onClick={() => desdeExcel(false)} style={botonAgregar}>
-              Agregar a lo que ya hay
-            </button>
-            <button type="button" onClick={() => desdeExcel(true)} style={botonAgregar}>
-              Reemplazar todo
-            </button>
-            <button type="button" onClick={() => setPegado(null)} style={botonTexto}>
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
       <div style={pie}>
         <div style={agregarFila}>
           <button type="button" onClick={agregarNivel} style={botonAgregar}>
             + Agregar nivel
           </button>
-          {pegado === null && (
-            <button type="button" onClick={() => setPegado("")} style={botonAgregar}>
-              Pegar desde Excel
-            </button>
-          )}
-          {aviso && <span style={textoAviso}>{aviso}</span>}
         </div>
 
         <button type="button" onClick={enviar} disabled={guardando} style={botonGuardar}>
@@ -629,6 +601,34 @@ const tituloDelPlano = {
   fontWeight: 600,
   margin: "0 0 6px",
 };
+
+const cabezaDelPlano = {
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: "12px",
+};
+
+const enlaceAl3D = {
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "#1d4ed8",
+  textDecoration: "none",
+  border: "1px solid #bfdbfe",
+  borderRadius: "999px",
+  padding: "3px 10px",
+  background: "#ffffff",
+};
+
+const enlaceDeRenglon = {
+  color: "inherit",
+  textDecoration: "underline",
+  textDecorationColor: "#bfdbfe",
+  textUnderlineOffset: "3px",
+};
+
+/** Los renglones del plano que no son una pieza: van juntos, por piso. */
+const GENERICAS = new Set(["Muros", "Paredes", "Pisos", "Cielorrasos", "Zócalos"]);
 
 
 const tablaDelPlano = {
@@ -823,48 +823,10 @@ const botonAgregar = {
   fontSize: "13px",
 };
 
-const botonTexto = {
-  background: "none",
-  border: "none",
-  color: "#777777",
-  fontSize: "13px",
-  cursor: "pointer",
-  padding: "7px 4px",
-};
-
 const botonGuardar = {
   ...ui.button,
   padding: "8px 14px",
   fontSize: "13px",
-};
-
-const cajaPegado = {
-  background: "#ffffff",
-  border: "1px solid #e4e4e4",
-  borderRadius: "10px",
-  padding: "12px 14px",
-  margin: "12px 0 0",
-};
-
-const areaPegado = {
-  ...ui.input,
-  width: "100%",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  fontSize: "12px",
-  padding: "8px 10px",
-  margin: "8px 0",
-};
-
-const botonesPegado = {
-  display: "flex",
-  gap: "8px",
-  flexWrap: "wrap" as const,
-  alignItems: "center",
-};
-
-const textoAviso = {
-  fontSize: "13px",
-  color: "#777777",
 };
 
 const textoError = {

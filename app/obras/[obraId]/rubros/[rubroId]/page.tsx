@@ -13,6 +13,7 @@ import {
   eliminarTareaDelCatalogo,
   guardarModeloDeTarea,
   leerModeloDeTarea,
+  vincularSubtarea,
 } from "../../presupuestos/computo/actions";
 
 /**
@@ -60,9 +61,15 @@ export default async function TareasDelRubroPage({
   if (error) console.error("TareasDelRubroPage:", error.message);
 
   const ids = (tareas ?? []).map((t) => t.id);
-  const { data: composiciones } = ids.length
-    ? await supabase.from("tarea_desglose").select("tarea_id").in("tarea_id", ids)
-    : { data: [] as { tarea_id: string }[] };
+  const [{ data: composiciones }, { data: madres, error: alLeerMadres }] = ids.length
+    ? await Promise.all([
+        supabase.from("tarea_desglose").select("tarea_id").in("tarea_id", ids),
+        supabase.from("tareas").select("id, madre_id").in("id", ids),
+      ])
+    : [{ data: [] as { tarea_id: string }[] }, { data: [] as { id: string; madre_id: string | null }[], error: null }];
+  // Sin la columna todavía —la migración sin aplicar—, ninguna es subtarea.
+  if (alLeerMadres) console.error("TareasDelRubroPage, subtareas:", alLeerMadres.message);
+  const madreDe = new Map((madres ?? []).map((t) => [t.id, t.madre_id] as const));
 
   const renglonesPorTarea = new Map<string, number>();
   for (const c of composiciones ?? []) {
@@ -77,6 +84,7 @@ export default async function TareasDelRubroPage({
     unidad: t.unidad,
     renglones: renglonesPorTarea.get(t.id) ?? 0,
     enEstaObra: deLaObra.has(t.id),
+    madre: madreDe.get(t.id) ?? null,
   }));
 
   return (
@@ -101,6 +109,7 @@ export default async function TareasDelRubroPage({
         eliminar={eliminarTareaDelCatalogo}
         leerComposicion={leerModeloDeTarea}
         guardarComposicion={guardarModeloDeTarea}
+        vincular={vincularSubtarea}
       />
     </AppShell>
   );

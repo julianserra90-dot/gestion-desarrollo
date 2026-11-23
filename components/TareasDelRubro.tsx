@@ -16,6 +16,8 @@ export type TareaDelRubro = {
   renglones: number;
   /** Si esta obra la tiene en el cómputo. */
   enEstaObra: boolean;
+  /** Si es subtarea, el id de su madre: el pastinado, del porcelanato. */
+  madre: string | null;
 };
 
 type RenglonesDeComposicion = Parameters<React.ComponentProps<typeof DesgloseTarea>["guardar"]>[1];
@@ -41,7 +43,10 @@ export default function TareasDelRubro({
   eliminar,
   leerComposicion,
   guardarComposicion,
+  vincular,
 }: {
+  /** Hace de una tarea la subtarea de otra, o la suelta (null). */
+  vincular: (subtareaId: string, madreId: string | null) => Promise<{ error?: string }>;
   rubro: string;
   tareas: TareaDelRubro[];
   materiales: MaterialOpcion[];
@@ -80,9 +85,36 @@ export default function TareasDelRubro({
   const [componiendo, setComponiendo] = useState<TareaDelRubro | null>(null);
   const [nueva, setNueva] = useState({ subrubro: "", nombre: "", unidad: "m²" });
 
+  /** Las tareas desplegadas, para ver y agregar sus subtareas. */
+  const [abiertas, setAbiertas] = useState<Set<string>>(() => new Set());
+
   const subrubros = [...new Set(tareas.map((t) => t.subrubro).filter(Boolean) as string[])];
   const termino = buscar.trim().toLowerCase();
-  const visibles = tareas.filter((t) => !termino || t.nombre.toLowerCase().includes(termino));
+  const delRubro = new Set(tareas.map((t) => t.id));
+  const hijasDe = (id: string) => tareas.filter((t) => t.madre === id);
+  // Sin buscar, cada subtarea va debajo de su madre y no suelta en la lista.
+  const visibles = tareas.filter((t) =>
+    termino ? t.nombre.toLowerCase().includes(termino) : !(t.madre && delRubro.has(t.madre))
+  );
+
+  const alternar = (id: string) =>
+    setAbiertas((antes) => {
+      const despues = new Set(antes);
+      if (despues.has(id)) despues.delete(id);
+      else despues.add(id);
+      return despues;
+    });
+
+  const unir = (subtareaId: string, madreId: string | null) =>
+    iniciar(async () => {
+      const r = await vincular(subtareaId, madreId);
+      if (r.error) {
+        setError(r.error);
+        return;
+      }
+      limpiar();
+      router.refresh();
+    });
 
   const limpiar = () => {
     setError("");
@@ -138,6 +170,119 @@ export default function TareasDelRubro({
       router.refresh();
     });
 
+  /** Una tarea en la lista: su fila, o la de corregirla. `hija`: es subtarea. */
+  const renglonDe = (t: TareaDelRubro, hija: boolean, hijas: number) => {
+    const enEdicion = corrigiendo?.id === t.id ? corrigiendo : null;
+    return enEdicion ? (
+      <div style={filaEdicion}>
+        <input
+          type="text"
+          value={enEdicion.nombre}
+          autoFocus
+          aria-label="Nombre de la tarea"
+          onChange={(e) => setCorrigiendo({ ...enEdicion, nombre: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              confirmarCorreccion();
+            }
+            if (e.key === "Escape") setCorrigiendo(null);
+          }}
+          style={{ ...campoChico, flex: 1, minWidth: "240px" }}
+        />
+        <SelectorUnidad
+          value={enEdicion.unidad}
+          onChange={(u) => setCorrigiendo({ ...enEdicion, unidad: u })}
+          corto
+          style={{ ...campoChico, width: "110px" }}
+        />
+        <button
+          type="button"
+          onClick={confirmarCorreccion}
+          disabled={ocupado}
+          style={botonFuerte}
+        >
+          {ocupado ? "Guardando…" : "Guardar"}
+        </button>
+        <button type="button" onClick={() => setCorrigiendo(null)} style={enlace}>
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => borrar(t)}
+          disabled={ocupado}
+          style={enlaceBorrar}
+        >
+          Borrar del catálogo
+        </button>
+      </div>
+    ) : (
+      <div style={{ ...(t.enEstaObra ? filaEnObra : fila), ...(hija ? filaDeSubtarea : {}) }}>
+        {hija ? (
+          <span style={lugarDeFlecha}>↳</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => alternar(t.id)}
+            aria-expanded={abiertas.has(t.id)}
+            aria-label={`Subtareas de ${t.nombre}`}
+            title="Subtareas"
+            style={{ ...lugarDeFlecha, ...flecha, color: hijas > 0 ? "#111111" : "#bbbbbb" }}
+          >
+            {abiertas.has(t.id) ? "▾" : "▸"}
+          </button>
+        )}
+        <span style={nombreTarea}>
+          {t.nombre}
+          {hijas > 0 && <span style={marcaObra}>{hijas === 1 ? "1 subtarea" : `${hijas} subtareas`}</span>}
+          {t.enEstaObra && <span style={marcaObra}>en el cómputo de esta obra</span>}
+        </span>
+        <span style={unidad}>{t.unidad}</span>
+        <button
+          type="button"
+          onClick={() => {
+            limpiar();
+            setCorrigiendo(null);
+            setComponiendo(t);
+          }}
+          style={t.renglones > 0 ? botonComposicion : botonSinComposicion}
+          title="Qué lleva una unidad de la tarea"
+        >
+          {t.renglones > 0
+            ? `Composición (${t.renglones})`
+            : "Sin composición"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            limpiar();
+            setCorrigiendo({ id: t.id, nombre: t.nombre, unidad: t.unidad });
+          }}
+          style={botonLapiz}
+          title="Corregir nombre o unidad, o borrar del catálogo"
+          aria-label={`Corregir ${t.nombre}`}
+        >
+          ✎
+        </button>
+        {/* El mismo lugar en todas, para que el lápiz quede en columna. */}
+        <span style={lugarDeQuitar}>
+          {hija && (
+            <button
+              type="button"
+              onClick={() => unir(t.id, null)}
+              disabled={ocupado}
+              style={botonLapiz}
+              title="Que deje de ser subtarea"
+              aria-label={`Que ${t.nombre} deje de ser subtarea`}
+            >
+              ×
+            </button>
+          )}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <>
       {componiendo && (
@@ -183,87 +328,39 @@ export default function TareasDelRubro({
           <div>
             {visibles.map((t, i) => {
               const nuevoSub = t.subrubro && t.subrubro !== visibles[i - 1]?.subrubro;
-              const enEdicion = corrigiendo?.id === t.id ? corrigiendo : null;
+              const hijas = t.madre ? [] : hijasDe(t.id);
+              // Puede ser subtarea la que no es madre ni hija de nadie.
+              const candidatas = tareas.filter(
+                (c) => c.id !== t.id && c.madre === null && hijasDe(c.id).length === 0
+              );
               return (
                 <div key={t.id}>
                   {nuevoSub && <p style={subrubro}>{t.subrubro}</p>}
-                  {enEdicion ? (
-                    <div style={filaEdicion}>
-                      <input
-                        type="text"
-                        value={enEdicion.nombre}
-                        autoFocus
-                        aria-label="Nombre de la tarea"
-                        onChange={(e) => setCorrigiendo({ ...enEdicion, nombre: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            confirmarCorreccion();
-                          }
-                          if (e.key === "Escape") setCorrigiendo(null);
-                        }}
-                        style={{ ...campoChico, flex: 1, minWidth: "240px" }}
-                      />
-                      <SelectorUnidad
-                        value={enEdicion.unidad}
-                        onChange={(u) => setCorrigiendo({ ...enEdicion, unidad: u })}
-                        corto
-                        style={{ ...campoChico, width: "110px" }}
-                      />
-                      <button
-                        type="button"
-                        onClick={confirmarCorreccion}
-                        disabled={ocupado}
-                        style={botonFuerte}
-                      >
-                        {ocupado ? "Guardando…" : "Guardar"}
-                      </button>
-                      <button type="button" onClick={() => setCorrigiendo(null)} style={enlace}>
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => borrar(t)}
-                        disabled={ocupado}
-                        style={enlaceBorrar}
-                      >
-                        Borrar del catálogo
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={t.enEstaObra ? filaEnObra : fila}>
-                      <span style={nombreTarea}>
-                        {t.nombre}
-                        {t.enEstaObra && <span style={marcaObra}>en el cómputo de esta obra</span>}
-                      </span>
-                      <span style={unidad}>{t.unidad}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          limpiar();
-                          setCorrigiendo(null);
-                          setComponiendo(t);
-                        }}
-                        style={t.renglones > 0 ? botonComposicion : botonSinComposicion}
-                        title="Qué lleva una unidad de la tarea"
-                      >
-                        {t.renglones > 0
-                          ? `Composición (${t.renglones})`
-                          : "Sin composición"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          limpiar();
-                          setCorrigiendo({ id: t.id, nombre: t.nombre, unidad: t.unidad });
-                        }}
-                        style={botonLapiz}
-                        title="Corregir nombre o unidad, o borrar del catálogo"
-                        aria-label={`Corregir ${t.nombre}`}
-                      >
-                        ✎
-                      </button>
-                    </div>
+                  {renglonDe(t, t.madre !== null, hijas.length)}
+                  {!t.madre && abiertas.has(t.id) && (
+                    <>
+                      {hijas.map((h) => (
+                        <div key={h.id}>{renglonDe(h, true, 0)}</div>
+                      ))}
+                      <div style={agregarSubtarea}>
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) unir(e.target.value, t.id);
+                          }}
+                          disabled={ocupado}
+                          aria-label={`Agregar una subtarea a ${t.nombre}`}
+                          style={{ ...campoChico, width: "100%" }}
+                        >
+                          <option value="">Agregar subtarea…</option>
+                          {candidatas.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre} ({c.unidad})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
                   )}
                 </div>
               );
@@ -442,6 +539,31 @@ const marcaObra = {
   fontSize: "11px",
   color: "#888888",
 };
+
+/** Lo de la izquierda de cada fila: la flecha de la madre, el ↳ de la hija. */
+const lugarDeFlecha = {
+  width: "18px",
+  flex: "0 0 18px",
+  textAlign: "center" as const,
+  color: "#999999",
+  fontSize: "12px",
+};
+
+const flecha = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+};
+
+/** Una subtarea, debajo de su madre. */
+const filaDeSubtarea = { paddingLeft: "34px" };
+
+const lugarDeQuitar = { width: "22px", flex: "0 0 22px", textAlign: "center" as const };
+
+// A la altura del nombre de las subtareas: 34 de sangría, 18 de flecha y 12
+// de separación.
+const agregarSubtarea = { padding: "6px 8px 10px 64px" };
 
 const unidad = {
   color: "#999999",

@@ -41,7 +41,7 @@ import {
 } from "@/lib/planta-dibujo";
 import {
   huellaDeColumna,
-  huellaDeViga,
+  huellaDeVigaUnida,
   medirEstructura,
   prismasDeHormigon,
   recortar,
@@ -108,8 +108,17 @@ export type Ficha = {
   tareas?: TareaDeObjeto[];
 };
 
-/** Una tarea de una cosa del dibujo y cuánto lleva de ella, en m² y en m³. */
-export type TareaDeObjeto = { tarea: string; superficie: number; volumen: number };
+/**
+ * Una tarea de una cosa del dibujo y cuánto lleva de ella: en m² y en m³, y en
+ * una abertura también en metros —su perímetro— y en unidades: es una.
+ */
+export type TareaDeObjeto = {
+  tarea: string;
+  superficie: number;
+  volumen: number;
+  largo: number;
+  unidades: number;
+};
 
 /**
  * Una medida de una cosa que se puede corregir mirando el 3D, en metros.
@@ -167,7 +176,9 @@ export function modeloDePlanta(
   planta: { dibujo: Dibujo; escala: Escala | null; altura: number },
   pisoAPiso: number | null,
   nombres: Map<string, string> = new Map(),
-  tipos: Map<string, Composicion> = new Map()
+  tipos: Map<string, Composicion> = new Map(),
+  /** Las subtareas de cada tarea del catálogo: el pastinado, del porcelanato. */
+  subtareas: Map<string, string[]> = new Map()
 ): Modelo | null {
   const mpp = metrosPorPixel(planta.escala);
   if (mpp === null) return null;
@@ -630,7 +641,7 @@ export function modeloDePlanta(
         metalica ? "metal" : viga.tabique ? "columna" : "viga",
         objeto,
         metalica ? objeto : viga.tabique ? "columna" : "viga",
-        huellaDeViga(viga, mpp),
+        huellaDeVigaUnida(viga, dibujo.estructura.vigas, mpp),
         m.desde,
         m.hasta
       );
@@ -729,12 +740,25 @@ export function modeloDePlanta(
   // Con las mismas cuentas que el pase al cómputo: la mampostería sin vanos ni
   // hormigón, cada capa por sus caras, el piso por la superficie del ambiente
   // y el hormigón ya descontado de los nudos.
-  const porObjeto = new Map<string, Map<string, { superficie: number; volumen: number }>>();
-  const anotar = (objeto: string, tarea: string | null, superficie: number, volumen: number) => {
-    if (!tarea || !objetos[objeto] || !(superficie > 0 || volumen > 0)) return;
-    const de = porObjeto.get(objeto) ?? new Map<string, { superficie: number; volumen: number }>();
-    const ya = de.get(tarea) ?? { superficie: 0, volumen: 0 };
-    de.set(tarea, { superficie: ya.superficie + superficie, volumen: ya.volumen + volumen });
+  type Cuanto = { superficie: number; volumen: number; largo: number; unidades: number };
+  const porObjeto = new Map<string, Map<string, Cuanto>>();
+  const anotar = (
+    objeto: string,
+    tarea: string | null,
+    superficie: number,
+    volumen: number,
+    largo = 0,
+    unidades = 0
+  ) => {
+    if (!tarea || !objetos[objeto] || !(superficie > 0 || volumen > 0 || unidades > 0)) return;
+    const de = porObjeto.get(objeto) ?? new Map<string, Cuanto>();
+    const ya = de.get(tarea) ?? { superficie: 0, volumen: 0, largo: 0, unidades: 0 };
+    de.set(tarea, {
+      superficie: ya.superficie + superficie,
+      volumen: ya.volumen + volumen,
+      largo: ya.largo + largo,
+      unidades: ya.unidades + unidades,
+    });
     porObjeto.set(objeto, de);
   };
   for (const muro of dibujo.muros) {
@@ -775,12 +799,27 @@ export function modeloDePlanta(
       if (m && columna.material !== "metalica") anotar(`columna:${columna.id}`, columna.tarea, 0, m.neto);
     }
   }
+  // Cada abertura, una por tarea: su vano en m², su perímetro en metros.
+  for (const ab of dibujo.aberturas) {
+    for (const tarea of ab.tareas) {
+      anotar(`abertura:${ab.id}`, tarea, ab.ancho * ab.alto, 0, 2 * (ab.ancho + ab.alto), 1);
+    }
+  }
+  // Las subtareas no se dibujan: van donde va su madre, con lo mismo que
+  // ella mide, y se marcan aparte.
+  for (const de of porObjeto.values()) {
+    for (const [tarea, cuanto] of Array.from(de)) {
+      for (const hija of subtareas.get(tarea) ?? []) if (!de.has(hija)) de.set(hija, { ...cuanto });
+    }
+  }
   const alDecimoDeMilimetro = (n: number) => Math.round(n * 1e6) / 1e6;
   for (const [objeto, de] of porObjeto) {
     objetos[objeto].tareas = Array.from(de, ([tarea, v]) => ({
       tarea,
       superficie: alDecimoDeMilimetro(v.superficie),
       volumen: alDecimoDeMilimetro(v.volumen),
+      largo: alDecimoDeMilimetro(v.largo),
+      unidades: v.unidades,
     }));
   }
 

@@ -7,10 +7,10 @@ import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { type Modelo, modeloDePlanta } from "@/lib/planta-3d";
 import {
-  getCapasDisponibles,
   getPisos,
   getPlantas,
-  getTiposDeMuro,
+  getSubtareas,
+  getTareasDelCatalogo,
   getTiposDeMuroDeObra,
 } from "@/lib/plantas";
 import { createClient } from "@/lib/supabase/server";
@@ -33,29 +33,34 @@ export default async function Edificio3DPage({
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  /** `desde`: la planta de la que se vino, para poder volver a ella. */
-  searchParams: Promise<{ desde?: string }>;
+  /**
+   * `desde`: la planta de la que se vino, o "computo", para poder volver.
+   * `tarea`, `nivel` y `cosa`: con qué abre —una tarea del cómputo, un
+   * piso por su nombre y una pieza por el suyo—, para ver de dónde sale lo
+   * que el plano le pasó al cómputo.
+   */
+  searchParams: Promise<{ desde?: string; tarea?: string; nivel?: string; cosa?: string }>;
 }) {
   const { obraId } = await params;
-  const { desde } = await searchParams;
+  const { desde, tarea, nivel, cosa } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const [plantas, pisosDeObra, capas, tiposDeMuro, tiposDeLaObra] = await Promise.all([
+  const [plantas, pisosDeObra, tareasDelCatalogo, tiposDeLaObra, subtareas] = await Promise.all([
     getPlantas(obra.id),
     getPisos(obra.id),
-    getCapasDisponibles(),
-    getTiposDeMuro(),
+    getTareasDelCatalogo(),
     getTiposDeMuroDeObra(obra.id),
+    getSubtareas(),
   ]);
   const mapaDeTipos = new Map(tiposDeLaObra.map((t) => [t.id, t]));
   const plantaDeOrigen = desde ? plantas.find((p) => p.id === desde) ?? null : null;
   // Cómo se llama cada tarea del catálogo: es lo que dice de qué está hecho
   // un muro o qué capas lleva un piso al tocarlo.
-  const nombres = new Map([...capas, ...tiposDeMuro].map((t) => [t.id, t.nombre]));
+  const nombres = new Map(tareasDelCatalogo.map((t) => [t.id, t.nombre]));
 
   // El modelo de cada planta que algún piso usa, una sola vez.
   const modelos: Record<string, Modelo> = {};
@@ -68,7 +73,7 @@ export default async function Edificio3DPage({
       ...planta,
       dibujo: { ...planta.dibujo, muros: conSusTipos(planta.dibujo.muros, mapaDeTipos) },
     };
-    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres, mapaDeTipos);
+    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres, mapaDeTipos, subtareas);
     if (modelo && modelo.solidos.length > 0) modelos[planta.id] = modelo;
   }
 
@@ -88,8 +93,10 @@ export default async function Edificio3DPage({
   ]);
   // Sin la tabla todavía —la migración sin aplicar—, no hay nada marcado.
   if (alLeerMarcas) console.error("avances_del_plano:", alLeerMarcas.message);
-  const catalogo = new Map([...capas, ...tiposDeMuro].map((t) => [t.id, t]));
-  const unidadDelCatalogo = new Map(tiposDeMuro.map((t) => [t.id, t.unidad]));
+  // Todo el catálogo: una abertura lleva tareas por unidad o por metro.
+  const catalogo = new Map(tareasDelCatalogo.map((t) => [t.id, t]));
+  const madreDe = new Map<string, string>();
+  for (const [madre, hijas] of subtareas) for (const hija of hijas) madreDe.set(hija, madre);
   const enComputo = new Map<string, { unidad: string; cantidad: number }>();
   for (const i of items ?? []) {
     if (!i.tarea_id) continue;
@@ -106,10 +113,20 @@ export default async function Edificio3DPage({
       id,
       nombre: delCatalogo?.nombre ?? nombres.get(id) ?? "Tarea que ya no está en el catálogo",
       rubro: delCatalogo?.rubro ?? "Sin rubro",
-      unidad: computada?.unidad ?? unidadDelCatalogo.get(id) ?? "m²",
+      unidad: computada?.unidad ?? delCatalogo?.unidad ?? "m²",
       enComputo: computada !== undefined,
+      madre: madreDe.get(id) ?? null,
     };
-  }).sort((a, b) => a.rubro.localeCompare(b.rubro, "es") || a.nombre.localeCompare(b.nombre, "es"));
+  });
+  // Por rubro y por nombre, cada subtarea detrás de su madre.
+  const nombreDe = (id: string) => catalogo.get(id)?.nombre ?? "";
+  tareasDeAvance.sort(
+    (a, b) =>
+      a.rubro.localeCompare(b.rubro, "es") ||
+      nombreDe(a.madre ?? a.id).localeCompare(nombreDe(b.madre ?? b.id), "es") ||
+      Number(a.madre !== null) - Number(b.madre !== null) ||
+      a.nombre.localeCompare(b.nombre, "es")
+  );
   const marcas = (marcadas ?? []).map((m) => ({
     planta: m.planta_id,
     piso: m.piso,
@@ -149,6 +166,11 @@ export default async function Edificio3DPage({
           </div>
           <div style={lado}>
             {/* Si se vino de una planta, se vuelve a ella y no a la lista. */}
+            {desde === "computo" && (
+              <Link href={`/obras/${obra.slug}/presupuestos/computo`} style={ui.secondaryButton}>
+                ← Cómputo
+              </Link>
+            )}
             {plantaDeOrigen && (
               <Link href={`/obras/${obra.slug}/plantas/${plantaDeOrigen.id}`} style={ui.secondaryButton}>
                 ← {plantaDeOrigen.nombre || "Volver a la planta"}
@@ -185,6 +207,7 @@ export default async function Edificio3DPage({
             tareasDeAvance={tareasDeAvance}
             marcas={marcas}
             marcar={marcarEnElPlano.bind(null, obra.id)}
+            inicial={{ tarea: tarea ?? null, nivel: nivel ?? null, cosa: cosa ?? null }}
           />
         ) : (
           <p style={ui.vacio}>

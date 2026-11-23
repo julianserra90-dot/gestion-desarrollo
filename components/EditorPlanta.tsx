@@ -123,6 +123,7 @@ import {
 import {
   huellaDeColumna,
   huellaDeViga,
+  huellaDeVigaUnida,
   enElCorte,
   medirEstructura,
   nivelesDeLosa,
@@ -293,6 +294,8 @@ type Molde = {
   hojas: number;
   /** El marco de una puerta, en metros; null: el del muro. */
   marco: number | null;
+  /** Las tareas del cómputo que lleva el tipo. */
+  tareas: string[];
 };
 
 /** Lo que se deshace junto: el dibujo y la escala. */
@@ -334,6 +337,7 @@ const HERRAMIENTAS: Record<Modo, { valor: Herramienta; nombre: string }[]> = {
     { valor: "viga", nombre: "Viga" },
     { valor: "tabique", nombre: "Tabique" },
     { valor: "losa", nombre: "Losa" },
+    { valor: "esquina", nombre: "Esquina" },
     { valor: "medir", nombre: "Medir" },
   ],
 };
@@ -394,7 +398,10 @@ export default function EditorPlanta({
   pasarCapas,
   tiposDeAberturaDeLaObra = [],
   guardarTipoDeAberturaEnLaObra,
+  tareasDelCatalogo = [],
 }: {
+  /** Todas las tareas del catálogo: las que puede llevar una abertura. */
+  tareasDelCatalogo?: TareaDelCatalogo[];
   /** Los tipos de puerta y ventana de la obra, para todas sus plantas. */
   tiposDeAberturaDeLaObra?: TipoDeAbertura[];
   guardarTipoDeAberturaEnLaObra: (tipo: TipoDeAbertura) => Promise<{ error?: string }>;
@@ -791,7 +798,7 @@ export default function EditorPlanta({
           ? []
           : [
               ...estructura.columnas.map((c): [string, Punto[]] => [c.id, huellaDeColumna(c, mpp)]),
-              ...estructura.vigas.map((v): [string, Punto[]] => [v.id, huellaDeViga(v, mpp)]),
+              ...estructura.vigas.map((v): [string, Punto[]] => [v.id, huellaDeVigaUnida(v, estructura.vigas, mpp)]),
             ]
       ),
     [estructura.columnas, estructura.vigas, mpp]
@@ -1626,6 +1633,7 @@ export default function EditorPlanta({
           antepecho: igual.antepecho === null ? molde.antepecho : String(igual.antepecho),
           apertura: igual.apertura ?? molde.apertura,
           hojas: igual.hojas ?? molde.hojas,
+          tareas: igual.tareas,
         };
       }
     }
@@ -1646,6 +1654,7 @@ export default function EditorPlanta({
           apertura: delTipo.apertura ?? moldes[tipoAbertura].apertura,
           hojas: delTipo.hojas ?? moldes[tipoAbertura].hojas,
           marco: delTipo.marco,
+          tareas: delTipo.tareas,
         }
       : moldes[tipoAbertura];
     const ancho = Number(molde.ancho);
@@ -1671,6 +1680,7 @@ export default function EditorPlanta({
         apertura: tipoAbertura === "ventana" ? molde.apertura : null,
         hojas: tipoAbertura === "ventana" ? molde.hojas : null,
         marco: tipoAbertura === "puerta" ? molde.marco : null,
+        tareas: molde.tareas,
       });
     }
 
@@ -1696,6 +1706,7 @@ export default function EditorPlanta({
             apertura: tipoAbertura === "ventana" ? molde.apertura : null,
             hojas: tipoAbertura === "ventana" ? molde.hojas : null,
             marco: tipoAbertura === "puerta" ? molde.marco : null,
+            tareas: molde.tareas,
             // Abre hacia el lado del muro donde se hizo clic.
             lado: ladoDe(p, muro),
           },
@@ -1748,8 +1759,8 @@ export default function EditorPlanta({
     for (const t of dibujo.tiposDeAbertura) porNombre.set(`${t.tipo}|${t.nombre}`, t);
     for (const a of dibujo.aberturas) {
       if (!a.nombre.trim()) continue;
-      const { tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco } = a;
-      porNombre.set(`${tipo}|${nombre}`, { tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco });
+      const { tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco, tareas } = a;
+      porNombre.set(`${tipo}|${nombre}`, { tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco, tareas });
     }
     // Los de la obra son la definición: valen en todas las plantas.
     for (const t of tiposDeObra) porNombre.set(`${t.tipo}|${t.nombre}`, t);
@@ -1793,6 +1804,7 @@ export default function EditorPlanta({
         apertura: t.apertura ?? moldes[t.tipo].apertura,
         hojas: t.hojas ?? moldes[t.tipo].hojas,
         marco: t.marco,
+        tareas: t.tareas,
       },
     });
 
@@ -1835,7 +1847,7 @@ export default function EditorPlanta({
   };
 
   /** Algo del tipo —marco, cómo abre, hojas— en el molde y en el tipo. */
-  const cambiarDelMolde = (cambios: Partial<Pick<TipoDeAbertura, "marco" | "apertura" | "hojas">>) => {
+  const cambiarDelMolde = (cambios: Partial<Pick<TipoDeAbertura, "marco" | "apertura" | "hojas" | "tareas">>) => {
     setMoldes({ ...moldes, [tipoAbertura]: { ...moldes[tipoAbertura], ...cambios } });
     if (aberturaDelMolde) cambiarTipo(aberturaDelMolde, cambios);
   };
@@ -1862,6 +1874,7 @@ export default function EditorPlanta({
                       apertura: igual.apertura,
                       hojas: igual.hojas,
                       marco: igual.marco,
+                      tareas: igual.tareas,
                     }
                   : {}),
               }
@@ -2159,6 +2172,36 @@ export default function EditorPlanta({
 
     if (herramienta === "abertura") {
       colocarAbertura(aPlano(e));
+      return;
+    }
+
+    if (herramienta === "esquina" && modo === "estructura") {
+      // Lo mismo con las vigas y los tabiques: una, después la otra.
+      const p = aPlano(e);
+      let tocada: Viga | null = null;
+      let mejor = Infinity;
+      for (const v of estructura.vigas) {
+        const d = distancia(p, proyectar(p, v.a, v.b));
+        const alcance = (mpp !== null ? v.ancho / mpp / 2 : 0) + ALCANCE_ABERTURA * u;
+        if (d <= alcance && d < mejor) {
+          mejor = d;
+          tocada = v;
+        }
+      }
+      if (!tocada) return;
+      if (!primeroDeEsquina || primeroDeEsquina === tocada.id) {
+        setPrimeroDeEsquina(tocada.id);
+        setAvisoDeEsquina("");
+        return;
+      }
+      const vigas = unirEnEsquina(estructura.vigas, primeroDeEsquina, tocada.id);
+      setPrimeroDeEsquina(null);
+      if (!vigas) {
+        setAvisoDeEsquina("Son paralelas: no tienen esquina.");
+        return;
+      }
+      setAvisoDeEsquina("");
+      agregarAEstructura({ vigas });
       return;
     }
 
@@ -4156,6 +4199,18 @@ export default function EditorPlanta({
               {herramienta === "esquina" &&
                 primeroDeEsquina &&
                 (() => {
+                  // En la estructura, la viga elegida: su huella.
+                  const huella = modo === "estructura" ? huellas.get(primeroDeEsquina) : undefined;
+                  if (huella) {
+                    return (
+                      <polygon
+                        points={huella.map((q) => `${q.x},${q.y}`).join(" ")}
+                        fill={ACENTO}
+                        fillOpacity={0.55}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    );
+                  }
                   const cuerpo = cuerpos.get(primeroDeEsquina);
                   return cuerpo ? (
                     <line
@@ -5286,6 +5341,11 @@ export default function EditorPlanta({
                     />
                   </>
                 )}
+                <TareasDeAbertura
+                  tareas={molde.tareas}
+                  catalogo={tareasDelCatalogo}
+                  alCambiar={(tareas) => cambiarDelMolde({ tareas })}
+                />
                 {dibujo.muros.length === 0 && (
                   <p style={nota}>Una abertura va sobre un muro: primero hay que trazar alguno.</p>
                 )}
@@ -5382,6 +5442,11 @@ export default function EditorPlanta({
                     </button>
                   </>
                 )}
+                <TareasDeAbertura
+                  tareas={aberturaElegida.tareas}
+                  catalogo={tareasDelCatalogo}
+                  alCambiar={(tareas) => cambiarTipo(aberturaElegida, { tareas })}
+                />
                 <Renglon nombre="Vano">
                   {formatM2(aberturaElegida.ancho * aberturaElegida.alto)}
                 </Renglon>
@@ -7663,6 +7728,75 @@ function FilasDeCapas({
  * El tipo de un muro, de los de la obra, con "+ Nuevo" al lado. Borrar un
  * tipo va por el desplegable: "Sin tipo" lo suelta del muro.
  */
+/** Una tarea del catálogo del cómputo. */
+type TareaDelCatalogo = { id: string; nombre: string; rubro: string; unidad: string };
+
+/**
+ * Las tareas de un tipo de abertura: el amure del premarco, la colocación. Se
+ * agregan del catálogo, por rubro, y cada una se marca después por separado en
+ * el 3D.
+ */
+function TareasDeAbertura({
+  tareas,
+  catalogo,
+  alCambiar,
+}: {
+  tareas: string[];
+  catalogo: TareaDelCatalogo[];
+  alCambiar: (tareas: string[]) => void;
+}) {
+  const porId = new Map(catalogo.map((c) => [c.id, c] as const));
+  const rubros = Array.from(new Set(catalogo.map((c) => c.rubro)));
+  return (
+    <div style={campo}>
+      <span style={rotulo}>Tareas</span>
+      {tareas.map((id) => {
+        const tarea = porId.get(id);
+        return (
+          <div key={id} style={renglon}>
+            <span style={nombreConMuestra}>
+              <span style={{ ...muestra, background: colorDeCapa(id) }} />
+              <span style={nombreRenglon}>
+                {tarea ? `${tarea.nombre} (${tarea.unidad})` : "Tarea que ya no está en el catálogo"}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => alCambiar(tareas.filter((x) => x !== id))}
+              title="Sacar esta tarea"
+              aria-label="Sacar esta tarea"
+              style={botonQuitar}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+      <select
+        value=""
+        onChange={(e) => {
+          if (e.target.value) alCambiar([...tareas, e.target.value]);
+        }}
+        style={ui.input}
+        aria-label="Agregar una tarea"
+      >
+        <option value="">Agregar tarea…</option>
+        {rubros.map((rubro) => (
+          <optgroup key={rubro} label={rubro}>
+            {catalogo
+              .filter((c) => c.rubro === rubro && !tareas.includes(c.id))
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre} ({c.unidad})
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function SelectorDeTipo({
   valor,
   tipos,
@@ -8680,9 +8814,11 @@ function aMolde(inicial: {
   apertura: Apertura | null;
   hojas: number | null;
   marco: number | null;
+  tareas?: string[];
 }): Molde {
   return {
     marco: inicial.marco,
+    tareas: inicial.tareas ?? [],
     nombre: inicial.nombre,
     ancho: String(inicial.ancho),
     alto: String(inicial.alto),
@@ -8918,7 +9054,9 @@ function pistaDe(
         ? "Clic en una columna, una viga o una losa para verla y moverla. La punta de una viga se estira derecha; lejos de su línea, gira. Doble clic en un lado de una losa le suma un punto. Supr borra."
         : "Clic en algo para verlo y moverlo. La punta de un muro se estira derecha; lejos de su línea, gira. Doble clic parte un muro o suma un punto a un ambiente. Supr borra.";
     case "esquina":
-      return "Clic en un muro y después en el otro: se alargan o se recortan hasta unirse en escuadra.";
+      return modo === "estructura"
+        ? "Clic en una viga y después en la otra: se alargan o se recortan hasta unirse en escuadra."
+        : "Clic en un muro y después en el otro: se alargan o se recortan hasta unirse en escuadra.";
     case "cortar":
       return "Pasá por un muro: el corte se engancha en las caras de los muros que llegan. Clic parte el muro.";
     case "columna":

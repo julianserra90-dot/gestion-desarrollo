@@ -1464,8 +1464,8 @@ fondo y lo que se va dibujando.
     que el dibujo lleva— y el edificio muestra sólo lo que la lleva: lo hecho
     en verde, lo que falta en blanco, el resto apenas insinuado. Piso por
     piso: una planta tipo son varios pisos y cada uno avanza aparte. El panel
-    dice cuánto va de la tarea (m² o m³ y %), y al tocar una cosa, lo que
-    mide, el día y "Marcar realizado" / "Desmarcar".
+    dice cuánto va de la tarea (m² o m³ y %), y al tocar una cosa, la lista
+    de sus tareas para tildar (ver abajo).
   - **Qué lleva cada cosa** (`Ficha.tareas`, en `modeloDePlanta`): el muro su
     ladrillo (mampostería sin vanos ni hormigón); el ambiente su piso y su
     cielorraso; losa, viga y columna su hormigón neto. Con las mismas cuentas
@@ -1488,6 +1488,125 @@ fondo y lo que se va dibujando.
     entero, se redondea el **acumulado** y cada día lleva la diferencia: diez
     marcas del 0,4 % hacen 4 % (`prueba48`). Las cargas a mano no se tocan.
     Una tarea que no está en el cómputo no se puede marcar.
+  - **Cada cosa, con todas sus tareas para tildar** (pedido del usuario: "una
+    ventana tiene amure de premarco y colocación… cuando la selecciono que me
+    figure qué tildar como realizado y qué queda pendiente"). En Avance, al
+    tocar cualquier cosa —con o sin tarea elegida arriba— el panel lista
+    **todas** sus tareas, cada una con su tilde, su rubro, lo que mide y
+    "Pendiente" o el día en que se hizo; el día de arriba es con el que se
+    marca. La tarea que se está mirando se resalta en la lista. Sin orden
+    obligado entre pasos: se ve lo que falta, no se traba.
+  - **Las aberturas llevan tareas** (migración
+    `20261126100000_las_aberturas_llevan_tareas`: `tipos_de_abertura.tareas
+    uuid[]`; `Abertura.tareas` en el dibujo). Son **del tipo**: en la
+    herramienta Abertura y en la abertura elegida, "Tareas" con las suyas
+    (× para sacar) y "Agregar tarea…" con todo el catálogo por rubro
+    (`getTareasDelCatalogo`). Guardar el tipo las lleva a todas las de ese
+    nombre en todas las plantas. Se miden según la unidad de la tarea
+    (`cantidadEnUnidad`, `esPorUnidad`, `esPorMetro`): por unidad una cada una,
+    en m² su vano, en ml su perímetro; gl no se mide. En el 3D son
+    `abertura:<id>`; en el cómputo, un renglón por tipo, piso y tarea —"V01",
+    con cuántas hay en unidades— (`delPlano`, `prueba-aberturas`).
+  - **Subtareas** (pedido del usuario: "porcelanato canto rectificado y una
+    subtarea, pastinado de juntas, que va de la mano"; migración
+    `20261127100000_las_tareas_tienen_subtareas`: `tareas.madre_id`, un solo
+    nivel; acción `vincularSubtarea`). Se arman en la lista de tareas del
+    rubro: cada tarea tiene una flecha que la despliega, con sus subtareas
+    (↳, × para soltarlas) y "Agregar subtarea…"; sin buscar, la subtarea
+    sólo aparece debajo de su madre. La subtarea es **su propio renglón del
+    cómputo**, con su precio, pero no se dibuja: donde el plano lleva la madre
+    lleva también la subtarea, con su misma medida (`getSubtareas`, parámetro
+    `subtareas` de `delPlano` y `modeloDePlanta`), si se cotiza en algo que
+    mide lo mismo (`queMide`: m² con m², ml con ml…); una en gl no se pasa y se
+    avisa. En el 3D va sangrada debajo de su madre en la lista para tildar, y
+    con "↳" en el desplegable de tareas (`prueba-subtareas`).
+  - El 3D busca los nombres y unidades en **todo** el catálogo
+    (`getTareasDelCatalogo`), no sólo en las de m² y m³: una tarea de abertura
+    por unidad salía "ya no está en el catálogo". Y el pase al cómputo junta
+    también las tareas de las aberturas y las subtareas de todo lo dibujado.
+- **Las vigas en las esquinas** (pregunta del usuario: "¿pasa lo mismo que
+  con el muro?"). El nudo ya se contaba una vez: lo que dos vigas pisan es
+  de la que se dibujó primero (`tapado`). Pero marcadas por el eje o por la
+  cara de adentro no se pisaban: **faltaba** un cuarto o el rincón entero.
+  Ahora `huellaDeVigaUnida` estira cada viga (y cada tabique) en sus puntas
+  compartidas hasta tapar el ancho de la otra, como un muro, y el volumen se
+  calcula con ese largo unido. Una L de 20 × 45 da 0,27 m³ marcada al eje,
+  por adentro o por afuera (`prueba52`). En el balcón de Andonaegui
+  (marcado por afuera) no cambia nada.
+- **Varias formas de comprar un material** (pedido del usuario: el Sika
+  Monotop en bolsa de 25 y de 5 kg, el ladrillo suelto o por pallet). Ya
+  estaban las presentaciones (`material_presentaciones`), pero cargar una
+  dejaba afuera el envase del material: con la de 5 kg, la de 25 desaparecía.
+  Ahora el envase —o "suelto", si se compra de a uno— **siempre** cuenta y
+  las presentaciones se le suman (`tamanosDe`, `envaseDe`; dos del mismo
+  tamaño son una). En el catálogo, "Se vende en" muestra primero el suyo y
+  después los agregados, y el "+" propone la unidad del material (kg en el
+  Sika, un en el ladrillo). Cada material es su propio **desplegable**
+  dentro del rubro: cerrado, una línea con su nombre y cómo se vende
+  ("bolsa 25 kg · bolsa 5 kg"); abierto, arriba nombre, rubro y Guardar, y
+  abajo una tabla "Se vende en · Cantidad · Unidad" con la forma propia
+  (se guarda con Guardar: sus campos son del mismo formulario por el
+  atributo `form`), las agregadas con su × y un renglón para agregar con +.
+  Todo en las mismas columnas. 33 kg de Sika: 1 bolsa de 25 + 2 de 5; 300
+  ladrillos: 2 pallets de 144 + 12 un (`prueba53`).
+- **La barra de la obra, reordenada** (pedido del usuario: "que la
+  funcionalidad sea mucho más simple"). En Obra: Estado, Presupuestos,
+  Avances, Fotos, **Archivo** (era Documentos), **Plantas y 3D**, **Rubros y
+  Tareas**, Materiales y **Gremios**, que salió de las solapas de
+  Presupuestos (`/presupuestos/gremios`, ahora con su propio título y su
+  ícono en la barra).
+- **Archivo** (`/archivo`, `lib/archivo.ts`): todo lo que se fue cargando,
+  en carpetas como un Drive, sin guardar nada dos veces —cada archivo sigue
+  donde se cargó y se abre por `/archivos/<id>`, que controla el permiso—.
+  Carpetas: Proyecto y Obra (documentos por rubro), Planos (el de cada
+  planta), Fotos y Facturas (por mes), Cotizaciones (por rubro),
+  Administrativa y Lote (por título; Lote también con los comprobantes de
+  sus pagos). Sin obsoletos ni carpetas vacías. Mosaico de tarjetas del
+  mismo tamaño, migas arriba ("Archivo › Cotizaciones › Demoliciones") y la
+  carpeta en la dirección (`?ruta=`). "Subir documento" sigue siendo el de
+  siempre, y al guardar vuelve al Archivo.
+- **La lista de plantas, más simple** (pedido del usuario: "es clave ver un
+  esquema muy simple, volumétrico, de todos los niveles… mucho más chiquito y
+  sutil"). Arriba, tres tarjetas del mismo alto: Plantas, Pisos y **Niveles**
+  —"±0,00 a +14,20" y al lado el **esquema** (`EsquemaDeNiveles`): cada piso
+  de la definición de pisos como una caja apilada a su cota con su altura,
+  con un poco de profundidad, sin textos adentro; al pasar el mouse dice
+  piso, nivel, altura y planta, y un piso con planta se toca para abrirla
+  (sin planta, punteado)—. Abajo, la tabla sólo con Planta, Pisos, Nivel,
+  Altura y Superficie, en una línea, y al final de cada renglón subir, bajar
+  (`moverPlanta`: renumera `plantas.orden`) y un ojo para abrirla. Así se
+  ordenan las fundaciones abajo y el techo arriba de la planta tipo.
+- **El cómputo como presupuesto, en PDF** (`/presupuestos/computo/presupuesto`,
+  botón "Presupuesto PDF" en el cómputo): una hoja sin la barra de la app,
+  con la obra, la fecha y el mes de los precios; cada rubro numerado como
+  título ("3. Aislaciones"), sus tareas itemizadas (3.1, 3.2) con unidad,
+  cantidad, materiales y M.O. (e integrado si alguna lo usa) por unidad e
+  importe —sin columna de unitario—, y el subtotal del rubro; el logo de LAR
+  arriba a la derecha; al final el resumen por rubro con su incidencia y el
+  total. Todas las tablas con las mismas columnas (`ANCHO`, `table-layout:
+  fixed`): los números del mismo ancho y con la misma separación, el título
+  alineado como su dato, y el importe del resumen debajo del de cada rubro.
+  Van sólo las tareas con cantidad. En el cómputo ya no están
+  "Imprimir / PDF" (lo reemplaza este) ni la pestaña "Por nivel" (cada tarea
+  muestra lo suyo por piso en su medición).
+  "Imprimir / PDF" abre el diálogo del navegador, que la guarda en PDF (A4,
+  cada renglón entero, los encabezados repetidos en cada hoja).
+- **Sin "Pegar desde Excel"** en la medición de una tarea: era para cargar
+  planillas de antes del plano y el 3D, que ahora miden solos.
+- **Del cómputo al 3D** (pedido del usuario: "un botón que me lleve al plano
+  y me muestre de dónde salen esos números"). En la medición de una tarea,
+  la caja "Del plano" tiene "Ver en el 3D", y cada renglón (el piso) es un
+  enlace: el 3D abre en Avance con esa tarea (`?desde=computo&tarea=…`), en
+  ese piso (`&nivel=`, por su nombre) y, si el renglón es una pieza de la
+  estructura —C03, V07—, con esa pieza elegida (`&cosa=`). El total del
+  panel es el de los pisos que se miran, así coincide con el renglón; arriba
+  aparece "← Cómputo" para volver. Si no coincide, es que el cómputo está
+  viejo: el plano cambió desde el último pase ("Pasar de nuevo").
+- **Esquina también en la estructura**: la herramienta Esquina está en el
+  modo Estructura y une vigas y tabiques como une muros —clic en una, clic
+  en la otra: se alargan o recortan hasta cruzarse sus líneas y comparten
+  la punta—. `unirEnEsquina` es genérica (sólo usa las dos puntas de cada
+  línea); con la punta compartida, `huellaDeVigaUnida` llena el rincón.
 - **Tabiques de hormigón** (pedido del usuario: el núcleo del ascensor, "como
   las vigas pero con la altura de una columna"). Son una **variante de la
   viga** (`Viga.tabique`): se trazan igual —por su línea, con su espesor

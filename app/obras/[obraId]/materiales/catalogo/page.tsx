@@ -4,6 +4,7 @@ import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getPresentaciones } from "@/lib/materiales";
+import { envaseDe } from "@/lib/presentaciones";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 import { UNIDADES } from "@/lib/unidades";
@@ -229,195 +230,218 @@ export default async function CatalogoMaterialesPage({
               {grupo.materiales.map((m) => {
                 const veces = usos.get(m.id) ?? 0;
                 const suyas = presentaciones.get(m.id) ?? [];
-                // En qué se puede medir una presentación: la unidad del
-                // material, o la de lo que trae su envase.
+                // En qué se puede medir una forma de venta: lo que trae su
+                // envase, o la unidad del material.
                 const unidadesDePresentacion = [
                   ...new Set([m.contenido_unidad, m.unidad].filter(Boolean) as string[]),
                 ];
+                const propia = envaseDe({
+                  unidad: m.unidad,
+                  contenido: m.contenido === null ? null : Number(m.contenido),
+                  contenidoUnidad: m.contenido_unidad,
+                });
+                // Cómo se vende, para leerlo cerrado: "bolsa 25 kg · bolsa 5 kg".
+                const formas = [
+                  ...(propia
+                    ? [
+                        propia.contenido === 1 && propia.nombre === propia.unidad
+                          ? "suelto"
+                          : `${propia.nombre} ${propia.contenido.toLocaleString("es-AR")} ${propia.unidad}`,
+                      ]
+                    : []),
+                  ...suyas.map((s) => `${s.nombre} ${s.contenido.toLocaleString("es-AR")} ${s.unidad}`),
+                ];
+                const formulario = `material-${m.id}`;
 
                 return (
-                  <div key={m.id} style={fila}>
-                    <form action={actualizarMaterial} style={formEdicion}>
-                      <input type="hidden" name="slug" value={obra.slug} />
-                      <input type="hidden" name="material_id" value={m.id} />
-
-                      <input
-                        type="text"
-                        name="nombre"
-                        defaultValue={m.nombre}
-                        aria-label="Material"
-                        required
-                        disabled={!esAdmin}
-                        style={{ ...ui.input, flex: "1 1 240px" }}
-                      />
-
-                      <select
-                        name="unidad"
-                        defaultValue={m.unidad}
-                        aria-label="Unidad"
-                        disabled={!esAdmin}
-                        style={{ ...ui.input, flex: "0 0 120px" }}
-                      >
-                        {/* Si la unidad guardada ya no está en la lista, se
-                            ofrece igual: si no, editar el nombre la cambiaría
-                            sin que nadie lo pida. */}
-                        {!UNIDADES.some((u) => u === m.unidad) && (
-                          <option value={m.unidad}>{m.unidad}</option>
-                        )}
-                        {UNIDADES.map((u) => (
-                          <option key={u} value={u}>
-                            {u}
-                          </option>
-                        ))}
-                      </select>
-
-                      <input
-                        type="number"
-                        name="contenido"
-                        defaultValue={m.contenido ?? ""}
-                        min={0}
-                        step="any"
-                        placeholder="Trae"
-                        aria-label="Cuánto trae el envase"
-                        disabled={!esAdmin}
-                        style={{ ...ui.input, flex: "0 0 90px" }}
-                      />
-
-                      <select
-                        name="contenido_unidad"
-                        defaultValue={m.contenido_unidad ?? "kg"}
-                        aria-label="Unidad de lo que trae"
-                        disabled={!esAdmin}
-                        style={{ ...ui.input, flex: "0 0 100px" }}
-                      >
-                        {m.contenido_unidad &&
-                          !UNIDADES.some((u) => u === m.contenido_unidad) && (
-                            <option value={m.contenido_unidad}>
-                              {m.contenido_unidad}
-                            </option>
-                          )}
-                        {UNIDADES.map((u) => (
-                          <option key={u} value={u}>
-                            {u}
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        name="rubro_id"
-                        defaultValue={m.rubro_id ?? ""}
-                        aria-label="Rubro"
-                        disabled={!esAdmin}
-                        style={{ ...ui.input, flex: "1 1 180px" }}
-                      >
-                        <option value="">Sin rubro</option>
-                        {/* Un rubro que ya no está en el catálogo no se pierde. */}
-                        {m.rubro_id && !nombreRubro.has(m.rubro_id) && (
-                          <option value={m.rubro_id}>Rubro anterior</option>
-                        )}
-                        {listaRubros.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.nombre}
-                          </option>
-                        ))}
-                      </select>
-
-                      {esAdmin && (
-                        <button type="submit" style={ui.secondaryButton}>
-                          Guardar
-                        </button>
-                      )}
-                    </form>
-
-                    {/* Sólo se puede borrar el que no está en ningún detalle: la
-                        base lo rechaza igual, pero ofrecer un botón que va a
-                        fallar es peor que no ofrecerlo. */}
-                    {esAdmin && veces === 0 ? (
-                      <form action={eliminarMaterial}>
-                        <input type="hidden" name="slug" value={obra.slug} />
-                        <input type="hidden" name="material_id" value={m.id} />
-                        <button type="submit" style={botonBorrar}>
-                          Eliminar
-                        </button>
-                      </form>
-                    ) : (
-                      <span style={ui.note}>
-                        {veces === 0
-                          ? "—"
-                          : `En ${veces} ${veces === 1 ? "compra" : "compras"}`}
+                  <details key={m.id} style={material}>
+                    <summary style={resumenMaterial}>
+                      <span style={lineaResumen}>
+                        <span style={nombreMaterial}>{m.nombre}</span>
+                        <span style={formasResumen}>{formas.join(" · ") || "—"}</span>
                       </span>
-                    )}
+                    </summary>
 
-                    {/* Las formas en que se vende. Sin ninguna, vale el
-                        envase de arriba. */}
-                    <div style={filaPresentaciones}>
-                      <span style={etiquetaPresentaciones}>Se vende en</span>
-                      {suyas.length === 0 && (
-                        <span style={ui.note}>
-                          {m.contenido
-                            ? `${m.unidad === "un" ? "envase" : m.unidad} de ${Number(m.contenido).toLocaleString("es-AR")} ${m.contenido_unidad}`
-                            : "—"}
-                        </span>
-                      )}
-                      {suyas.map((p) => (
-                        <span key={p.id} style={chip}>
-                          {p.nombre} de {p.contenido.toLocaleString("es-AR")} {p.unidad}
-                          {esAdmin && (
-                            <form action={quitarPresentacion} style={formEnLinea}>
-                              <input type="hidden" name="slug" value={obra.slug} />
-                              <input type="hidden" name="presentacion_id" value={p.id} />
-                              <button
-                                type="submit"
-                                style={botonQuitarChip}
-                                aria-label={`Quitar ${p.nombre} de ${p.contenido} ${p.unidad}`}
-                                title="Quitar esta presentación"
-                              >
-                                ×
-                              </button>
-                            </form>
-                          )}
-                        </span>
-                      ))}
-                      <form action={agregarPresentacion} style={formPresentacion}>
+                    <div style={cuerpoMaterial}>
+                      {/* El material: su nombre, su rubro y guardar. */}
+                      <form id={formulario} action={actualizarMaterial} style={filaMaterial}>
                         <input type="hidden" name="slug" value={obra.slug} />
                         <input type="hidden" name="material_id" value={m.id} />
                         <input
                           type="text"
                           name="nombre"
-                          placeholder="Lata"
-                          aria-label="Presentación"
+                          defaultValue={m.nombre}
+                          aria-label="Material"
                           required
-                          style={campoChico}
-                        />
-                        <span style={ui.note}>de</span>
-                        <input
-                          type="number"
-                          name="contenido"
-                          min={0}
-                          step="any"
-                          placeholder="4"
-                          aria-label="Cuánto trae"
-                          required
-                          style={{ ...campoChico, width: "70px" }}
+                          disabled={!esAdmin}
+                          style={ui.input}
                         />
                         <select
-                          name="unidad"
-                          defaultValue={unidadesDePresentacion[0]}
-                          aria-label="Unidad de lo que trae"
-                          style={{ ...campoChico, width: "90px" }}
+                          name="rubro_id"
+                          defaultValue={m.rubro_id ?? ""}
+                          aria-label="Rubro"
+                          disabled={!esAdmin}
+                          style={ui.input}
                         >
-                          {unidadesDePresentacion.map((u) => (
+                          <option value="">Sin rubro</option>
+                          {m.rubro_id && !nombreRubro.has(m.rubro_id) && (
+                            <option value={m.rubro_id}>Rubro anterior</option>
+                          )}
+                          {listaRubros.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.nombre}
+                            </option>
+                          ))}
+                        </select>
+                        {esAdmin ? (
+                          <button type="submit" style={botonGuardar}>
+                            Guardar
+                          </button>
+                        ) : (
+                          <span />
+                        )}
+                      </form>
+
+                      {/* Cómo se vende: la forma propia del material —es del
+                          formulario de arriba y se guarda con él— y las que se
+                          le agregan, cada una en su renglón, en las mismas
+                          columnas. */}
+                      <div style={tablaDeVenta}>
+                        <span style={tituloDeColumna}>Se vende en</span>
+                        <span style={{ ...tituloDeColumna, textAlign: "center" }}>Cantidad</span>
+                        <span style={{ ...tituloDeColumna, textAlign: "center" }}>Unidad</span>
+                        <span />
+
+                        <select
+                          form={formulario}
+                          name="unidad"
+                          defaultValue={m.unidad}
+                          aria-label="Forma de venta"
+                          disabled={!esAdmin}
+                          style={ui.input}
+                        >
+                          {!UNIDADES.some((u) => u === m.unidad) && <option value={m.unidad}>{m.unidad}</option>}
+                          {UNIDADES.map((u) => (
                             <option key={u} value={u}>
                               {u}
                             </option>
                           ))}
                         </select>
-                        <button type="submit" style={botonChico}>
-                          + Agregar
-                        </button>
-                      </form>
+                        <input
+                          form={formulario}
+                          type="number"
+                          name="contenido"
+                          defaultValue={m.contenido ?? ""}
+                          min={0}
+                          step="any"
+                          placeholder="—"
+                          aria-label="Cuánto trae"
+                          disabled={!esAdmin}
+                          style={{ ...ui.input, textAlign: "right" }}
+                        />
+                        <select
+                          form={formulario}
+                          name="contenido_unidad"
+                          defaultValue={m.contenido_unidad ?? "kg"}
+                          aria-label="Unidad de lo que trae"
+                          disabled={!esAdmin}
+                          style={ui.input}
+                        >
+                          {m.contenido_unidad && !UNIDADES.some((u) => u === m.contenido_unidad) && (
+                            <option value={m.contenido_unidad}>{m.contenido_unidad}</option>
+                          )}
+                          {UNIDADES.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                        <span />
+
+                        {suyas.map((s) => (
+                          <span key={s.id} style={{ display: "contents" }}>
+                            <span style={valorFijo}>{s.nombre}</span>
+                            <span style={{ ...valorFijo, textAlign: "right" }}>
+                              {s.contenido.toLocaleString("es-AR")}
+                            </span>
+                            <span style={valorFijo}>{s.unidad}</span>
+                            {esAdmin ? (
+                              <form action={quitarPresentacion} style={formEnLinea}>
+                                <input type="hidden" name="slug" value={obra.slug} />
+                                <input type="hidden" name="presentacion_id" value={s.id} />
+                                <button
+                                  type="submit"
+                                  style={botonDeRenglon}
+                                  title="Quitar"
+                                  aria-label={`Quitar ${s.nombre} de ${s.contenido} ${s.unidad}`}
+                                >
+                                  ×
+                                </button>
+                              </form>
+                            ) : (
+                              <span />
+                            )}
+                          </span>
+                        ))}
+
+                        {/* Otra forma de venderlo. */}
+                        <form action={agregarPresentacion} style={{ display: "contents" }}>
+                          <input type="hidden" name="slug" value={obra.slug} />
+                          <input type="hidden" name="material_id" value={m.id} />
+                          <input
+                            type="text"
+                            name="nombre"
+                            placeholder={m.unidad === "un" ? "pallet" : m.unidad}
+                            aria-label="Forma de venta"
+                            required
+                            style={ui.input}
+                          />
+                          <input
+                            type="number"
+                            name="contenido"
+                            min={0}
+                            step="any"
+                            placeholder="0"
+                            aria-label="Cantidad"
+                            required
+                            style={{ ...ui.input, textAlign: "right" }}
+                          />
+                          <select
+                            name="unidad"
+                            defaultValue={unidadesDePresentacion[0]}
+                            aria-label="Unidad"
+                            style={ui.input}
+                          >
+                            {unidadesDePresentacion.map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ))}
+                          </select>
+                          <button type="submit" style={botonDeRenglon} title="Agregar otra forma de venta">
+                            +
+                          </button>
+                        </form>
+                      </div>
+
+                      {/* Borrar, sólo el que no está en ninguna compra. */}
+                      <div style={pieMaterial}>
+                        {esAdmin && veces === 0 ? (
+                          <form action={eliminarMaterial} style={formEnLinea}>
+                            <input type="hidden" name="slug" value={obra.slug} />
+                            <input type="hidden" name="material_id" value={m.id} />
+                            <button type="submit" style={botonBorrar}>
+                              Eliminar material
+                            </button>
+                          </form>
+                        ) : (
+                          <span style={ui.note}>
+                            {veces > 0 ? `En ${veces} ${veces === 1 ? "compra" : "compras"}` : ""}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </details>
                 );
               })}
             </div>
@@ -427,6 +451,65 @@ export default async function CatalogoMaterialesPage({
     </AppShell>
   );
 }
+
+/** Un material: una línea cerrada, su ficha abierta. */
+const material = {
+  border: ui.BORDE,
+  borderRadius: "12px",
+  background: "#ffffff",
+};
+
+const resumenMaterial = { cursor: "pointer", padding: "12px 16px" };
+
+const lineaResumen = {
+  display: "inline-flex",
+  alignItems: "baseline",
+  gap: "12px",
+  flexWrap: "wrap" as const,
+};
+
+const nombreMaterial = { fontSize: "14px", fontWeight: 600 };
+
+const formasResumen = { fontSize: "13px", color: "#8a8a8a" };
+
+const cuerpoMaterial = {
+  display: "grid",
+  gap: "16px",
+  padding: "4px 16px 16px",
+};
+
+// Las mismas columnas en las dos partes: lo que se escribe a la izquierda, el
+// botón de 96 px a la derecha. Arriba, el rubro ocupa cantidad y unidad.
+const filaMaterial = {
+  display: "grid",
+  gridTemplateColumns: "minmax(160px, 1fr) 240px 96px",
+  gap: "10px",
+  alignItems: "center",
+};
+
+const tablaDeVenta = {
+  display: "grid",
+  gridTemplateColumns: "minmax(160px, 1fr) 115px 115px 96px",
+  gap: "8px 10px",
+  alignItems: "center",
+};
+
+const tituloDeColumna = {
+  fontSize: "11px",
+  fontWeight: 600,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+  color: "#8a8a8a",
+};
+
+const valorFijo = { fontSize: "14px", padding: "0 13px" };
+
+const botonGuardar = { ...ui.secondaryButton, width: "96px", textAlign: "center" as const };
+
+/** El + y el × de cada renglón: la misma forma y el mismo ancho que Guardar. */
+const botonDeRenglon = { ...botonGuardar, fontSize: "17px", lineHeight: "21px" };
+
+const pieMaterial = { display: "flex", justifyContent: "flex-end" };
 
 const acordeones = {
   display: "grid",
@@ -474,23 +557,6 @@ const filas = {
   gap: "12px",
 };
 
-const fila = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  flexWrap: "wrap" as const,
-  borderTop: "1px solid #eeeeee",
-  paddingTop: "12px",
-};
-
-const formEdicion = {
-  display: "flex",
-  gap: "10px",
-  flexWrap: "wrap" as const,
-  alignItems: "center",
-  flex: "1 1 480px",
-};
-
 const botonBorrar = {
   ...ui.secondaryButton,
   color: "#b91c1c",
@@ -521,64 +587,9 @@ const avisoBox = {
   fontSize: "14px",
 };
 
-// Las presentaciones van debajo del material, a lo ancho de su fila.
-const filaPresentaciones = {
-  flex: "1 1 100%",
-  display: "flex",
-  flexWrap: "wrap" as const,
-  alignItems: "center",
-  gap: "8px",
-  paddingLeft: "4px",
-};
-
-const etiquetaPresentaciones = {
-  fontSize: "12px",
-  color: "#888888",
-};
-
-const chip = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "4px",
-  background: "#f3f3f3",
-  borderRadius: "999px",
-  padding: "4px 6px 4px 12px",
-  fontSize: "13px",
-};
-
 const formEnLinea = {
   display: "inline",
   margin: 0,
-};
-
-const botonQuitarChip = {
-  background: "none",
-  border: "none",
-  color: "#999999",
-  fontSize: "15px",
-  lineHeight: 1,
-  cursor: "pointer",
-  padding: "0 4px",
-};
-
-const formPresentacion = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  flexWrap: "wrap" as const,
-};
-
-const campoChico = {
-  ...ui.input,
-  padding: "6px 10px",
-  fontSize: "13px",
-  width: "110px",
-};
-
-const botonChico = {
-  ...ui.secondaryButton,
-  padding: "6px 12px",
-  fontSize: "13px",
 };
 
 // El número y su unidad, en línea: "trae 30 kg" se lee de una.

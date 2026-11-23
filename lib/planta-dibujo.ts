@@ -269,6 +269,13 @@ export type Abertura = {
    * con sus capas.
    */
   marco: number | null;
+  /**
+   * Las tareas del cómputo que lleva, por id: el amure del premarco, la
+   * colocación. **Son del tipo**: todas las V01 llevan lo mismo. El plano las
+   * cuenta —una por abertura, o su superficie o su perímetro, según en qué se
+   * cotice la tarea— y en el 3D se marca cada una por separado.
+   */
+  tareas: string[];
 };
 
 /**
@@ -278,7 +285,7 @@ export type Abertura = {
  */
 export type TipoDeAbertura = Pick<
   Abertura,
-  "tipo" | "nombre" | "ancho" | "alto" | "antepecho" | "apertura" | "hojas" | "marco"
+  "tipo" | "nombre" | "ancho" | "alto" | "antepecho" | "apertura" | "hojas" | "marco" | "tareas"
 >;
 
 // ---- La estructura --------------------------------------------------------
@@ -947,6 +954,7 @@ export function leerDibujo(valor: unknown): Dibujo {
           ? hojas
           : null,
       marco: tipo === "puerta" ? marcoDe(r.marco) : null,
+      tareas: tareasDe(r.tareas),
     });
   }
 
@@ -976,6 +984,12 @@ function marcoDe(valor: unknown): number | null {
   return n !== null && n > 0 && n < 1 ? n : null;
 }
 
+/** Las tareas de una abertura, por id: sin vacías ni repetidas. */
+function tareasDe(valor: unknown): string[] {
+  const ids = (Array.isArray(valor) ? valor : []).filter((v): v is string => typeof v === "string" && v !== "");
+  return Array.from(new Set(ids));
+}
+
 /** Los tipos de abertura guardados —en el dibujo o en la tabla de la obra—;
  *  uno sin nombre o sin medidas no sirve. */
 export function leerTiposDeAbertura(valor: unknown): TipoDeAbertura[] {
@@ -999,6 +1013,7 @@ export function leerTiposDeAbertura(valor: unknown): TipoDeAbertura[] {
       apertura: tipo === "ventana" ? APERTURAS.find((a) => a.valor === r.apertura)?.valor ?? null : null,
       hojas: tipo === "ventana" && hojas !== null && Number.isInteger(hojas) && hojas >= 1 ? hojas : null,
       marco: tipo === "puerta" ? marcoDe(r.marco) : null,
+      tareas: tareasDe(r.tareas),
     });
   }
   return tipos;

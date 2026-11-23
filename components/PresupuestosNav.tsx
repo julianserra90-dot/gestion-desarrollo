@@ -5,9 +5,8 @@ import Link from "next/link";
  *
  * **Cotizaciones** es lo que ya estaba: qué cotizó cada gremio y cuál se
  * aprobó. **Cómputo** es lo de antes de cotizar: cuánto lleva la obra de cada
- * cosa y cuánto debería salir. **Gremios** es lo de después: cuánto se le
- * pagó a cada uno y cuánto le resta. Van juntas porque se leen una contra
- * la otra.
+ * cosa y cuánto debería salir. Lo de después —cuánto se le pagó a cada
+ * gremio— está en su propia sección, Gremios.
  *
  * Mismo segundo nivel que Materiales y Editar obra.
  */
@@ -16,7 +15,7 @@ export default function PresupuestosNav({
   activa,
 }: {
   slug: string;
-  activa: "cotizaciones" | "computo" | "gremios";
+  activa: "cotizaciones" | "computo";
 }) {
   return (
     <nav style={contenedor}>
@@ -31,12 +30,6 @@ export default function PresupuestosNav({
         style={activa === "computo" ? itemActivo : item}
       >
         Cómputo
-      </Link>
-      <Link
-        href={`/obras/${slug}/presupuestos/gremios`}
-        style={activa === "gremios" ? itemActivo : item}
-      >
-        Gremios
       </Link>
     </nav>
   );

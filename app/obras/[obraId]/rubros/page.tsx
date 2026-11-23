@@ -79,7 +79,7 @@ export default async function RubrosPage({
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Configuración de obra</p>
-        <h2 style={ui.pageTitle}>Rubros</h2>
+        <h2 style={ui.pageTitle}>Rubros y Tareas</h2>
         <p style={ui.subtitle}>
           Los desplegables de gastos, avances y fotos ofrecen sólo los marcados.
         </p>

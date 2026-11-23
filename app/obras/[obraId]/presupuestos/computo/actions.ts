@@ -768,6 +768,39 @@ export async function editarTareaDelCatalogo(
  * modelo. Ésta queda en el catálogo, en su rubro, para que cualquier obra la
  * tilde y su composición mejore con el uso. Va al final de su rubro.
  */
+/**
+ * Hace de una tarea del catálogo la subtarea de otra —el pastinado de juntas,
+ * del porcelanato—, o la suelta con `madreId` null. Un solo nivel: una
+ * subtarea no tiene subtareas, y una tarea que las tiene no es subtarea.
+ */
+export async function vincularSubtarea(subtareaId: string, madreId: string | null): Promise<Resultado> {
+  if (subtareaId === madreId) return { error: "Una tarea no puede ser subtarea de sí misma." };
+  const supabase = await createClient();
+
+  if (madreId) {
+    const [{ data: madre, error: alLeerMadre }, { count, error: alContar }] = await Promise.all([
+      supabase.from("tareas").select("id, madre_id").eq("id", madreId).maybeSingle(),
+      supabase.from("tareas").select("id", { count: "exact", head: true }).eq("madre_id", subtareaId),
+    ]);
+    if (alLeerMadre) return { error: alLeerMadre.message };
+    if (alContar) return { error: alContar.message };
+    if (!madre) return { error: "Esa tarea ya no está en el catálogo." };
+    if (madre.madre_id) return { error: "Una subtarea no puede tener subtareas." };
+    if (count) return { error: "Esa tarea tiene subtareas: no puede ser subtarea de otra." };
+  }
+
+  const { data, error } = await supabase
+    .from("tareas")
+    .update({ madre_id: madreId })
+    .eq("id", subtareaId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("modificar el catálogo de tareas") };
+
+  revalidatePath("/", "layout");
+  return {};
+}
+
 export async function crearTareaDelCatalogo(
   rubro: string,
   subrubro: string,

@@ -53,15 +53,20 @@ export const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
       { key: "presupuestos", label: "Presupuestos", path: "/presupuestos" },
       { key: "avances", label: "Avances", path: "/avances" },
       { key: "fotos", label: "Fotos", path: "/fotos" },
-      { key: "documentos", label: "Documentos", path: "/documentos" },
-      // Al lado de Documentos pero no adentro: allá el plano se archiva, acá
-      // se calca para medirlo. "Plantas" y no "Planos" para que no se lean
-      // como la misma cosa.
-      { key: "plantas", label: "Plantas", path: "/plantas" },
-      { key: "rubros", label: "Rubros", path: "/rubros" },
+      // Todo lo que se fue cargando —documentos, planos, facturas, fotos—, en
+      // carpetas. La clave sigue siendo "documentos": las fichas de un
+      // documento cuelgan de acá.
+      { key: "documentos", label: "Archivo", path: "/archivo" },
+      // Al lado del Archivo pero no adentro: allá el plano se guarda, acá se
+      // calca para medirlo y se levanta en 3D.
+      { key: "plantas", label: "Plantas y 3D", path: "/plantas" },
+      { key: "rubros", label: "Rubros y Tareas", path: "/rubros" },
       // Qué material entró a la obra. Va en Obra y no en Economía: la plata de
       // esas compras ya está en Gastos; acá interesan las cantidades.
       { key: "materiales", label: "Materiales", path: "/materiales" },
+      // Cuánto se le pagó a cada gremio y cuánto le resta. Estaba adentro de
+      // Presupuestos; es lo que se mira todas las semanas, va a la vista.
+      { key: "gremios", label: "Gremios", path: "/presupuestos/gremios" },
     ],
   },
 ];

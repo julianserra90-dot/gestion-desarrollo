@@ -2463,6 +2463,7 @@ export type Database = {
           creado_en: string
           fuente: string | null
           id: string
+          madre_id: string | null
           nombre: string
           orden: number
           precio_mano_obra: number
@@ -2475,6 +2476,7 @@ export type Database = {
           creado_en?: string
           fuente?: string | null
           id?: string
+          madre_id?: string | null
           nombre: string
           orden?: number
           precio_mano_obra?: number
@@ -2487,6 +2489,7 @@ export type Database = {
           creado_en?: string
           fuente?: string | null
           id?: string
+          madre_id?: string | null
           nombre?: string
           orden?: number
           precio_mano_obra?: number
@@ -2509,6 +2512,7 @@ export type Database = {
           marco: number | null
           nombre: string
           obra_id: string
+          tareas: string[]
           tipo: string
         }
         Insert: {
@@ -2522,6 +2526,7 @@ export type Database = {
           marco?: number | null
           nombre: string
           obra_id: string
+          tareas?: string[]
           tipo: string
         }
         Update: {
@@ -2535,6 +2540,7 @@ export type Database = {
           marco?: number | null
           nombre?: string
           obra_id?: string
+          tareas?: string[]
           tipo?: string
         }
         Relationships: []

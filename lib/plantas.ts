@@ -118,7 +118,7 @@ export async function getTiposDeAberturaDeObra(obraId: string): Promise<TipoDeAb
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("tipos_de_abertura")
-    .select("tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco")
+    .select("tipo, nombre, ancho, alto, antepecho, apertura, hojas, marco, tareas")
     .eq("obra_id", obraId)
     .order("nombre");
 
@@ -138,6 +138,43 @@ export async function getTiposDeMuroDeObra(obraId: string): Promise<TipoMuro[]> 
   if (error) console.error("getTiposDeMuroDeObra:", error.message);
 
   return (data ?? []).map((t) => ({ id: t.id, nombre: t.nombre, ...leerComposicion(t.composicion) }));
+}
+
+/**
+ * Todo el catálogo del cómputo, por rubro: lo que puede llevar una abertura
+ * —el amure del premarco en Albañilería, la colocación en Carpinterías—, que
+ * se cotiza en cualquier unidad.
+ */
+export async function getTareasDelCatalogo(): Promise<
+  { id: string; nombre: string; rubro: string; unidad: string }[]
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tareas")
+    .select("id, nombre, rubro, unidad, orden")
+    .order("rubro")
+    .order("orden");
+
+  if (error) console.error("getTareasDelCatalogo:", error.message);
+
+  return (data ?? []).map((t) => ({ id: t.id, nombre: t.nombre, rubro: t.rubro, unidad: t.unidad }));
+}
+
+/**
+ * Las subtareas del catálogo, por su madre: el pastinado de juntas, del
+ * porcelanato. Sin la columna todavía —la migración sin aplicar—, ninguna.
+ */
+export async function getSubtareas(): Promise<Map<string, string[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("tareas").select("id, madre_id").not("madre_id", "is", null);
+  if (error) console.error("getSubtareas:", error.message);
+
+  const deMadre = new Map<string, string[]>();
+  for (const t of data ?? []) {
+    if (!t.madre_id) continue;
+    deMadre.set(t.madre_id, [...(deMadre.get(t.madre_id) ?? []), t.id]);
+  }
+  return deMadre;
 }
 
 /**

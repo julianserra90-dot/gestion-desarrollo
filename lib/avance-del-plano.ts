@@ -72,17 +72,41 @@ export function cargasDelPlano(marcas: MarcaDelPlano[], tareas: TareaDelRubro[])
   return cargas;
 }
 
+/** Una tarea que se cotiza por unidad: "un", "u", "c/u". */
+export const esPorUnidad = (unidad: string) =>
+  /^(un|u|u\.|ud|unid|unidad|unidades|c\/u|n[°º]|nro)$/i.test(unidad.trim());
+
+/** Una que se cotiza por metro lineal. */
+export const esPorMetro = (unidad: string) => /^(ml|m)$/i.test(unidad.trim());
+
+/**
+ * Qué mide una unidad: superficie, volumen, largo o cantidad de cosas. Dos
+ * tareas en "m²" y "m2" miden lo mismo; null es una que el plano no mide (gl).
+ */
+export function queMide(unidad: string | null): "superficie" | "volumen" | "largo" | "unidades" | null {
+  if (unidad === null) return null;
+  const u = unidad.trim().toLowerCase();
+  if (u === "m²" || u === "m2") return "superficie";
+  if (u === "m³" || u === "m3") return "volumen";
+  if (esPorMetro(u)) return "largo";
+  if (esPorUnidad(u)) return "unidades";
+  return null;
+}
+
 /**
  * Lo que mide una cosa en la unidad con que se cotiza su tarea: el volumen si
- * es en m³, la superficie si no. Null si la unidad no es de las que el plano
- * mide (ml, u, gl).
+ * es en m³, la superficie si es en m², el largo si es en metros y cuántas son
+ * si es por unidad —una ventana es una—. Null si es una unidad que el plano no
+ * mide (gl).
  */
 export function cantidadEnUnidad(
-  medida: { superficie: number; volumen: number },
+  medida: { superficie: number; volumen: number; largo?: number; unidades?: number },
   unidad: string
 ): number | null {
   const u = unidad.trim().toLowerCase();
   if (u === "m³" || u === "m3") return medida.volumen;
   if (u === "m²" || u === "m2") return medida.superficie;
+  if (esPorMetro(u)) return medida.largo ?? null;
+  if (esPorUnidad(u)) return medida.unidades ?? null;
   return null;
 }

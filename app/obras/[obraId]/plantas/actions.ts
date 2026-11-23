@@ -9,7 +9,7 @@ import { getPase, type Pase } from "@/lib/pase-al-computo";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala, leerTiposDeAbertura } from "@/lib/planta-dibujo";
-import { getPisos, getPlantas, getTiposDeMuroDeObra } from "@/lib/plantas";
+import { getPisos, getPlantas, getSubtareas, getTiposDeMuroDeObra } from "@/lib/plantas";
 import { cantidadEnUnidad, cargasDelPlano, type TareaDelRubro } from "@/lib/avance-del-plano";
 import { modeloDePlanta } from "@/lib/planta-3d";
 import { aplicarCambio } from "@/lib/planta-edicion";
@@ -529,8 +529,8 @@ export async function pasarCapasAlDibujo(obraId: string): Promise<Resultado> {
 
 /**
  * Guarda un tipo de abertura de la obra —nuevo o cambiado— y lo lleva a todas
- * las aberturas de ese nombre en todas las plantas: sus medidas, cómo abre y
- * su marco. La mano, el antepecho y hacia dónde abre son de cada una y no se
+ * las aberturas de ese nombre en todas las plantas: sus medidas, cómo abre,
+ * su marco y sus tareas. La mano, el antepecho y hacia dónde abre son de cada una y no se
  * tocan.
  */
 export async function guardarTipoDeAbertura(obraId: string, crudo: unknown): Promise<Resultado> {
@@ -551,6 +551,7 @@ export async function guardarTipoDeAbertura(obraId: string, crudo: unknown): Pro
         apertura: tipo.apertura,
         hojas: tipo.hojas,
         marco: tipo.marco,
+        tareas: tipo.tareas,
       },
       { onConflict: "obra_id,tipo,nombre" }
     )
@@ -570,7 +571,15 @@ export async function guardarTipoDeAbertura(obraId: string, crudo: unknown): Pro
     if (!dibujo.aberturas.some(delTipo)) continue;
     const aberturas = dibujo.aberturas.map((a) =>
       delTipo(a)
-        ? { ...a, ancho: tipo.ancho, alto: tipo.alto, apertura: tipo.apertura, hojas: tipo.hojas, marco: tipo.marco }
+        ? {
+            ...a,
+            ancho: tipo.ancho,
+            alto: tipo.alto,
+            apertura: tipo.apertura,
+            hojas: tipo.hojas,
+            marco: tipo.marco,
+            tareas: tipo.tareas,
+          }
         : a
     );
     const { error: alGuardar } = await supabase
@@ -669,7 +678,7 @@ const ES_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID = "[0-9a-f-]{36}";
 const LADO = "(1|-1|a|b)";
 const ES_OBJETO = new RegExp(
-  `^((muro|ambiente|losa|viga|columna):${UUID}|cara:${UUID}:${LADO}|capa:${UUID}:${UUID}:${LADO})$`,
+  `^((muro|ambiente|losa|viga|columna|abertura):${UUID}|cara:${UUID}:${LADO}|capa:${UUID}:${UUID}:${LADO})$`,
   "i"
 );
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -692,10 +701,11 @@ export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Pr
   if (!Number.isInteger(piso) || !ES_FECHA.test(String(fecha))) return { error: "Falta el piso o el día." };
 
   const supabase = await createClient();
-  const [plantas, pisos, tiposDeLaObra] = await Promise.all([
+  const [plantas, pisos, tiposDeLaObra, subtareas] = await Promise.all([
     getPlantas(obraId),
     getPisos(obraId),
     getTiposDeMuroDeObra(obraId),
+    getSubtareas(),
   ]);
   const planta = plantas.find((p) => p.id === plantaId);
   const suPiso = pisos.find((p) => p.numero === piso && p.plantaId === plantaId);
@@ -721,7 +731,8 @@ export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Pr
       { ...planta, dibujo: { ...planta.dibujo, muros: conSusTipos(planta.dibujo.muros, tipos) } },
       primerPiso.altura,
       new Map(),
-      tipos
+      tipos,
+      subtareas
     );
     const medida = modelo?.objetos[objeto]?.tareas?.find((t) => t.tarea === tareaId);
     const cantidad = medida ? cantidadEnUnidad(medida, deLaTarea.unidad) : null;
@@ -808,4 +819,29 @@ export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Pr
 
   revalidatePath("/", "layout");
   return {};
+}
+
+/**
+ * Sube o baja una planta en la lista de la obra —las fundaciones abajo de la
+ * planta baja, el techo arriba de la planta tipo—. Se renumera el orden de
+ * todas, así dos plantas nunca quedan empatadas.
+ */
+export async function moverPlanta(slug: string, obraId: string, plantaId: string, haciaArriba: boolean) {
+  const supabase = await createClient();
+  const { data: plantas, error } = await supabase
+    .from("plantas")
+    .select("id")
+    .eq("obra_id", obraId)
+    .order("orden")
+    .order("creado_en");
+  if (error || !plantas) return;
+
+  const ids = plantas.map((p) => p.id);
+  const i = ids.indexOf(plantaId);
+  const j = haciaArriba ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+
+  await Promise.all(ids.map((id, orden) => supabase.from("plantas").update({ orden }).eq("id", id)));
+  revalidatePath(`/obras/${slug}/plantas`);
 }

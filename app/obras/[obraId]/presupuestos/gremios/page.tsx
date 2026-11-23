@@ -2,7 +2,6 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
-import PresupuestosNav from "@/components/PresupuestosNav";
 import * as ui from "@/components/ui";
 import { ordenDeRubro } from "@/lib/computo";
 import { formatMoney } from "@/lib/format";
@@ -129,16 +128,15 @@ export default async function GremiosPage({
 
   return (
     <AppShell
-      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="presupuestos" />}
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="gremios" />}
     >
-      <ObraHeader obra={obra} activeSection="presupuestos" ocultarNav />
+      <ObraHeader obra={obra} activeSection="gremios" ocultarNav />
 
       <section style={ui.sectionHeader}>
         <p style={ui.eyebrow}>Situación económica</p>
-        <h2 style={ui.pageTitle}>Presupuestos</h2>
+        <h2 style={ui.pageTitle}>Gremios</h2>
       </section>
 
-      <PresupuestosNav slug={obra.slug} activa="gremios" />
 
       <nav style={barraSolapas}>
         {SOLAPAS.map((s) => (
