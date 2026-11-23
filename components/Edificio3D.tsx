@@ -451,7 +451,11 @@ export default function Edificio3D({
           contexto: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
         };
         for (const solido of modelo.solidos) {
-          const lleva = modelo.objetos[solido.objeto]?.tareas?.some((t) => t.tarea === tareaEnAvance);
+          // La pieza que dice qué lleva manda: el cielorraso de un baño no
+          // lleva su contrapiso.
+          const lleva = solido.tareas
+            ? solido.tareas.includes(tareaEnAvance)
+            : modelo.objetos[solido.objeto]?.tareas?.some((t) => t.tarea === tareaEnAvance);
           const estado = !lleva
             ? "contexto"
             : hechas.has(`${piso.planta}|${piso.numero}|${solido.objeto}`)
@@ -554,7 +558,13 @@ export default function Edificio3D({
 
     // Todos los sólidos de la cosa —un muro con una puerta son varios—, del
     // color de lo seleccionado y un pelo por delante de lo que tapan.
-    const geometrias = modelo.solidos.filter((s) => s.objeto === elegido.objeto).map(geometriaDe);
+    // Mirando el avance de una tarea, sólo las piezas que la llevan.
+    const geometrias = modelo.solidos
+      .filter(
+        (s) =>
+          s.objeto === elegido.objeto && (!tareaEnAvance || !s.tareas || s.tareas.includes(tareaEnAvance))
+      )
+      .map(geometriaDe);
     const fundida = geometrias.length > 0 ? mergeGeometries(geometrias) : null;
     for (const g of geometrias) g.dispose();
     if (!fundida) {
@@ -581,7 +591,7 @@ export default function Edificio3D({
       material.dispose();
       armado.dibujar();
     };
-  }, [elegido, modelos, pisos]);
+  }, [elegido, modelos, pisos, tareaEnAvance]);
 
   const conPlanta = pisos.filter((p) => p.planta !== null && modelos[p.planta] !== undefined);
   const ficha = elegido ? modelos[elegido.planta]?.objetos[elegido.objeto] ?? null : null;
@@ -613,8 +623,11 @@ export default function Edificio3D({
    * Las tareas de lo elegido, con lo que mide de cada una: una ventana lleva
    * el amure de su premarco y su colocación, y cada una se tilda aparte.
    */
-  // En el orden de la lista de tareas: cada subtarea detrás de su madre.
+  // En el orden de la lista de tareas: cada subtarea detrás de su madre. Con
+  // un rubro elegido arriba, sólo las de ese rubro: mirando Cielorrasos, el
+  // porcelanato del mismo baño no va.
   const tareasDelElegido = tareasDeAvance.flatMap((tarea) => {
+    if (rubroElegido !== null && tarea.rubro !== rubroElegido) return [];
     const medida = ficha?.tareas?.find((x) => x.tarea === tarea.id);
     return medida ? [{ tarea, cantidad: cantidadEnUnidad(medida, tarea.unidad) }] : [];
   });

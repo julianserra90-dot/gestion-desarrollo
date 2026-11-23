@@ -88,6 +88,13 @@ export type Solido = {
   /** Entre qué alturas está, en metros sobre el piso terminado de la planta. */
   desde: number;
   hasta: number;
+  /**
+   * Qué tareas lleva **esta pieza**, cuando las piezas de una cosa no llevan
+   * lo mismo: el piso de un ambiente lleva el contrapiso y el porcelanato, su
+   * cielorraso la placa de yeso. Mirando el avance del contrapiso se pinta el
+   * piso y no el cielorraso. Sin esto, la pieza lleva todo lo de su cosa.
+   */
+  tareas?: string[];
 };
 
 /** Lo que se muestra de una cosa al tocarla. */
@@ -193,7 +200,8 @@ export function modeloDePlanta(
     grupo: string,
     huella: Punto[],
     desde: number,
-    hasta: number
+    hasta: number,
+    tareas?: string[]
   ) => {
     if (huella.length < 3 || !(hasta - desde > MINIMO)) return;
     enObra.push({
@@ -203,7 +211,13 @@ export function modeloDePlanta(
       puntos: huella.flatMap((p) => [p.x * mpp, p.y * mpp]),
       desde,
       hasta,
+      ...(tareas ? { tareas } : {}),
     });
+  };
+  /** Las tareas de unas capas, con sus subtareas: el pastinado va con el porcelanato. */
+  const tareasDe = (lista: Capa[]) => {
+    const ids = lista.map((c) => c.tarea).filter((t): t is string => !!t);
+    return Array.from(new Set([...ids, ...ids.flatMap((id) => subtareas.get(id) ?? [])]));
   };
   const tarea = (id: string | null) =>
     id === null ? "Sin definir" : nombres.get(id) ?? "Tarea que ya no está en el catálogo";
@@ -550,17 +564,38 @@ export function modeloDePlanta(
     // El piso termina en el 0,00 y baja lo que suman sus capas: es el
     // paquete que va sobre la losa.
     const paquete = ambiente.piso.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
-    sumar("piso", objeto, `piso|${ambiente.id}`, ambiente.puntos, -(paquete > 0 ? paquete : FINO), 0);
+    sumar(
+      "piso",
+      objeto,
+      `piso|${ambiente.id}`,
+      ambiente.puntos,
+      -(paquete > 0 ? paquete : FINO),
+      0,
+      tareasDe(ambiente.piso)
+    );
 
+    const espesor = ambiente.cielorraso.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
     if (ambiente.alturaCielorraso !== null) {
-      const espesor = ambiente.cielorraso.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
       sumar(
         "cielorraso",
         objeto,
         `cielorraso|${ambiente.id}`,
         ambiente.puntos,
         ambiente.alturaCielorraso,
-        ambiente.alturaCielorraso + (espesor > 0 ? espesor : FINO)
+        ambiente.alturaCielorraso + (espesor > 0 ? espesor : FINO),
+        tareasDe(ambiente.cielorraso)
+      );
+    } else if (ambiente.cielorraso.length > 0 && techo > 0) {
+      // Aplicado contra la losa: una placa fina debajo de ella, para verlo y
+      // tocarlo aparte del piso.
+      sumar(
+        "cielorraso",
+        objeto,
+        `cielorraso|${ambiente.id}`,
+        ambiente.puntos,
+        techo - (espesor > 0 ? espesor : FINO),
+        techo,
+        tareasDe(ambiente.cielorraso)
       );
     }
 
@@ -861,12 +896,13 @@ export function modeloDePlanta(
   }
 
   return {
-    solidos: corridos.map(({ clase, objeto, puntos, desde, hasta }) => ({
+    solidos: corridos.map(({ clase, objeto, puntos, desde, hasta, tareas }) => ({
       clase,
       objeto,
       puntos,
       desde,
       hasta,
+      ...(tareas ? { tareas } : {}),
     })),
     aristas: Array.from(porClase, ([clase, lineas]) => ({ clase, lineas })),
     objetos,

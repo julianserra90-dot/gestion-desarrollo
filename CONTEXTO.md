@@ -1495,7 +1495,16 @@ fondo y lo que se va dibujando.
     **todas** sus tareas, cada una con su tilde, su rubro, lo que mide y
     "Pendiente" o el día en que se hizo; el día de arriba es con el que se
     marca. La tarea que se está mirando se resalta en la lista. Sin orden
-    obligado entre pasos: se ve lo que falta, no se traba.
+    obligado entre pasos: se ve lo que falta, no se traba. Con un rubro
+    elegido arriba, la lista trae sólo las de ese rubro (pedido del usuario:
+    mirando Cielorrasos, el baño mostraba también el porcelanato y la
+    cementicia); sin rubro, todas.
+  - **Cada pieza, con sus tareas** (`Solido.tareas`): el piso de un ambiente
+    lleva las de su piso (contrapiso, porcelanato y sus subtareas) y su
+    cielorraso las suyas. En Avance se pinta, se toca y se resalta sólo la
+    pieza que lleva la tarea mirada: con el contrapiso, el balcón ya no
+    marca también la placa de su cielorraso. El cielorraso aplicado contra la
+    losa tiene ahora su placa fina debajo de ella, para verlo y tocarlo aparte.
   - **Las aberturas llevan tareas** (migración
     `20261126100000_las_aberturas_llevan_tareas`: `tipos_de_abertura.tareas
     uuid[]`; `Abertura.tareas` en el dibujo). Son **del tipo**: en la
