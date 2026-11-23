@@ -255,6 +255,12 @@ export type Columna = {
    * se la junta por su sección.
    */
   perfil: string;
+  /**
+   * Qué tarea del cómputo es, por su id: "Columnas H°A°". Es lo que el plano
+   * le pasa al cómputo, igual que el tipo de un muro. Null: todavía no se
+   * dijo, y su hormigón no se pasa. Una metálica no la usa: se cotiza en kg.
+   */
+  tarea: string | null;
   /** En metros. */
   ancho: number;
   profundidad: number;
@@ -295,6 +301,12 @@ export type Viga = {
   material: Material;
   /** Sólo en las metálicas: qué perfil es, "IPN 200". */
   perfil: string;
+  /**
+   * Qué tarea del cómputo es, por su id: "Columnas H°A°". Es lo que el plano
+   * le pasa al cómputo, igual que el tipo de un muro. Null: todavía no se
+   * dijo, y su hormigón no se pasa. Una metálica no la usa: se cotiza en kg.
+   */
+  tarea: string | null;
   /** En metros: 0,12 × 0,45. **En las de hormigón, el alto incluye la losa.** */
   ancho: number;
   alto: number;
@@ -313,6 +325,11 @@ export type Losa = {
   /** L01. */
   nombre: string;
   puntos: Punto[];
+  /**
+   * Qué tarea del cómputo es: una losa maciza en m³, una de viguetas en m².
+   * Null: todavía no se dijo.
+   */
+  tarea: string | null;
   /** En metros. */
   espesor: number;
   /**
@@ -794,6 +811,11 @@ function noNegativo(valor: unknown): number | null {
   return n !== null && n >= 0 ? n : null;
 }
 
+/** El id de una tarea del catálogo, o null. Una pieza de antes no lo trae. */
+function idDeTarea(valor: unknown): string | null {
+  return typeof valor === "string" && valor !== "" ? valor : null;
+}
+
 /**
  * La estructura guardada. Un dibujo de antes de que existiera no la trae, y
  * abre con la estructura vacía.
@@ -818,6 +840,7 @@ function leerEstructura(valor: unknown): Estructura {
       giro: numero(r.giro) ?? 0,
       material: MATERIALES.find((m) => m.valor === r.material)?.valor ?? "hormigon",
       perfil: typeof r.perfil === "string" ? r.perfil : "",
+      tarea: idDeTarea(r.tarea),
       ancho: medida(r.ancho, COLUMNA_INICIAL.ancho),
       profundidad: medida(r.profundidad, COLUMNA_INICIAL.profundidad),
       desde,
@@ -840,6 +863,7 @@ function leerEstructura(valor: unknown): Estructura {
       referencia: REFERENCIAS.find((ref) => ref.valor === r.referencia)?.valor ?? "centro",
       material: MATERIALES.find((m) => m.valor === r.material)?.valor ?? "hormigon",
       perfil: typeof r.perfil === "string" ? r.perfil : "",
+      tarea: idDeTarea(r.tarea),
       ancho: medida(r.ancho, VIGA_INICIAL.ancho),
       alto: medida(r.alto, VIGA_INICIAL.alto),
       nivel: numero(r.nivel),
@@ -858,6 +882,7 @@ function leerEstructura(valor: unknown): Estructura {
       id: r.id,
       nombre: typeof r.nombre === "string" ? r.nombre : "",
       puntos,
+      tarea: idDeTarea(r.tarea),
       espesor: medida(r.espesor, LOSA_INICIAL.espesor),
       bajoNpt: noNegativo(r.bajoNpt),
     });

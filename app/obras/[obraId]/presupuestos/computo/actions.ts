@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { firmaDeDesglose } from "@/lib/computo";
 import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
 import {
   cantidadDeElemento,
@@ -665,6 +666,201 @@ export async function editarTareaDelComputo(
   return {};
 }
 
+// ============================ El catálogo de tareas ==========================
+
+/**
+ * Corrige el nombre o la unidad de una tarea **del catálogo**, que es común a
+ * todas las obras.
+ *
+ * Cada obra tiene su copia de la tarea en el cómputo, con su nombre y su
+ * unidad, porque se pueden cambiar ahí con el lápiz de la planilla. El
+ * catálogo arreglado tiene que llegarles, pero sin pisar lo que alguien
+ * decidió en una obra:
+ *
+ *   nombre   pasa a las copias que todavía tienen el nombre viejo del
+ *            catálogo. Una que se renombró a mano conserva el suyo.
+ *   unidad   pasa sólo a las copias que siguen en la unidad vieja **y no
+ *            tienen cantidad ni medición**. Pasar 85 m² a "85 m³" cambiaría
+ *            lo que el número dice sin cambiar el número: esas quedan como
+ *            están, y se avisa cuántas.
+ */
+export async function editarTareaDelCatalogo(
+  tareaId: string,
+  nombre: string,
+  unidad: string
+): Promise<Resultado & { aviso?: string }> {
+  const n = nombre.trim();
+  const u = unidad.trim();
+  if (!n) return { error: "La tarea necesita un nombre." };
+  if (!u) return { error: "Elegí la unidad de la tarea." };
+
+  const supabase = await createClient();
+
+  const { data: antes, error: alLeer } = await supabase
+    .from("tareas")
+    .select("id, nombre, unidad")
+    .eq("id", tareaId)
+    .maybeSingle();
+  if (alLeer) return { error: alLeer.message };
+  if (!antes) return { error: "La tarea ya no está en el catálogo." };
+  if (antes.nombre === n && antes.unidad === u) return {};
+
+  const { data, error } = await supabase
+    .from("tareas")
+    .update({ nombre: n, unidad: u })
+    .eq("id", tareaId)
+    .select("id");
+  // El catálogo no repite un nombre dentro de un rubro.
+  if (error?.code === "23505") return { error: "Ya hay una tarea con ese nombre en este rubro." };
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("modificar el catálogo de tareas") };
+
+  let aviso: string | undefined;
+
+  if (antes.nombre !== n) {
+    const { error: alRenombrar } = await supabase
+      .from("computo_items")
+      .update({ nombre: n })
+      .eq("tarea_id", tareaId)
+      .eq("nombre", antes.nombre);
+    if (alRenombrar) return { error: alRenombrar.message };
+  }
+
+  if (antes.unidad !== u) {
+    const { data: copias, error: alLeerCopias } = await supabase
+      .from("computo_items")
+      .select("id, cantidad, computo_item_medicion(id)")
+      .eq("tarea_id", tareaId)
+      .eq("unidad", antes.unidad);
+    if (alLeerCopias) return { error: alLeerCopias.message };
+
+    const vacias = (copias ?? []).filter(
+      (c) => Number(c.cantidad) === 0 && c.computo_item_medicion.length === 0
+    );
+    if (vacias.length > 0) {
+      const { error: alCambiar } = await supabase
+        .from("computo_items")
+        .update({ unidad: u })
+        .in(
+          "id",
+          vacias.map((c) => c.id)
+        );
+      if (alCambiar) return { error: alCambiar.message };
+    }
+
+    const conCantidad = (copias ?? []).length - vacias.length;
+    if (conCantidad > 0) {
+      aviso =
+        conCantidad === 1
+          ? `Una obra ya tiene cantidad cargada en ${antes.unidad} para esta tarea: ahí sigue en ${antes.unidad}. Cambiala con el lápiz de la planilla si corresponde.`
+          : `${conCantidad} obras ya tienen cantidad cargada en ${antes.unidad} para esta tarea: ahí sigue en ${antes.unidad}. Cambiala con el lápiz de la planilla si corresponde.`;
+    }
+  }
+
+  revalidarComputo();
+  return { aviso };
+}
+
+/**
+ * Agrega una tarea al catálogo, que es de todas las obras.
+ *
+ * No es un "ítem propio": ése vive en una sola obra y no tiene composición de
+ * modelo. Ésta queda en el catálogo, en su rubro, para que cualquier obra la
+ * tilde y su composición mejore con el uso. Va al final de su rubro.
+ */
+export async function crearTareaDelCatalogo(
+  rubro: string,
+  subrubro: string,
+  nombre: string,
+  unidad: string
+): Promise<Resultado & { id?: string }> {
+  const r = rubro.trim();
+  const n = nombre.trim();
+  const u = unidad.trim();
+  if (!r) return { error: "La tarea necesita un rubro." };
+  if (!n) return { error: "Poné el nombre de la tarea." };
+  if (!u) return { error: "Elegí la unidad de la tarea." };
+
+  const supabase = await createClient();
+
+  // El rubro del catálogo se escribe como ya está escrito en él, si existe:
+  // "Mamposterías y Tabiquerías" y no la versión de la obra con otra mayúscula.
+  const { data: delRubro } = await supabase
+    .from("tareas")
+    .select("rubro, orden")
+    .ilike("rubro", r.replace(/[\\%_]/g, (c) => `\\${c}`))
+    .order("orden", { ascending: false })
+    .limit(1);
+  const comoEsta = delRubro?.[0]?.rubro ?? r;
+  const orden = (delRubro?.[0]?.orden ?? 0) + 1;
+
+  const { data, error } = await supabase
+    .from("tareas")
+    .insert({ rubro: comoEsta, subrubro: subrubro.trim() || null, nombre: n, unidad: u, orden })
+    .select("id");
+  if (error?.code === "23505") return { error: "Ya hay una tarea con ese nombre en este rubro." };
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("agregar tareas al catálogo") };
+
+  revalidarComputo();
+  return { id: data[0].id };
+}
+
+/**
+ * Borra una tarea del catálogo, **si no la usa nadie**.
+ *
+ * Es para limpiar lo que sobra —repetidas, mal cargadas, de rubros que no se
+ * hacen—, no para sacar una tarea de una obra: eso es destildarla. Por eso no
+ * deja borrar una que esté:
+ *
+ *   en el cómputo de alguna obra   la copia de la obra quedaría suelta, sin
+ *                                  catálogo, y su desglose de modelo se iría.
+ *   en el dibujo de alguna planta  un muro, una capa o una pieza la nombra por
+ *                                  su id, y quedaría "una tarea que ya no
+ *                                  está".
+ *
+ * Dice dónde está, para que se la saque de ahí primero si de verdad sobra.
+ */
+export async function eliminarTareaDelCatalogo(tareaId: string): Promise<Resultado> {
+  const supabase = await createClient();
+
+  const [{ data: enObras, error: alBuscarObras }, { data: plantas, error: alBuscarPlantas }] =
+    await Promise.all([
+      supabase.from("computo_items").select("obra_id").eq("tarea_id", tareaId),
+      supabase.from("plantas").select("nombre, dibujo, obras(nombre)"),
+    ]);
+  if (alBuscarObras) return { error: alBuscarObras.message };
+  if (alBuscarPlantas) return { error: alBuscarPlantas.message };
+
+  const idsDeObras = [...new Set((enObras ?? []).map((i) => i.obra_id))];
+  if (idsDeObras.length > 0) {
+    // La copia de la tarea cuelga del cómputo y no de la obra: el nombre se
+    // busca aparte.
+    const { data: nombres } = await supabase.from("obras").select("nombre").in("id", idsDeObras);
+    const obras = (nombres ?? []).map((o) => o.nombre);
+    if (obras.length < idsDeObras.length) obras.push("otra obra");
+    return {
+      error: `No se puede borrar: está en el cómputo de ${obras.join(", ")}. Sacala de ahí primero.`,
+    };
+  }
+
+  // El dibujo nombra las tareas por su id, en cualquier parte del jsonb.
+  const dibujadas = (plantas ?? []).filter((p) => JSON.stringify(p.dibujo ?? null).includes(tareaId));
+  if (dibujadas.length > 0) {
+    const nombres = dibujadas.map((p) => `${p.nombre} (${p.obras?.nombre ?? "otra obra"})`);
+    return {
+      error: `No se puede borrar: la usa el dibujo de ${nombres.join(", ")}. Cambiala ahí primero.`,
+    };
+  }
+
+  const { data, error } = await supabase.from("tareas").delete().eq("id", tareaId).select("id");
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("borrar tareas del catálogo") };
+
+  revalidarComputo();
+  return {};
+}
+
 // ====================== Acciones directas de la planilla =====================
 // Las llama la pantalla del cómputo sin formulario —tildar una tarea en el
 // catálogo, el tacho de una fila, guardar un desglose desplegado— y siguen en
@@ -960,23 +1156,8 @@ export async function guardarDesgloseDe(
   itemId: string,
   crudos: RenglonParaGuardar[],
   comoModelo: boolean
-): Promise<Resultado> {
-  const renglones = crudos
-    .map((r) => ({
-      tipo: (TIPOS_DESGLOSE as readonly string[]).includes(r.tipo)
-        ? (r.tipo as RenglonDesglose["tipo"])
-        : "Materiales",
-      descripcion: String(r.descripcion ?? "").trim(),
-      unidad: String(r.unidad ?? "").trim() || "un",
-      cantidad: Math.max(Number(r.cantidad) || 0, 0),
-      precio: Math.max(Number(r.precio) || 0, 0),
-      materialId: r.materialId || null,
-      ...consumoDe(r.consumo, r.consumoUnidad),
-      presupuestoId: r.presupuestoId || null,
-      cotizar: Boolean(r.cotizar),
-      usarCotizado: Boolean(r.usarCotizado),
-    }))
-    .filter((r) => r.descripcion !== "");
+): Promise<Resultado & { aviso?: string }> {
+  const renglones = limpiarRenglones(crudos);
 
   const supabase = await createClient();
 
@@ -1000,17 +1181,124 @@ export async function guardarDesgloseDe(
   const error = await aplicarDesglose(supabase, item.id, item.rubro_id, renglones);
   if (error) return { error };
 
+  let aviso: string | undefined;
   if (comoModelo && item.tarea_id) {
-    const { error: errorBorrado } = await supabase
-      .from("tarea_desglose")
-      .delete()
-      .eq("tarea_id", item.tarea_id);
-    if (errorBorrado) return { error: errorBorrado.message };
+    const r = await reemplazarModelo(supabase, item.tarea_id, renglones, item.id);
+    if (r.error) return { error: r.error };
+    aviso = avisoDelModelo(r);
+  }
 
-    if (renglones.length > 0) {
-      const { error: errorModelo } = await supabase.from("tarea_desglose").insert(
+  revalidarComputo();
+  return { aviso };
+}
+
+/** Lo que llegó del navegador, limpio: tipos conocidos, nada negativo. */
+function limpiarRenglones(crudos: RenglonParaGuardar[]) {
+  return crudos
+    .map((r) => ({
+      tipo: (TIPOS_DESGLOSE as readonly string[]).includes(r.tipo)
+        ? (r.tipo as RenglonDesglose["tipo"])
+        : "Materiales",
+      descripcion: String(r.descripcion ?? "").trim(),
+      unidad: String(r.unidad ?? "").trim() || "un",
+      cantidad: Math.max(Number(r.cantidad) || 0, 0),
+      precio: Math.max(Number(r.precio) || 0, 0),
+      materialId: r.materialId || null,
+      ...consumoDe(r.consumo, r.consumoUnidad),
+      presupuestoId: r.presupuestoId || null,
+      cotizar: Boolean(r.cotizar),
+      usarCotizado: Boolean(r.usarCotizado),
+    }))
+    .filter((r) => r.descripcion !== "");
+}
+
+/* ===================== La composición de una tarea del catálogo ============ */
+
+/** Un renglón de desglose como lo devuelve la base, listo para firmar. */
+type RenglonLeido = {
+  tipo: string;
+  descripcion: string;
+  unidad: string;
+  cantidad: number | string;
+  precio_unitario: number | string;
+  material_id: string | null;
+  consumo: number | string | null;
+  consumo_unidad: string | null;
+};
+
+const paraFirmar = (r: RenglonLeido) => ({
+  tipo: r.tipo,
+  descripcion: r.descripcion,
+  unidad: r.unidad,
+  cantidad: Number(r.cantidad),
+  precio: Number(r.precio_unitario),
+  materialId: r.material_id,
+  consumo: r.consumo === null ? null : Number(r.consumo),
+  consumoUnidad: r.consumo_unidad,
+});
+
+const COLUMNAS_DE_RENGLON =
+  "tipo, descripcion, unidad, cantidad, precio_unitario, material_id, consumo, consumo_unidad, orden";
+
+/**
+ * Deja una composición como modelo de una tarea del catálogo, **y se la lleva
+ * a las obras que todavía tienen la copia del modelo anterior**.
+ *
+ * Una obra cuyo desglose de esta tarea es idéntico al modelo viejo no lo
+ * decidió nadie: es lo que vino al tildarla. Esa se actualiza sola. Una que se
+ * ajustó —otro precio, otro consumo, un renglón más— conserva el suyo: es
+ * trabajo de esa obra, y la planilla le avisa que el catálogo dice otra cosa.
+ * Tampoco se toca una que tenga un renglón pedido a cotizar: reemplazarla
+ * soltaría el pedido.
+ *
+ * `excepto` es la obra desde la que se guardó como modelo: a esa ya se le
+ * guardó su desglose.
+ */
+async function reemplazarModelo(
+  supabase: Supabase,
+  tareaId: string,
+  crudos: RenglonDesglose[],
+  excepto: string | null
+): Promise<{ error?: string; actualizadas: number; conservadas: number }> {
+  // El modelo no tiene cotizaciones: son de cada obra.
+  const renglones: RenglonDesglose[] = crudos.map((r) => ({
+    tipo: r.tipo,
+    descripcion: r.descripcion,
+    unidad: r.unidad,
+    cantidad: r.cantidad,
+    precio: r.precio,
+    materialId: r.materialId ?? null,
+    consumo: r.consumo ?? null,
+    consumoUnidad: r.consumo ? (r.consumoUnidad ?? null) : null,
+  }));
+  const nada = { actualizadas: 0, conservadas: 0 };
+
+  const { data: viejo, error: alLeer } = await supabase
+    .from("tarea_desglose")
+    .select(COLUMNAS_DE_RENGLON)
+    .eq("tarea_id", tareaId)
+    .order("orden");
+  if (alLeer) return { error: alLeer.message, ...nada };
+  const firmaVieja = firmaDeDesglose((viejo ?? []).map(paraFirmar));
+  const firmaNueva = firmaDeDesglose(renglones);
+  if (firmaVieja === firmaNueva) return nada;
+
+  const { data: borrados, error: errorBorrado } = await supabase
+    .from("tarea_desglose")
+    .delete()
+    .eq("tarea_id", tareaId)
+    .select("id");
+  if (errorBorrado) return { error: errorBorrado.message, ...nada };
+  if ((viejo ?? []).length > 0 && noTocoNada(borrados)) {
+    return { error: sinPermisoPara("cambiar el catálogo de tareas"), ...nada };
+  }
+
+  if (renglones.length > 0) {
+    const { data: escritos, error: errorModelo } = await supabase
+      .from("tarea_desglose")
+      .insert(
         renglones.map((r, orden) => ({
-          tarea_id: item.tarea_id!,
+          tarea_id: tareaId,
           tipo: r.tipo,
           descripcion: r.descripcion,
           unidad: r.unidad,
@@ -1021,13 +1309,111 @@ export async function guardarDesgloseDe(
           consumo_unidad: r.consumo ? (r.consumoUnidad ?? null) : null,
           orden,
         }))
-      );
-      if (errorModelo) return { error: errorModelo.message };
+      )
+      .select("id");
+    if (errorModelo) return { error: errorModelo.message, ...nada };
+    if (noTocoNada(escritos)) {
+      return { error: sinPermisoPara("cambiar el catálogo de tareas"), ...nada };
     }
   }
 
+  // Las obras que tienen la tarea, con su desglose.
+  const { data: items, error: alLeerObras } = await supabase
+    .from("computo_items")
+    .select(`id, rubro_id, computo_item_desglose(${COLUMNAS_DE_RENGLON}, presupuesto_id)`)
+    .eq("tarea_id", tareaId);
+  if (alLeerObras) return { error: alLeerObras.message, ...nada };
+
+  let actualizadas = 0;
+  let conservadas = 0;
+  for (const item of items ?? []) {
+    if (item.id === excepto) continue;
+    const suyo = [...item.computo_item_desglose].sort((a, b) => a.orden - b.orden);
+    const firma = firmaDeDesglose(suyo.map(paraFirmar));
+    if (firma === firmaNueva) continue;
+    if (firma !== firmaVieja || suyo.some((r) => r.presupuesto_id)) {
+      conservadas += 1;
+      continue;
+    }
+    const error = await aplicarDesglose(supabase, item.id, item.rubro_id, renglones);
+    if (error) return { error, actualizadas, conservadas };
+    actualizadas += 1;
+  }
+
+  return { actualizadas, conservadas };
+}
+
+/** Qué les pasó a las obras, en una línea. Nada si no tenía ninguna. */
+function avisoDelModelo({ actualizadas, conservadas }: { actualizadas: number; conservadas: number }) {
+  const partes: string[] = [];
+  if (actualizadas > 0) {
+    partes.push(
+      actualizadas === 1
+        ? "Se actualizó en 1 obra que tenía la composición anterior"
+        : `Se actualizó en ${actualizadas} obras que tenían la composición anterior`
+    );
+  }
+  if (conservadas > 0) {
+    partes.push(
+      conservadas === 1
+        ? "1 obra la tiene ajustada a mano y la conserva"
+        : `${conservadas} obras la tienen ajustada a mano y la conservan`
+    );
+  }
+  return partes.length > 0 ? `${partes.join("; ")}.` : undefined;
+}
+
+/** La composición de una tarea del catálogo, para editarla desde el catálogo. */
+export async function leerModeloDeTarea(tareaId: string): Promise<{
+  renglones?: {
+    tipo: RenglonDesglose["tipo"];
+    descripcion: string;
+    unidad: string;
+    cantidad: number;
+    precio: number;
+    materialId: string | null;
+    consumo: number | null;
+    consumoUnidad: string | null;
+  }[];
+  error?: string;
+}> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("tarea_desglose")
+    .select(COLUMNAS_DE_RENGLON)
+    .eq("tarea_id", tareaId)
+    .order("orden");
+  if (error) return { error: error.message };
+  return {
+    renglones: (data ?? []).map((r) => ({
+      ...paraFirmar(r),
+      tipo: r.tipo as RenglonDesglose["tipo"],
+    })),
+  };
+}
+
+/**
+ * Guarda la composición de una tarea del catálogo: qué lleva **una unidad**
+ * de la tarea —cuántos ladrillos, cuánto mortero, cuánta mano de obra por
+ * m²—. Es lo que se copia al tildarla en una obra, y lo que les llega a las
+ * obras que todavía tienen la anterior (`reemplazarModelo`).
+ */
+export async function guardarModeloDeTarea(
+  tareaId: string,
+  crudos: RenglonParaGuardar[]
+): Promise<Resultado & { aviso?: string }> {
+  const renglones = limpiarRenglones(crudos);
+  const supabase = await createClient();
+
+  const { data: tarea } = await supabase.from("tareas").select("id").eq("id", tareaId).maybeSingle();
+  if (!tarea) return { error: "La tarea ya no está en el catálogo." };
+
+  await derivarCantidades(supabase, renglones);
+  const r = await reemplazarModelo(supabase, tareaId, renglones, null);
+  if (r.error) return { error: r.error };
+
   revalidarComputo();
-  return {};
+  return { aviso: avisoDelModelo(r) };
 }
 
 /* ========================== La medición de una tarea ======================= */

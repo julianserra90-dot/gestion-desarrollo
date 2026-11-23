@@ -83,7 +83,7 @@ export type GuardarDesglose = (
     usarCotizado: boolean;
   }[],
   comoModelo: boolean
-) => Promise<{ error?: string }>;
+) => Promise<{ error?: string; aviso?: string }>;
 
 const TIPOS: TipoRenglon[] = ["Materiales", "Mano de obra", "Integrado"];
 
@@ -114,6 +114,10 @@ const nuevaClave = () => `n${siguiente++}`;
  *
  * No es un formulario: vive adentro del de la planilla y se guarda solo, con
  * su botón, sin mandar las cantidades que se estén cargando en otras filas.
+ *
+ * Con `modelo` es **la composición de la tarea en el catálogo**: lo mismo,
+ * por una unidad, sin obra. No hay "en la obra" ni cotizaciones, que son de
+ * cada obra.
  */
 export default function DesgloseTarea({
   itemId,
@@ -126,7 +130,16 @@ export default function DesgloseTarea({
   unidadesUsadas = [],
   materiales = [],
   rubroNombre = "",
+  modelo = false,
+  delCatalogo = null,
 }: {
+  /** Si es la composición del catálogo y no el desglose de una obra. */
+  modelo?: boolean;
+  /**
+   * La composición del catálogo, cuando el desglose de esta obra es distinto:
+   * se avisa y se ofrece traerla. Null si son iguales o la tarea es propia.
+   */
+  delCatalogo?: RenglonInicial[] | null;
   /** El catálogo, para atar un renglón de materiales a su ficha. */
   materiales?: MaterialOpcion[];
   /** El rubro de la tarea: el selector lo abre primero. */
@@ -140,12 +153,12 @@ export default function DesgloseTarea({
   /** Si la tarea viene del catálogo: sólo entonces tiene un modelo que pisar. */
   puedeSerModelo: boolean;
   guardar: GuardarDesglose;
-  /** Para cerrar el desplegable cuando se guardó bien. */
-  alGuardar?: () => void;
+  /** Para cerrar el desplegable cuando se guardó bien, con lo que hay que avisar. */
+  alGuardar?: (aviso?: string) => void;
 }) {
   const router = useRouter();
-  const [renglones, setRenglones] = useState<Renglon[]>(() =>
-    iniciales.map((r) => ({
+  const comoRenglones = (lista: RenglonInicial[]): Renglon[] =>
+    lista.map((r) => ({
       clave: nuevaClave(),
       tipo: r.tipo,
       descripcion: r.descripcion,
@@ -162,8 +175,10 @@ export default function DesgloseTarea({
       cotizar: r.presupuestoId !== null,
       usarCotizado: r.usarCotizado,
       cotizacion: r.cotizacion,
-    }))
-  );
+    }));
+  const [renglones, setRenglones] = useState<Renglon[]>(() => comoRenglones(iniciales));
+  /** Si ya se trajo la composición del catálogo: el aviso no tiene más que decir. */
+  const [traida, setTraida] = useState(false);
   const [comoModelo, setComoModelo] = useState(false);
   const [error, setError] = useState("");
   const [guardando, iniciar] = useTransition();
@@ -302,7 +317,7 @@ export default function DesgloseTarea({
       }
       setError("");
       router.refresh();
-      alGuardar?.();
+      alGuardar?.(r.aviso);
     });
 
   return (
@@ -320,13 +335,37 @@ export default function DesgloseTarea({
           <span style={ui.label}>Total por {unidadTarea}</span>
           <strong>{formatMoney(porUnidad)}</strong>
         </span>
-        <span style={dato}>
-          <span style={ui.label}>
-            En la obra ({cantidadTarea.toLocaleString("es-AR")} {unidadTarea})
+        {!modelo && (
+          <span style={dato}>
+            <span style={ui.label}>
+              En la obra ({cantidadTarea.toLocaleString("es-AR")} {unidadTarea})
+            </span>
+            <strong>{formatMoney(porUnidad * cantidadTarea)}</strong>
           </span>
-          <strong>{formatMoney(porUnidad * cantidadTarea)}</strong>
-        </span>
+        )}
       </div>
+
+      {/* El catálogo dice otra cosa: puede ser un ajuste de esta obra, que
+          está bien, o una composición que se corrigió después. Se avisa y se
+          ofrece; traerla no guarda, hay que revisarla y guardar. */}
+      {delCatalogo && !traida && (
+        <p style={avisoCatalogo}>
+          Distinto del catálogo.{" "}
+          <button
+            type="button"
+            onClick={() => {
+              setRenglones(comoRenglones(delCatalogo));
+              setTraida(true);
+            }}
+            style={botonTraer}
+          >
+            Traer la del catálogo
+          </button>
+        </p>
+      )}
+      {traida && (
+        <p style={avisoCatalogo}>Composición del catálogo cargada, sin guardar.</p>
+      )}
 
       {renglones.length === 0 ? (
         <p style={vacio}>Sin desglose: la tarea no suma nada todavía.</p>
@@ -341,8 +380,8 @@ export default function DesgloseTarea({
                 <th style={thCentro}>Cant. por {unidadTarea}</th>
                 <th style={thCentro}>Precio unit.</th>
                 <th style={thDer}>Por {unidadTarea}</th>
-                <th style={thDer}>En la obra</th>
-                <th style={thIzq}>Cotización</th>
+                {!modelo && <th style={thDer}>En la obra</th>}
+                {!modelo && <th style={thIzq}>Cotización</th>}
                 <th style={thIzq} />
               </tr>
             </thead>
@@ -442,18 +481,22 @@ export default function DesgloseTarea({
                     />
                   </td>
                   <td style={celdaNumero}>{formatMoney(subtotal(r))}</td>
-                  <td style={celdaTotal}>
-                    {formatMoney(subtotal(r) * cantidadTarea)}
-                    {usaCotizado(r) && <span style={marcaCotizado}>cotizado</span>}
-                  </td>
-                  <td style={celda}>
-                    <CeldaCotizacion
-                      renglon={r}
-                      computadoEnObra={computado(r) * cantidadTarea}
-                      alTildar={(v) => cambiar(r.clave, "cotizar", v)}
-                      alElegir={(v) => cambiar(r.clave, "usarCotizado", v)}
-                    />
-                  </td>
+                  {!modelo && (
+                    <>
+                      <td style={celdaTotal}>
+                        {formatMoney(subtotal(r) * cantidadTarea)}
+                        {usaCotizado(r) && <span style={marcaCotizado}>cotizado</span>}
+                      </td>
+                      <td style={celda}>
+                        <CeldaCotizacion
+                          renglon={r}
+                          computadoEnObra={computado(r) * cantidadTarea}
+                          alTildar={(v) => cambiar(r.clave, "cotizar", v)}
+                          alElegir={(v) => cambiar(r.clave, "usarCotizado", v)}
+                        />
+                      </td>
+                    </>
+                  )}
                   <td style={celda}>
                     <button
                       type="button"
@@ -483,7 +526,7 @@ export default function DesgloseTarea({
           {/* Para que el próximo revoque no arranque de la referencia de
               Cifras sino de cal, cemento y arena. Apagado por defecto: un
               ajuste de esta obra no tiene por qué ser el de todas. */}
-          {puedeSerModelo && (
+          {puedeSerModelo && !modelo && (
             <label style={casillaModelo}>
               <input
                 type="checkbox"
@@ -494,7 +537,7 @@ export default function DesgloseTarea({
             </label>
           )}
           <button type="button" onClick={enviar} disabled={guardando} style={botonGuardar}>
-            {guardando ? "Guardando…" : "Guardar desglose"}
+            {guardando ? "Guardando…" : modelo ? "Guardar composición" : "Guardar desglose"}
           </button>
         </div>
       </div>
@@ -675,6 +718,26 @@ function ejemplo(tipo: TipoRenglon) {
   if (tipo === "Mano de obra") return "Ej: Oficial albañil";
   return "Ej: Gráfica ploteada y colocada";
 }
+
+const avisoCatalogo = {
+  fontSize: "13px",
+  color: "#8a5a00",
+  background: "#fff4d6",
+  borderRadius: "8px",
+  padding: "8px 12px",
+  margin: "0 0 12px",
+};
+
+const botonTraer = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  color: "inherit",
+  fontWeight: 600,
+  textDecoration: "underline",
+  fontSize: "13px",
+  cursor: "pointer",
+};
 
 const caja = {
   background: "#fafafa",

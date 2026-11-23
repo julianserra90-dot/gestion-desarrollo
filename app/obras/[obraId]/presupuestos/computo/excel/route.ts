@@ -1,4 +1,9 @@
-import { getComputo, listadoDeMateriales, ordenDeRubro } from "@/lib/computo";
+import {
+  getComputo,
+  getMaterialesParaListado,
+  listadoDeMateriales,
+  ordenDeRubro,
+} from "@/lib/computo";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 
@@ -42,13 +47,14 @@ export async function GET(
   const filas: (string | number)[][] = [];
 
   if (vista === "materiales") {
-    filas.push(["Material", "Unidad", "Cantidad", "Precio unitario", "Importe", "Tareas"]);
+    filas.push(["Material", "Unidad", "Cantidad", "A comprar", "Precio unitario", "Importe", "Tareas"]);
     let total = 0;
-    for (const m of listadoDeMateriales(computo.items)) {
+    for (const m of listadoDeMateriales(computo.items, await getMaterialesParaListado())) {
       filas.push([
         m.descripcion,
         m.unidad,
         m.cantidad,
+        m.comercial ?? "",
         m.cantidad > 0 ? m.importe / m.cantidad : 0,
         m.importe,
         m.tareas,
@@ -56,7 +62,7 @@ export async function GET(
       total += m.importe;
     }
     filas.push([]);
-    filas.push(["Total materiales", "", "", "", total, ""]);
+    filas.push(["Total materiales", "", "", "", "", total, ""]);
   } else {
     filas.push([
       "Rubro",

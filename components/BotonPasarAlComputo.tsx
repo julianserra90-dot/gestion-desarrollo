@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import SignoDelPlano, { AMBAR } from "@/components/SignoDelPlano";
+import { AMBAR } from "@/components/SignoDelPlano";
 import * as ui from "@/components/ui";
 import type { Pase } from "@/lib/pase-al-computo";
 
@@ -82,6 +82,10 @@ export default function BotonPasarAlComputo({
         p.sinTerminacion > 0.005 && `${numero.format(p.sinTerminacion)} m² de pared sin terminación`,
         p.sinPiso > 0.005 && `${numero.format(p.sinPiso)} m² de ambiente sin piso`,
         p.sinCielorraso > 0.005 && `${numero.format(p.sinCielorraso)} m² sin cielorraso`,
+        p.piezasSinTarea > 0 &&
+          (p.piezasSinTarea === 1
+            ? "1 pieza de hormigón sin tarea"
+            : `${p.piezasSinTarea} piezas de hormigón sin tarea`),
       ].filter(Boolean)
     : [];
 
@@ -104,11 +108,7 @@ export default function BotonPasarAlComputo({
           <div role="dialog" aria-modal="true" aria-label="Pasar el plano al cómputo" style={caja}>
             <header style={cabecera}>
               <h2 style={titulo}>Pasar el plano al cómputo</h2>
-              <p style={bajada}>
-                Lo que miden las plantas guardadas, por tarea y por piso. Se reemplaza sólo lo que
-                había venido del plano: lo medido a mano queda como está. En el cómputo, esas
-                cantidades llevan la marca <SignoDelPlano />.
-              </p>
+
             </header>
 
             {error && <p style={errorBox}>{error}</p>}
@@ -149,10 +149,7 @@ export default function BotonPasarAlComputo({
                             {l.renglones.length === 0 && " · el plano ya no la mide"}
                           </span>
                           {l.aMano > 0 && l.delPlano > 0 && (
-                            <span style={convive}>
-                              Tiene {cantidad(l.aMano, l.unidad)} medidos a mano, que se suman. Si
-                              son lo mismo, borrá los que sobran en su medición.
-                            </span>
+                            <span style={convive}>+ {cantidad(l.aMano, l.unidad)} a mano</span>
                           )}
                         </td>
                         <td style={tdDer}>{l.itemId === null ? "—" : cantidad(l.hoy, l.unidad)}</td>
@@ -191,6 +188,14 @@ export default function BotonPasarAlComputo({
                       .map((n) => (n.unidad ? `${n.nombre} (${n.unidad})` : n.nombre))
                       .join(", ")}
                     .
+                  </p>
+                )}
+                {pase.pendientes.metalicas > 0 && (
+                  <p style={nota}>
+                    {pase.pendientes.metalicas === 1
+                      ? "La pieza metálica no se pasa"
+                      : `Las ${pase.pendientes.metalicas} piezas metálicas no se pasan`}
+                    : se cotizan en kg, y el plano todavía no sabe cuánto pesa cada perfil.
                   </p>
                 )}
                 {pase.sinEscala.length > 0 && (
@@ -270,11 +275,6 @@ const titulo = {
   margin: 0,
 };
 
-const bajada = {
-  fontSize: "13px",
-  color: "#777777",
-  margin: 0,
-};
 
 /** La tabla es lo único que se corre si son muchas tareas. */
 const tablaConBarra = {

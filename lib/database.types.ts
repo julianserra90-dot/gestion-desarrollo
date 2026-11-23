@@ -1564,6 +1564,41 @@ export type Database = {
           },
         ]
       }
+      material_presentaciones: {
+        Row: {
+          contenido: number
+          creado_en: string
+          id: string
+          material_id: string
+          nombre: string
+          unidad: string
+        }
+        Insert: {
+          contenido: number
+          creado_en?: string
+          id?: string
+          material_id: string
+          nombre: string
+          unidad: string
+        }
+        Update: {
+          contenido?: number
+          creado_en?: string
+          id?: string
+          material_id?: string
+          nombre?: string
+          unidad?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_presentaciones_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materiales: {
         Row: {
           contenido: number | null

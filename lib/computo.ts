@@ -12,6 +12,15 @@
 
 import { factorCac, mesDeFecha, type IndiceCac } from "@/lib/cac";
 import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
+import { getMaterialesCatalogo, getPresentaciones } from "@/lib/materiales";
+import {
+  aBase,
+  compraMinima,
+  tamanosDe,
+  textoDeCompra,
+  unidadBase,
+  type MaterialConPresentaciones,
+} from "@/lib/presentaciones";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -500,12 +509,43 @@ export async function getComparacion(
 
 export type MaterialListado = {
   descripcion: string;
+  /**
+   * En lo que se mide lo que hace falta: la unidad de lo que trae el envase si
+   * el material declara uno (5 kg de cemento, no 0,2 bolsas), y si no la suya.
+   */
   unidad: string;
   cantidad: number;
   importe: number;
   /** En cuántas tareas aparece: el mismo cemento va en el revoque y en el contrapiso. */
   tareas: number;
+  /**
+   * Lo que hay que comprar: "1 bolsa de 25 kg", "1 balde de 20 litros + 2
+   * latas de 4 litros". Null si el material no dice cómo se vende.
+   */
+  comercial: string | null;
 };
+
+/**
+ * El catálogo de materiales con sus presentaciones, por id: lo que el listado
+ * necesita para decir qué comprar.
+ */
+export async function getMaterialesParaListado(): Promise<Map<string, MaterialConPresentaciones>> {
+  const [catalogo, presentaciones] = await Promise.all([
+    getMaterialesCatalogo(),
+    getPresentaciones(),
+  ]);
+  return new Map(
+    catalogo.map((m) => [
+      m.id,
+      {
+        unidad: m.unidad,
+        contenido: m.contenido,
+        contenidoUnidad: m.contenidoUnidad,
+        presentaciones: presentaciones.get(m.id) ?? [],
+      },
+    ])
+  );
+}
 
 /**
  * Todos los materiales de la obra, sumados: el pedido que se le hace al
@@ -516,9 +556,19 @@ export type MaterialListado = {
  * son dos renglones, porque no se pueden sumar. El renglón genérico de la
  * referencia de Cifras no es un material que se pida: va con el nombre de su
  * tarea, para que se vea de dónde sale y que falta desglosarlo.
+ *
+ * Con `catalogo`, lo que apunta a un material se suma **en su unidad base**
+ * —el cemento en kg, aunque un desglose diga bolsas y otro kg— y se dice qué
+ * comprar (`lib/presentaciones.ts`): 5 kg son una bolsa de 25.
  */
-export function listadoDeMateriales(items: ItemComputo[]): MaterialListado[] {
-  const porClave = new Map<string, MaterialListado & { ids: Set<string> }>();
+export function listadoDeMateriales(
+  items: ItemComputo[],
+  catalogo: Map<string, MaterialConPresentaciones> = new Map()
+): MaterialListado[] {
+  const porClave = new Map<
+    string,
+    Omit<MaterialListado, "comercial"> & { ids: Set<string>; materialId: string | null }
+  >();
 
   for (const item of items) {
     if (item.cantidad <= 0) continue;
@@ -532,19 +582,25 @@ export function listadoDeMateriales(items: ItemComputo[]): MaterialListado[] {
       // aunque uno diga "Bolsa cemento 25kg" y el otro "Bolsa Cemento 25 kg".
       // Sin enlace no queda más remedio que confiar en el texto, que es lo
       // que se hacía siempre.
-      const clave = r.materialId
-        ? `material:${r.materialId}`
-        : `texto:${descripcion.toLowerCase()}|${r.unidad}`;
+      const material = r.materialId ? catalogo.get(r.materialId) : undefined;
+      const enBase = material ? aBase(item.cantidad * r.cantidad, r.unidad, material) : null;
+      // Un renglón atado a un material pero en una unidad que no es suya no
+      // se puede sumar con los otros: va aparte, como iba siempre.
+      const clave =
+        r.materialId && (enBase !== null || !material)
+          ? `material:${r.materialId}`
+          : `texto:${descripcion.toLowerCase()}|${r.unidad}`;
 
       const actual = porClave.get(clave) ?? {
         descripcion,
-        unidad: r.unidad,
+        unidad: material && enBase !== null ? unidadBase(material) : r.unidad,
         cantidad: 0,
         importe: 0,
         tareas: 0,
         ids: new Set<string>(),
+        materialId: material && enBase !== null ? r.materialId : null,
       };
-      actual.cantidad += item.cantidad * r.cantidad;
+      actual.cantidad += enBase ?? item.cantidad * r.cantidad;
       actual.importe += item.cantidad * porUnidadDe(r, item.cantidad);
       actual.ids.add(item.id);
       actual.tareas = actual.ids.size;
@@ -553,13 +609,18 @@ export function listadoDeMateriales(items: ItemComputo[]): MaterialListado[] {
   }
 
   return [...porClave.values()]
-    .map((m) => ({
-      descripcion: m.descripcion,
-      unidad: m.unidad,
-      cantidad: m.cantidad,
-      importe: m.importe,
-      tareas: m.tareas,
-    }))
+    .map((m) => {
+      const material = m.materialId ? catalogo.get(m.materialId) : undefined;
+      const compra = material ? compraMinima(m.cantidad, tamanosDe(material)) : null;
+      return {
+        descripcion: m.descripcion,
+        unidad: m.unidad,
+        cantidad: m.cantidad,
+        importe: m.importe,
+        tareas: m.tareas,
+        comercial: compra ? textoDeCompra(compra) : null,
+      };
+    })
     .sort((a, b) => a.descripcion.localeCompare(b.descripcion, "es"));
 }
 

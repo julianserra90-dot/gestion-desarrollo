@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import * as ui from "@/components/ui";
@@ -32,6 +33,10 @@ export type RubroCatalogo = {
  * deshacer el clic y preguntar ahí sólo estorbaría. Qué cuenta como "algo que
  * perder" lo decide el servidor en `loCargadoPorTarea`, que es donde está
  * escrito el porqué de cada caso.
+ *
+ * Acá sólo se elige. Las tareas mismas —su nombre, su unidad, qué lleva una
+ * unidad— se configuran en la página de cada rubro (Rubros → Tareas), con el
+ * enlace "Configurar tareas" de cada uno.
  */
 export default function CatalogoComputo({
   obraId,
@@ -41,7 +46,10 @@ export default function CatalogoComputo({
   rubrosObra,
   alternar,
   crearPropia,
+  configurar = {},
 }: {
+  /** La página de tareas de cada rubro, por su nombre en minúsculas. */
+  configurar?: Record<string, string>;
   obraId: string;
   rubros: RubroCatalogo[];
   elegidas: string[];
@@ -230,6 +238,11 @@ export default function CatalogoComputo({
               </summary>
 
               <div style={accionesRubro}>
+                {configurar[rubro.nombre.toLowerCase()] && (
+                  <Link href={configurar[rubro.nombre.toLowerCase()]} style={enlaceConfigurar}>
+                    Configurar tareas ›
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() =>
@@ -344,6 +357,16 @@ const contador = {
 
 const accionesRubro = {
   margin: "2px 0 4px",
+  display: "flex",
+  justifyContent: "space-between",
+  flexDirection: "row-reverse" as const,
+  alignItems: "center",
+};
+
+const enlaceConfigurar = {
+  fontSize: "12px",
+  color: "#777777",
+  textDecoration: "none",
 };
 
 const fila = {

@@ -335,9 +335,7 @@ export default function MedicionTarea({
         <div style={cajaDelPlano}>
           <p style={tituloDelPlano}>
             <SignoDelPlano /> Del plano · {cantidadAR.format(totalDelPlano)} {unidadTarea}
-            <span style={ayudaDelPlano}>
-              Lo midió el dibujo de las plantas. Se corrige ahí y se vuelve a pasar al cómputo.
-            </span>
+
           </p>
           <table style={tablaDelPlano}>
             <tbody>
@@ -359,10 +357,7 @@ export default function MedicionTarea({
             </tbody>
           </table>
           {filas.length > 0 && (
-            <p style={avisoConvive}>
-              Esta tarea tiene medición del plano y también a mano, y las dos suman. Si miden lo
-              mismo está contada dos veces: quitá abajo los elementos que sobran.
-            </p>
+            <p style={avisoConvive}>También medida a mano: las dos suman.</p>
           )}
         </div>
       )}
@@ -635,13 +630,6 @@ const tituloDelPlano = {
   margin: "0 0 6px",
 };
 
-const ayudaDelPlano = {
-  display: "block",
-  fontSize: "12px",
-  fontWeight: 400,
-  color: "#777777",
-  marginTop: "2px",
-};
 
 const tablaDelPlano = {
   borderCollapse: "collapse" as const,

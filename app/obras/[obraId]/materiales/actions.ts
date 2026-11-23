@@ -192,6 +192,67 @@ export async function eliminarMaterial(formData: FormData) {
  * resumen se lo dejaría mirando el aviso de "listo, se guardó" sin ver qué
  * cambió.
  */
+/**
+ * Agrega una forma de comprar un material: lata de 4 litros, balde de 20.
+ *
+ * La unidad de lo que trae tiene que ser una de las del material —la suya, o
+ * la de su envase—: una "lata de 4 litros" de un material que se mide en m² no
+ * se puede comparar con lo que pide el cómputo, y el listado no sabría qué
+ * hacer con ella.
+ */
+export async function agregarPresentacion(formData: FormData) {
+  const volver = rutaDeVuelta(formData);
+  const materialId = String(formData.get("material_id") ?? "");
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  const unidad = String(formData.get("unidad") ?? "");
+  const contenido = Number(String(formData.get("contenido") ?? "").replace(",", "."));
+
+  if (!nombre) volverCon(volver, "Poné cómo se llama la presentación: lata, balde, bolsa.");
+  if (!Number.isFinite(contenido) || contenido <= 0) {
+    volverCon(volver, "Lo que trae la presentación tiene que ser un número mayor que cero.");
+  }
+
+  const supabase = await createClient();
+  const { data: material } = await supabase
+    .from("materiales")
+    .select("nombre, unidad, contenido_unidad")
+    .eq("id", materialId)
+    .maybeSingle();
+  if (!material) volverCon(volver, "El material ya no está en el catálogo.");
+
+  const validas = [material.unidad, material.contenido_unidad].filter(Boolean) as string[];
+  if (!validas.includes(unidad)) {
+    volverCon(
+      volver,
+      `La presentación de ${material.nombre} tiene que medirse en ${validas.join(" o ")}: es con lo que se compara lo que pide el cómputo.`
+    );
+  }
+
+  const { error } = await supabase
+    .from("material_presentaciones")
+    .insert({ material_id: materialId, nombre, contenido, unidad });
+  if (error?.code === "23505") volverCon(volver, "Esa presentación ya está cargada.");
+  if (error) volverCon(volver, error.message);
+
+  listo(volver);
+}
+
+export async function quitarPresentacion(formData: FormData) {
+  const volver = rutaDeVuelta(formData);
+  const id = String(formData.get("presentacion_id") ?? "");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("material_presentaciones")
+    .delete()
+    .eq("id", id)
+    .select("id");
+  if (error) volverCon(volver, error.message);
+  if (noTocoNada(data)) volverCon(volver, SIN_PERMISO);
+
+  listo(volver);
+}
+
 function rutaDeVuelta(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   return `/obras/${slug}/materiales/catalogo`;

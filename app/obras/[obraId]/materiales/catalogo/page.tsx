@@ -3,13 +3,16 @@ import MaterialesNav from "@/components/MaterialesNav";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
+import { getPresentaciones } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
 import { createClient } from "@/lib/supabase/server";
 import { UNIDADES } from "@/lib/unidades";
 import {
   actualizarMaterial,
+  agregarPresentacion,
   crearMaterial,
   eliminarMaterial,
+  quitarPresentacion,
 } from "../actions";
 
 /**
@@ -18,6 +21,10 @@ import {
  * Es **uno solo para todas las obras**, igual que el de proveedores: el ladrillo
  * común es el mismo ladrillo en todos lados. Se entra por una obra pero se
  * edita el catálogo entero, así que la pantalla lo dice.
+ *
+ * Cada material lleva además sus **presentaciones**: las formas en que se
+ * vende —lata de 1, 4 y 10 litros; balde de 20—. Con ellas el listado de
+ * materiales del cómputo dice qué comprar y no sólo cuánto hace falta.
  *
  * Vive en su propia solapa y no debajo del consumo: son dos preguntas distintas
  * —qué entró a la obra, y qué se puede elegir al cargar— y tenerlas apiladas
@@ -45,7 +52,7 @@ export default async function CatalogoMaterialesPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: catalogo }, { data: rubros }, { data: perfil }] =
+  const [{ data: catalogo }, { data: rubros }, { data: perfil }, presentaciones] =
     await Promise.all([
       supabase
         .from("materiales")
@@ -64,6 +71,7 @@ export default async function CatalogoMaterialesPage({
         .select("rol")
         .eq("id", user?.id ?? "")
         .maybeSingle(),
+      getPresentaciones(),
     ]);
 
   const esAdmin = perfil?.rol === "admin";
@@ -220,6 +228,12 @@ export default async function CatalogoMaterialesPage({
             <div style={{ ...filas, marginTop: "16px" }}>
               {grupo.materiales.map((m) => {
                 const veces = usos.get(m.id) ?? 0;
+                const suyas = presentaciones.get(m.id) ?? [];
+                // En qué se puede medir una presentación: la unidad del
+                // material, o la de lo que trae su envase.
+                const unidadesDePresentacion = [
+                  ...new Set([m.contenido_unidad, m.unidad].filter(Boolean) as string[]),
+                ];
 
                 return (
                   <div key={m.id} style={fila}>
@@ -333,6 +347,76 @@ export default async function CatalogoMaterialesPage({
                           : `En ${veces} ${veces === 1 ? "compra" : "compras"}`}
                       </span>
                     )}
+
+                    {/* Las formas en que se vende. Sin ninguna, vale el
+                        envase de arriba. */}
+                    <div style={filaPresentaciones}>
+                      <span style={etiquetaPresentaciones}>Se vende en</span>
+                      {suyas.length === 0 && (
+                        <span style={ui.note}>
+                          {m.contenido
+                            ? `${m.unidad === "un" ? "envase" : m.unidad} de ${Number(m.contenido).toLocaleString("es-AR")} ${m.contenido_unidad}`
+                            : "—"}
+                        </span>
+                      )}
+                      {suyas.map((p) => (
+                        <span key={p.id} style={chip}>
+                          {p.nombre} de {p.contenido.toLocaleString("es-AR")} {p.unidad}
+                          {esAdmin && (
+                            <form action={quitarPresentacion} style={formEnLinea}>
+                              <input type="hidden" name="slug" value={obra.slug} />
+                              <input type="hidden" name="presentacion_id" value={p.id} />
+                              <button
+                                type="submit"
+                                style={botonQuitarChip}
+                                aria-label={`Quitar ${p.nombre} de ${p.contenido} ${p.unidad}`}
+                                title="Quitar esta presentación"
+                              >
+                                ×
+                              </button>
+                            </form>
+                          )}
+                        </span>
+                      ))}
+                      <form action={agregarPresentacion} style={formPresentacion}>
+                        <input type="hidden" name="slug" value={obra.slug} />
+                        <input type="hidden" name="material_id" value={m.id} />
+                        <input
+                          type="text"
+                          name="nombre"
+                          placeholder="Lata"
+                          aria-label="Presentación"
+                          required
+                          style={campoChico}
+                        />
+                        <span style={ui.note}>de</span>
+                        <input
+                          type="number"
+                          name="contenido"
+                          min={0}
+                          step="any"
+                          placeholder="4"
+                          aria-label="Cuánto trae"
+                          required
+                          style={{ ...campoChico, width: "70px" }}
+                        />
+                        <select
+                          name="unidad"
+                          defaultValue={unidadesDePresentacion[0]}
+                          aria-label="Unidad de lo que trae"
+                          style={{ ...campoChico, width: "90px" }}
+                        >
+                          {unidadesDePresentacion.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                        <button type="submit" style={botonChico}>
+                          + Agregar
+                        </button>
+                      </form>
+                    </div>
                   </div>
                 );
               })}
@@ -435,6 +519,66 @@ const avisoBox = {
   padding: "14px",
   marginBottom: "20px",
   fontSize: "14px",
+};
+
+// Las presentaciones van debajo del material, a lo ancho de su fila.
+const filaPresentaciones = {
+  flex: "1 1 100%",
+  display: "flex",
+  flexWrap: "wrap" as const,
+  alignItems: "center",
+  gap: "8px",
+  paddingLeft: "4px",
+};
+
+const etiquetaPresentaciones = {
+  fontSize: "12px",
+  color: "#888888",
+};
+
+const chip = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+  background: "#f3f3f3",
+  borderRadius: "999px",
+  padding: "4px 6px 4px 12px",
+  fontSize: "13px",
+};
+
+const formEnLinea = {
+  display: "inline",
+  margin: 0,
+};
+
+const botonQuitarChip = {
+  background: "none",
+  border: "none",
+  color: "#999999",
+  fontSize: "15px",
+  lineHeight: 1,
+  cursor: "pointer",
+  padding: "0 4px",
+};
+
+const formPresentacion = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  flexWrap: "wrap" as const,
+};
+
+const campoChico = {
+  ...ui.input,
+  padding: "6px 10px",
+  fontSize: "13px",
+  width: "110px",
+};
+
+const botonChico = {
+  ...ui.secondaryButton,
+  padding: "6px 12px",
+  fontSize: "13px",
 };
 
 // El número y su unidad, en línea: "trae 30 kg" se lee de una.

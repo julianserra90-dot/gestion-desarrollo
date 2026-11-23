@@ -24,8 +24,13 @@ export default async function RubrosPage({
 
   const supabase = await createClient();
 
-  const [{ data: rubros }, { data: gastos }, { data: avances }, { data: fotos }] =
-    await Promise.all([
+  const [
+    { data: rubros },
+    { data: gastos },
+    { data: avances },
+    { data: fotos },
+    { data: tareas },
+  ] = await Promise.all([
       supabase
         .from("rubros")
         .select("id, nombre, orden, activo")
@@ -34,7 +39,16 @@ export default async function RubrosPage({
       supabase.from("gastos").select("rubro_id").eq("obra_id", obra.id),
       supabase.from("avances").select("rubro_id").eq("obra_id", obra.id),
       supabase.from("foto_registros").select("rubro_id").eq("obra_id", obra.id),
+      // Cuántas tareas tiene cada rubro en el catálogo, para el enlace a sus
+      // tareas. El catálogo nombra el rubro por texto.
+      supabase.from("tareas").select("rubro"),
     ]);
+
+  const tareasPorRubro = new Map<string, number>();
+  for (const t of tareas ?? []) {
+    const clave = t.rubro.toLowerCase();
+    tareasPorRubro.set(clave, (tareasPorRubro.get(clave) ?? 0) + 1);
+  }
 
   // Cuántas veces se usa cada rubro, para saber si se puede borrar.
   const usos = new Map<string, number>();
@@ -52,6 +66,7 @@ export default async function RubrosPage({
     nombre: r.nombre,
     activo: r.activo,
     usos: usos.get(r.id) ?? 0,
+    tareas: tareasPorRubro.get(r.nombre.toLowerCase()) ?? 0,
   }));
 
   const marcados = lista.filter((r) => r.activo).length;

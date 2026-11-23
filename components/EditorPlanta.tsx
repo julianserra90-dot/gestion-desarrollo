@@ -329,14 +329,16 @@ export default function EditorPlanta({
     giro: number;
     material: Material;
     perfil: string;
-  }>({
+    tarea: string | null;
+  }>(() => ({
     ...COLUMNA_INICIAL,
     nombre: "",
     ancla: "centro",
     giro: 0,
     material: "hormigon",
     perfil: "",
-  });
+    tarea: tareaSugerida(tiposDeMuro, "columnas"),
+  }));
   const [moldeDeViga, setMoldeDeViga] = useState<{
     nombre: string;
     ancho: number;
@@ -344,11 +346,20 @@ export default function EditorPlanta({
     referencia: Referencia;
     material: Material;
     perfil: string;
-  }>({ ...VIGA_INICIAL, nombre: "", referencia: "centro", material: "hormigon", perfil: "" });
-  const [moldeDeLosa, setMoldeDeLosa] = useState({
+    tarea: string | null;
+  }>(() => ({
+    ...VIGA_INICIAL,
+    nombre: "",
+    referencia: "centro",
+    material: "hormigon",
+    perfil: "",
+    tarea: tareaSugerida(tiposDeMuro, "vigas"),
+  }));
+  const [moldeDeLosa, setMoldeDeLosa] = useState(() => ({
     nombre: "",
     espesor: LOSA_INICIAL.espesor,
-  });
+    tarea: tareaSugerida(tiposDeMuro, "losas"),
+  }));
   const [vista, setVista] = useState<Vista | null>(null);
   const [tamano, setTamano] = useState<{ w: number; h: number } | null>(null);
 
@@ -707,6 +718,27 @@ export default function EditorPlanta({
     }
   };
 
+  /** El mismo cambio en varias piezas de una clase, en un solo paso del historial. */
+  const cambiarPiezas = <K extends ClaseDePieza>(
+    clase: K,
+    ids: string[],
+    cambios: Partial<Estructura[K][number]>
+  ) => {
+    const cuales = new Set(ids);
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        estructura: {
+          ...estructura,
+          [clase]: (estructura[clase] as Estructura[K][number][]).map((p) =>
+            cuales.has(p.id) ? { ...p, ...cambios } : p
+          ),
+        },
+      },
+    });
+  };
+
   const agregarAEstructura = (cambios: Partial<Estructura>) =>
     cambiar({ escala, dibujo: { ...dibujo, estructura: { ...estructura, ...cambios } } });
 
@@ -723,7 +755,7 @@ export default function EditorPlanta({
   const proximaLosa = nombreQueSigue("L", estructura.losas);
 
   const colocarColumna = (p: Punto) => {
-    const { ancho, profundidad, ancla, giro, material, perfil } = moldeDeColumna;
+    const { ancho, profundidad, ancla, giro, material, perfil, tarea } = moldeDeColumna;
     if (!(ancho > 0) || !(profundidad > 0)) return;
     agregarAEstructura({
       columnas: [
@@ -736,6 +768,7 @@ export default function EditorPlanta({
           giro,
           material,
           perfil: material === "metalica" ? perfil.trim() : "",
+          tarea: material === "metalica" ? null : tarea,
           ancho,
           profundidad,
           // De la losa de abajo al fondo de la de arriba: lo de casi todas.
@@ -758,6 +791,7 @@ export default function EditorPlanta({
           id,
           nombre: moldeDeLosa.nombre.trim() || proximaLosa,
           puntos,
+          tarea: moldeDeLosa.tarea,
           espesor: moldeDeLosa.espesor,
           bajoNpt: null,
         },
@@ -1294,6 +1328,7 @@ export default function EditorPlanta({
               referencia: moldeDeViga.referencia,
               material: moldeDeViga.material,
               perfil: moldeDeViga.material === "metalica" ? moldeDeViga.perfil.trim() : "",
+              tarea: moldeDeViga.material === "metalica" ? null : moldeDeViga.tarea,
               ancho: moldeDeViga.ancho,
               alto: moldeDeViga.alto,
               nivel: null,
@@ -3377,6 +3412,13 @@ export default function EditorPlanta({
                   perfil={moldeDeColumna.perfil}
                   alCambiar={(cambios) => setMoldeDeColumna({ ...moldeDeColumna, ...cambios })}
                 />
+                {moldeDeColumna.material !== "metalica" && (
+                  <TareaDePieza
+                    valor={moldeDeColumna.tarea}
+                    tipos={tareasDePieza(tiposDeMuro, "columnas")}
+                    alCambiar={(tarea) => setMoldeDeColumna({ ...moldeDeColumna, tarea })}
+                  />
+                )}
                 <div style={dosCampos}>
                   <label style={campo}>
                     <span style={rotulo}>Ancho (m)</span>
@@ -3432,6 +3474,13 @@ export default function EditorPlanta({
                   perfil={moldeDeViga.perfil}
                   alCambiar={(cambios) => setMoldeDeViga({ ...moldeDeViga, ...cambios })}
                 />
+                {moldeDeViga.material !== "metalica" && (
+                  <TareaDePieza
+                    valor={moldeDeViga.tarea}
+                    tipos={tareasDePieza(tiposDeMuro, "vigas")}
+                    alCambiar={(tarea) => setMoldeDeViga({ ...moldeDeViga, tarea })}
+                  />
+                )}
                 <div style={dosCampos}>
                   <label style={campo}>
                     <span style={rotulo}>Ancho (m)</span>
@@ -3476,6 +3525,11 @@ export default function EditorPlanta({
                     style={ui.input}
                   />
                 </label>
+                <TareaDePieza
+                  valor={moldeDeLosa.tarea}
+                  tipos={tareasDePieza(tiposDeMuro, "losas")}
+                  alCambiar={(tarea) => setMoldeDeLosa({ ...moldeDeLosa, tarea })}
+                />
                 <label style={campo}>
                   <span style={rotulo}>Espesor (m)</span>
                   <CampoMetros
@@ -3859,6 +3913,20 @@ export default function EditorPlanta({
                     )
                   }
                 />
+                {columnaElegida.material !== "metalica" && (
+                  <TareaDePieza
+                    valor={columnaElegida.tarea}
+                    tipos={tareasDePieza(tiposDeMuro, "columnas")}
+                    alCambiar={(tarea) => cambiarPieza("columnas", columnaElegida.id, { tarea })}
+                    sinTarea={estructura.columnas.filter(
+                      (p) =>
+                        p.id !== columnaElegida.id && p.tarea === null && p.material !== "metalica"
+                    )}
+                    plural="columnas"
+                    ponerA={(ids, tarea) => cambiarPiezas("columnas", ids, { tarea })}
+                  />
+                )}
+
                 <div style={dosCampos}>
                   <label style={campo}>
                     <span style={rotulo}>Ancho (m)</span>
@@ -3960,6 +4028,20 @@ export default function EditorPlanta({
                     cambiarPieza("vigas", vigaElegida.id, cambios, cambios.material !== undefined)
                   }
                 />
+                {vigaElegida.material !== "metalica" && (
+                  <TareaDePieza
+                    valor={vigaElegida.tarea}
+                    tipos={tareasDePieza(tiposDeMuro, "vigas")}
+                    alCambiar={(tarea) => cambiarPieza("vigas", vigaElegida.id, { tarea })}
+                    sinTarea={estructura.vigas.filter(
+                      (p) =>
+                        p.id !== vigaElegida.id && p.tarea === null && p.material !== "metalica"
+                    )}
+                    plural="vigas"
+                    ponerA={(ids, tarea) => cambiarPiezas("vigas", ids, { tarea })}
+                  />
+                )}
+
                 <div style={dosCampos}>
                   <label style={campo}>
                     <span style={rotulo}>Ancho (m)</span>
@@ -4054,6 +4136,16 @@ export default function EditorPlanta({
                     style={ui.input}
                   />
                 </label>
+                <TareaDePieza
+                  valor={losaElegida.tarea}
+                  tipos={tareasDePieza(tiposDeMuro, "losas")}
+                  alCambiar={(tarea) => cambiarPieza("losas", losaElegida.id, { tarea })}
+                  sinTarea={estructura.losas.filter(
+                    (p) => p.id !== losaElegida.id && p.tarea === null
+                  )}
+                  plural="losas"
+                  ponerA={(ids, tarea) => cambiarPiezas("losas", ids, { tarea })}
+                />
                 <div style={dosCampos}>
                   <label style={campo}>
                     <span style={rotulo}>Espesor (m)</span>
@@ -4958,14 +5050,20 @@ function SelectorDeTipoDeMuro({
   valor,
   tipos,
   alCambiar,
+  primero = RUBROS_DE_MURO,
+  vacio = "Sin tipo",
 }: {
   valor: string | null;
   tipos: TipoDeMuro[];
   alCambiar: (nuevo: string | null) => void;
+  /** Los rubros que van arriba de la lista, en ese orden. */
+  primero?: string[];
+  /** Cómo se lee la opción de no elegir ninguna. */
+  vacio?: string;
 }) {
   const orden = (rubro: string) => {
-    const i = RUBROS_DE_MURO.findIndex((r) => r.toLowerCase() === rubro.toLowerCase());
-    return i === -1 ? RUBROS_DE_MURO.length : i;
+    const i = primero.findIndex((r) => r.toLowerCase() === rubro.toLowerCase());
+    return i === -1 ? primero.length : i;
   };
   const rubros = Array.from(new Set(tipos.map((t) => t.rubro))).sort(
     (a, b) => orden(a) - orden(b) || a.localeCompare(b, "es")
@@ -4977,7 +5075,7 @@ function SelectorDeTipoDeMuro({
       onChange={(e) => alCambiar(e.target.value === "" ? null : e.target.value)}
       style={ui.input}
     >
-      <option value="">Sin tipo</option>
+      <option value="">{vacio}</option>
       {/* Un tipo que ya no está en el catálogo igual se muestra: si no, el
           desplegable diría "Sin tipo" con el muro teniendo uno. */}
       {valor !== null && !tipos.some((t) => t.id === valor) && (
@@ -5552,6 +5650,98 @@ function Renglon({
 
 /** Los rubros donde está casi todo lo que puede ser un muro. */
 const RUBROS_DE_MURO = ["Mamposterías y Tabiquerías", "Estructuras"];
+
+type ClaseConTarea = "columnas" | "vigas" | "losas";
+
+const esM3 = (unidad: string) => /^m[³3]$/i.test(unidad.trim());
+const esM2 = (unidad: string) => /^m[²2]$/i.test(unidad.trim());
+
+/**
+ * Las tareas que puede ser una pieza de hormigón: las que se cotizan por
+ * volumen, y en una losa también por superficie —la de viguetas va en m²—.
+ * Lo que el plano pasa de cada una depende de eso: los m³ o los m².
+ */
+function tareasDePieza(tipos: TipoDeMuro[], clase: ClaseConTarea): TipoDeMuro[] {
+  return tipos.filter((t) => esM3(t.unidad) || (clase === "losas" && esM2(t.unidad)));
+}
+
+/** Qué se busca en el nombre de la tarea que le toca a cada clase. */
+const SUGERENCIA: Record<ClaseConTarea, RegExp[]> = {
+  columnas: [/columna/i],
+  vigas: [/viga/i],
+  // La maciza antes que cualquier otra losa: es la que se dibuja por contorno
+  // con su espesor.
+  losas: [/losa.*maciza/i, /losa/i],
+};
+
+/**
+ * La tarea con que arranca el molde de una clase: la del catálogo que la
+ * nombra —"Columnas H°A°"—, en m³, del rubro Estructuras si hay. Es sólo un
+ * punto de partida: así la primera columna ya sale con su tarea, y si la obra
+ * usa otra se cambia en el molde una vez.
+ */
+function tareaSugerida(tipos: TipoDeMuro[], clase: ClaseConTarea): string | null {
+  const candidatas = tipos.filter((t) => esM3(t.unidad));
+  for (const patron of SUGERENCIA[clase]) {
+    const que = candidatas.filter((t) => patron.test(t.nombre));
+    const elegida = que.find((t) => /estructura/i.test(t.rubro)) ?? que[0];
+    if (elegida) return elegida.id;
+  }
+  return null;
+}
+
+/**
+ * Qué tarea del cómputo es una pieza de hormigón, y el atajo para ponérsela a
+ * las otras de su clase que no tienen: casi todas las columnas de una obra son
+ * la misma tarea, y elegirla una por una es trabajo sin decisión.
+ */
+function TareaDePieza({
+  valor,
+  tipos,
+  alCambiar,
+  sinTarea = [],
+  plural = "",
+  ponerA,
+}: {
+  valor: string | null;
+  tipos: TipoDeMuro[];
+  alCambiar: (tarea: string | null) => void;
+  /** Las otras de su clase sin tarea, si es una pieza ya dibujada. */
+  sinTarea?: { id: string }[];
+  plural?: string;
+  ponerA?: (ids: string[], tarea: string) => void;
+}) {
+  return (
+    <>
+      <label style={campo}>
+        <span style={rotulo}>Tarea del cómputo</span>
+        <SelectorDeTipoDeMuro
+          valor={valor}
+          tipos={tipos}
+          alCambiar={alCambiar}
+          primero={["Estructuras"]}
+          vacio="Sin tarea: no se pasa"
+        />
+      </label>
+      {valor !== null && ponerA && sinTarea.length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            ponerA(
+              sinTarea.map((p) => p.id),
+              valor
+            )
+          }
+          style={botonChico}
+        >
+          {sinTarea.length === 1
+            ? `Ponérsela a la otra de las ${plural} sin tarea`
+            : `Ponérsela a las ${sinTarea.length} ${plural} sin tarea`}
+        </button>
+      )}
+    </>
+  );
+}
 
 /**
  * Cuánto hay de un tipo de muro, en la unidad en que se cotiza: m³ si su

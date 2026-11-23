@@ -58,7 +58,7 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
       supabase
         .from("computo_items")
         .select(
-          "id, tarea_id, nombre, unidad, cantidad, orden, computo_item_medicion(origen, nivel, etiqueta, forma, b, c, unidades, cantidad)"
+          "id, tarea_id, nombre, unidad, cantidad, orden, computo_item_medicion(origen, nivel, etiqueta, forma, a, b, c, unidades, cantidad)"
         )
         .eq("obra_id", obraId)
         .order("orden"),
@@ -67,7 +67,8 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
   if (alLeerComputo) return { error: alLeerComputo.message };
   if (alLeerItems) return { error: alLeerItems.message };
 
-  // Las tareas que el dibujo nombra: el tipo de cada muro y cada capa.
+  // Las tareas que el dibujo nombra: el tipo de cada muro, cada capa y la
+  // tarea de cada pieza de la estructura.
   const usadas = new Set<string>();
   for (const planta of plantas) {
     const d = planta.dibujo;
@@ -76,6 +77,8 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
       for (const c of [...a.capas, ...a.piso, ...a.cielorraso]) usadas.add(c.tarea);
     }
     for (const capas of Object.values(d.caras)) for (const c of capas) usadas.add(c.tarea);
+    const { columnas, vigas, losas } = d.estructura;
+    for (const p of [...columnas, ...vigas, ...losas]) if (p.tarea) usadas.add(p.tarea);
   }
   // Las que el cómputo tiene con renglones del plano también hacen falta por
   // su nombre, aunque el dibujo ya no las use.
@@ -115,6 +118,7 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
       nivel: m.nivel,
       etiqueta: m.etiqueta,
       forma: m.forma as Forma,
+      a: m.a === null ? null : Number(m.a),
       b: m.b === null ? null : Number(m.b),
       c: m.c === null ? null : Number(m.c),
       unidades: Number(m.unidades),

@@ -387,6 +387,76 @@ precio de referencia, separado en materiales y mano de obra.
   sólo rubros con estimado y cotizado, para que un rubro sin cotizar no haga
   parecer barata la obra.
 
+#### Configurar el catálogo de tareas: Rubros → Tareas (23/11/2026)
+Decidido con el usuario: **el cómputo queda para elegir tareas, cargar
+cantidades y ajustar el desglose de la obra**; el catálogo de tareas se
+configura en **Rubros → "N tareas ›"** (`/obras/<slug>/rubros/<rubroId>`,
+`TareasDelRubro`). El catálogo **sigue siendo común a todas las obras**, y la
+página lo dice arriba. Ahí: corregir nombre y unidad, abrir la composición por
+unidad, borrar, y **crear tareas nuevas del catálogo** (`crearTareaDelCatalogo`;
+antes sólo existían los "ítems propios", que quedan en una obra). En el
+cómputo, cada rubro de "Agregar tareas" tiene "Configurar tareas ›".
+
+Las tareas del catálogo nombran su rubro **por texto**, y se buscan por el
+nombre del rubro de la obra sin mayúsculas. Un rubro de la obra con otro
+nombre que el del catálogo ("Aberturas Puertas", "Albañilería") muestra cero
+tareas; las que se creen ahí quedan en el catálogo con ese nombre.
+
+#### Corregir el catálogo de tareas (23/11/2026)
+El lápiz de cada tarea en la página del rubro corrige **el catálogo**, que es de
+todas las obras: nombre, unidad, o borrarla. Cada obra tiene su copia en el
+cómputo (con su propio lápiz en la planilla), así que lo del catálogo les
+llega sin pisar lo que se decidió en una obra:
+- **El nombre** pasa a las copias que todavía tienen el nombre viejo; una
+  renombrada a mano conserva el suyo.
+- **La unidad** pasa sólo a las copias sin cantidad ni medición. Una que ya
+  tiene 85 m² no pasa a "85 m³": queda, y se avisa cuántas obras quedaron así.
+- **Borrar sólo se puede si no la usa nadie**: ni el cómputo de ninguna obra
+  ni el dibujo de ninguna planta (que la nombra por id en el jsonb). Si está
+  en uso dice dónde, para sacarla de ahí primero. Es para limpiar repetidas y
+  mal cargadas, no para sacar una tarea de una obra: eso es destildarla.
+
+#### La composición de una tarea del catálogo (23/11/2026)
+Cada tarea del catálogo tiene su **composición**: qué lleva una unidad
+—ladrillos, mortero, mano de obra por m²—. Es el desglose de modelo
+(`tarea_desglose`) que existía desde el 06/10, que sólo se podía tocar con la
+casilla "Usar también como modelo" del desglose de una obra. Ahora se edita
+desde la página del rubro: "Composición (n)" de cada tarea, que abre el
+mismo editor del desglose (`DesgloseTarea` con `modelo`), sin "en la obra"
+ni cotizaciones, que son de cada obra.
+
+Decidido con el usuario: **al cambiar la composición se actualizan las obras
+que no la tocaron.** `reemplazarModelo` compara la firma del desglose de cada
+obra (`firmaDeDesglose`) con la del modelo viejo:
+- **Igual**: es lo que vino al tildarla, nadie lo decidió. Se reemplaza por el
+  nuevo y se rehacen sus precios.
+- **Distinta**, o con un renglón pedido a cotizar: es trabajo de esa obra, se
+  conserva. Su desglose avisa "distinto de la composición del catálogo" con
+  un botón **Traer la del catálogo**, que la carga sin guardar.
+La casilla "Usar también como modelo" del desglose de una obra pasa por lo
+mismo. Al guardar se dice en cuántas obras se actualizó y cuántas la
+conservan.
+
+#### Presentaciones comerciales y qué comprar (23/11/2026)
+Un material declaraba un solo envase (bolsa de 25 kg). Ahora puede tener
+varias **presentaciones** —lata de 1, 4 y 10 litros, balde de 20— en la tabla
+`material_presentaciones` (migración `20261123120000`), que se cargan en el
+catálogo de materiales debajo de cada uno ("Se vende en"). La unidad de una
+presentación tiene que ser la del material o la de su envase: si no, no se
+puede comparar con lo que pide el cómputo.
+
+El **Listado de materiales** suma cada material **en su unidad base** —la de
+lo que trae el envase si declara uno: 5 kg de cemento, no 0,2 bolsas— y
+agrega la columna **A comprar** (también en el Excel), con la combinación que
+cubre lo necesario sobrando lo menos posible y, a igual sobrante, con menos
+envases (`lib/presentaciones.ts`, `compraMinima`): 27 litros son 1 balde de
+20 + 1 lata de 4 + 3 latas de 1; 5 kg de cemento, 1 bolsa de 25. Sin
+presentaciones vale el envase del material ("envase de 25 kg" si su unidad es
+"un"); sin envase, lo que se compra de a uno (un, bolsa, barra, chapa, rollo,
+caja, pallet) redondea a la unidad entera, y lo que va a granel (kg, m³) no
+dice nada. Las presentaciones se leen aparte del catálogo y tolerando error:
+si la tabla falla, los formularios de gasto siguen abriendo.
+
 ### De dónde sale cada número del cómputo (20/11/2026)
 Tres capas nuevas con la misma idea atrás: **guardar lo que se sabe y derivar
 lo que se necesita**, en vez de guardar el resultado y perder la cuenta. Antes,
@@ -1109,8 +1179,35 @@ Cómo está hecho:
   estructura que le saca lugar al muro: dos pisos de la misma planta con
   distinta altura dan distinta mampostería.
 
-No va todavía: el **hormigón** (falta que cada pieza lleve su tarea), lo que
-se mide por perímetro (zócalos) y las aberturas por unidad.
+**El hormigón** (23/11/2026) va por el mismo pase, **pieza por pieza**: un
+renglón por columna, viga y losa, con su nombre de etiqueta (C01, V03), que
+es como se computa una estructura y se controla contra su planilla.
+- **Cada pieza lleva su tarea** (`tarea` en `Columna`, `Viga`, `Losa`, en el
+  jsonb, sin migración), como un muro lleva su tipo. Columnas y vigas eligen
+  entre las tareas en m³; una losa también entre las de m², que es como se
+  cotiza la de viguetas. Sin tarea, la pieza no se pasa y la vista previa la
+  cuenta como pendiente.
+- **El molde arranca con una tarea sugerida**: la del catálogo cuyo nombre
+  dice "columna", "viga" o "losa maciza", en m³ y de Estructuras
+  (`tareaSugerida`). Así la primera pieza ya sale con tarea; si la obra usa
+  otra se cambia en el molde una vez. En la pieza elegida, **"Ponérsela a las
+  N columnas sin tarea"**, igual que con los muros: casi todas las piezas de
+  una clase son la misma tarea, y elegirla una por una es trabajo sin
+  decisión. Sólo toca las que no tienen.
+- **La cuenta del renglón**: ancho × alto × largo (`prisma`) si la pieza no
+  le cede nada a otra; si cedió un nudo —la viga que entra en la columna o
+  que cubre la losa—, su volumen ya descontado (`directo`, con seis
+  decimales), porque las tres medidas darían la pieza entera y el nudo se
+  contaría dos veces. Una losa maciza va espesor × superficie (`superficie`).
+- **Las metálicas no se pasan**: se cotizan en kg y el plano todavía no sabe
+  cuánto pesa el metro de cada perfil. La vista previa lo dice.
+- **El nivel de una pieza es el piso de su planta**: la estructura dibujada en
+  la planta del 1.º piso es la que sostiene el 2.º, pero va con "1.º piso",
+  igual que los muros de esa planta. Andonaegui la nombra "sobre 1.º" en su
+  planilla de Excel: si hace falta que coincidan, es una etiqueta.
+
+No va todavía: lo que se mide por perímetro (zócalos) y las aberturas por
+unidad.
 
 ### Contratistas y proveedores (el catálogo)
 Proveedores, contratistas y "varios" viven en una sola tabla (`proveedores`)
@@ -2526,14 +2623,12 @@ acción de borrar el pago del lote viaja como prop.
   alinear plantas calcadas sobre planos distintos; ver las terminaciones;
   techo y terreno; y decidir si hace falta verlo también adentro del editor,
   con lo que se está dibujando y no sólo con lo guardado.
-  **Estructura, lo que falta**: mandar el hormigón al cómputo (m³ de
-  columnas, vigas y losas contra las tareas de Estructuras) por el mismo pase
-  que la mampostería —ahí sí pieza por pieza, que tienen nombre—, para lo
-  que una pieza tiene que llevar su tarea del catálogo como los muros llevan
-  su tipo; lo metálico se cotiza en kg y necesita el peso por metro del
-  perfil. Y bases, fundaciones y encadenados. Ojo con Andonaegui: su hormigón
-  ya está medido a mano (251 elementos pegados desde Excel), así que al
-  pasarlo van a convivir las dos mediciones hasta que se borre una.
+  **Estructura, lo que falta**: el hormigón ya va al cómputo (ver "Del plano
+  al cómputo"). Falta lo metálico —se cotiza en kg y necesita el peso por
+  metro de cada perfil— y bases, fundaciones y encadenados. Ojo con
+  Andonaegui: su hormigón ya está medido a mano (251 elementos pegados desde
+  Excel), así que al pasarlo van a convivir las dos mediciones —con el aviso
+  en ámbar— hasta que se borre una.
   **No detecta muros solo**: el plano se calca a mano, y es a propósito —la
   detección automática desde un PDF o un JPG no es confiable—.
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import * as ui from "@/components/ui";
 
@@ -9,6 +10,8 @@ export type RubroDeObra = {
   activo: boolean;
   /** Cuántos gastos, avances o fotos lo usan. */
   usos: number;
+  /** Cuántas tareas tiene en el catálogo. */
+  tareas: number;
 };
 
 export default function RubrosSelector({
@@ -154,6 +157,12 @@ export default function RubrosSelector({
                     style={ui.input}
                   />
 
+                  {/* Las tareas del rubro se configuran en su página: el
+                      catálogo de tareas, común a todas las obras. */}
+                  <Link href={`/obras/${slug}/rubros/${rubro.id}`} style={enlaceTareas}>
+                    {rubro.tareas === 1 ? "1 tarea" : `${rubro.tareas} tareas`} ›
+                  </Link>
+
                   <div style={celdaUso}>
                     {rubro.usos > 0 ? (
                       <span style={enUso}>
@@ -213,7 +222,7 @@ const grilla = {
 
 const fila = {
   display: "grid",
-  gridTemplateColumns: "auto 1fr auto",
+  gridTemplateColumns: "auto 1fr auto auto",
   alignItems: "center",
   gap: "12px",
   padding: "8px 10px",
@@ -237,6 +246,13 @@ const celdaUso = {
   fontSize: "13px",
   color: "#999999",
   whiteSpace: "nowrap" as const,
+};
+
+const enlaceTareas = {
+  fontSize: "13px",
+  color: "#555555",
+  whiteSpace: "nowrap" as const,
+  textDecoration: "none",
 };
 
 const enUso = {

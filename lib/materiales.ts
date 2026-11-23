@@ -10,6 +10,7 @@
  * agrupan y comparan por nombre.
  */
 
+import type { Presentacion } from "@/lib/presentaciones";
 import { createClient } from "@/lib/supabase/server";
 
 export type MaterialCatalogo = {
@@ -22,6 +23,35 @@ export type MaterialCatalogo = {
   /** La unidad de lo que trae (kg). Siempre junto con `contenido`. */
   contenidoUnidad: string | null;
 };
+
+/**
+ * Las presentaciones comerciales de cada material, por id: lata de 4 litros,
+ * balde de 20.
+ *
+ * Aparte del catálogo y no adentro de su consulta: si la tabla falla —o
+ * todavía no existe— el catálogo tiene que seguir abriendo, porque de él
+ * dependen los formularios de gasto. Sin presentaciones, el listado vuelve a
+ * usar el envase del material, que es lo que hacía siempre.
+ */
+export async function getPresentaciones(): Promise<
+  Map<string, (Presentacion & { id: string })[]>
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("material_presentaciones")
+    .select("id, material_id, nombre, contenido, unidad")
+    .order("contenido");
+
+  if (error) console.error("getPresentaciones:", error.message);
+
+  const porMaterial = new Map<string, (Presentacion & { id: string })[]>();
+  for (const p of data ?? []) {
+    const lista = porMaterial.get(p.material_id) ?? [];
+    lista.push({ id: p.id, nombre: p.nombre, contenido: Number(p.contenido), unidad: p.unidad });
+    porMaterial.set(p.material_id, lista);
+  }
+  return porMaterial;
+}
 
 export async function getMaterialesCatalogo(): Promise<MaterialCatalogo[]> {
   const supabase = await createClient();

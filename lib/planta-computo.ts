@@ -2,18 +2,22 @@
  * Del dibujo de las plantas al cómputo de la obra.
  *
  * El dibujo ya sabe cuánto lleva cada piso: los m² de cada tipo de muro, de
- * cada capa de pared, de piso y de cielorraso. Y cada una de esas cosas **es
- * una tarea del catálogo** —el tipo de un muro y la capa de una terminación se
- * eligen de ahí—, así que no hay nada que emparejar: lo que falta es llevar el
- * número.
+ * cada capa de pared, de piso y de cielorraso, y los m³ de cada pieza de la
+ * estructura. Y cada una de esas cosas **es una tarea del catálogo** —el tipo
+ * de un muro, la capa de una terminación y la tarea de una columna se eligen
+ * de ahí—, así que no hay nada que emparejar: lo que falta es llevar el número.
  *
- * Acá se arma **un renglón de medición por tarea y por piso** —"Revoque
- * grueso · 2.º piso · Paredes · 85,40 m²"— y se lo compara con lo que el
- * cómputo ya tiene, para mostrar qué cambia antes de escribir nada.
+ * Acá se arman los renglones de medición y se los compara con lo que el
+ * cómputo ya tiene, para mostrar qué cambia antes de escribir nada:
  *
- * Por piso y no elemento por elemento: una planta tipo son cientos de caras, y
- * la cuenta cara por cara ya se revisa en el editor, que es donde se ve. En el
- * cómputo alcanza con saber cuánto lleva cada nivel.
+ *   terminaciones y muros   **uno por tarea y por piso** —"Revoque grueso ·
+ *                           2.º piso · Paredes · 85,40 m²"—. Una planta tipo
+ *                           son cientos de caras, y la cuenta cara por cara ya
+ *                           se revisa en el editor.
+ *   estructura              **uno por pieza** —"V03 · 2.º piso · 0,12 × 0,45 ×
+ *                           3,80"—, que es como se computa un hormigón: cada
+ *                           pieza tiene nombre y se controla contra la
+ *                           planilla de estructura.
  *
  * Sin React y sin base: recibe lo dibujado y lo guardado, y devuelve cuentas.
  */
@@ -21,6 +25,7 @@
 import { cantidadDeElemento, type Forma } from "@/lib/medicion";
 import { nombreDePiso, type Piso } from "@/lib/pisos";
 import { metrosPorPixel, type Dibujo, type Escala } from "@/lib/planta-dibujo";
+import { medirEstructura } from "@/lib/planta-estructura";
 import { medirCaras, type FilaDeCapa } from "@/lib/planta-trazo";
 
 /** Lo que hace falta de una planta para computarla. */
@@ -40,13 +45,17 @@ export type RenglonDelPlano = {
   tareaId: string;
   /** El piso: su nombre en la definición de pisos, o el de la planta. */
   nivel: string;
-  /** De qué parte del dibujo sale: Muros, Paredes, Pisos, Cielorrasos. */
+  /**
+   * De qué parte del dibujo sale —Muros, Paredes, Pisos, Cielorrasos—, o el
+   * nombre de la pieza de estructura: C01, V03, L1.
+   */
   etiqueta: string;
   forma: Forma;
-  a: null;
-  /** El espesor, en una capa que se cotiza por volumen. */
+  /** El ancho de una columna o una viga. */
+  a: number | null;
+  /** El espesor, o la profundidad de una columna, o el alto de una viga. */
   b: number | null;
-  /** La superficie; o el volumen, si no hay un espesor único que mostrar. */
+  /** La superficie o el largo; o el volumen, si no hay cuenta que mostrar. */
   c: number | null;
   /** Cuántos pisos iguales: uno, salvo la planta sin pisos asignados. */
   unidades: number;
@@ -59,6 +68,10 @@ export type Pendientes = {
   sinTerminacion: number;
   sinPiso: number;
   sinCielorraso: number;
+  /** Piezas de hormigón dibujadas, sin tarea: su hormigón no se pasa. */
+  piezasSinTarea: number;
+  /** Piezas metálicas: se cotizan en kg, y el plano todavía no da el peso. */
+  metalicas: number;
 };
 
 export type LoDelPlano = {
@@ -83,6 +96,12 @@ const ETIQUETAS = {
 
 const alCentimetro = (n: number) => Math.round(n * 100) / 100;
 const alMilimetro = (n: number) => Math.round(n * 1000) / 1000;
+/**
+ * Un volumen ya hecho, con los seis decimales que guarda la medición: una viga
+ * de 0,15048 m³ redondeada al litro pierde medio litro, y en un edificio son
+ * cientos de vigas.
+ */
+const alCentimetroCubico = (n: number) => Math.round(n * 1e6) / 1e6;
 
 const esSuperficie = (unidad: string) => /^m[²2]$/i.test(unidad.trim());
 const esVolumen = (unidad: string) => /^m[³3]$/i.test(unidad.trim());
@@ -98,7 +117,11 @@ const esVolumen = (unidad: string) => /^m[³3]$/i.test(unidad.trim());
 function ubicacionesDe(planta: PlantaParaComputar, pisos: Piso[]) {
   const suyos = pisos.filter((p) => p.plantaId === planta.id);
   if (suyos.length > 0) {
-    return suyos.map((p) => ({ nivel: nombreDePiso(p), pisoAPiso: p.altura, unidades: 1 }));
+    return suyos.map((p) => ({
+      nivel: nombreDePiso(p),
+      pisoAPiso: p.altura,
+      unidades: 1,
+    }));
   }
   return [
     {
@@ -128,7 +151,7 @@ function ubicacionesDe(planta: PlantaParaComputar, pisos: Piso[]) {
 export function delPlano(
   plantas: PlantaParaComputar[],
   pisos: Piso[],
-  unidadDe: (tareaId: string) => string | null
+  unidadDe: (tareaId: string) => string | null,
 ): LoDelPlano {
   const renglones: (RenglonDelPlano & { orden: number })[] = [];
   const noSeMiden = new Map<string, string | null>();
@@ -138,6 +161,8 @@ export function delPlano(
     sinTerminacion: 0,
     sinPiso: 0,
     sinCielorraso: 0,
+    piezasSinTarea: 0,
+    metalicas: 0,
   };
 
   // El lugar de cada piso en el edificio, para ordenar los renglones.
@@ -150,8 +175,22 @@ export function delPlano(
       return;
     }
 
+    // Lo que falta en la estructura se cuenta por pieza dibujada, no por piso:
+    // es lo que hay que ir a completar.
+    const { columnas, vigas, losas } = planta.dibujo.estructura;
+    for (const pieza of [...columnas, ...vigas]) {
+      if (pieza.material === "metalica") pendientes.metalicas += 1;
+      else if (pieza.tarea === null) pendientes.piezasSinTarea += 1;
+    }
+    pendientes.piezasSinTarea += losas.filter((l) => l.tarea === null).length;
+
     for (const lugarDePlanta of ubicacionesDe(planta, pisos)) {
-      const medida = medirCaras(planta.dibujo, mpp, planta.altura, lugarDePlanta.pisoAPiso);
+      const medida = medirCaras(
+        planta.dibujo,
+        mpp,
+        planta.altura,
+        lugarDePlanta.pisoAPiso,
+      );
       if (!medida) continue;
 
       const { nivel, unidades } = lugarDePlanta;
@@ -176,8 +215,102 @@ export function delPlano(
         // Una capa con espesor pero sin superficie no es un pendiente: no
         // está. Sin espesor sí se guarda, en cero, para que se vea que falta.
         if (cantidad <= 0 && fila.superficie < 0.005) return;
-        renglones.push({ tareaId: fila.capa, nivel, etiqueta, ...elemento, cantidad, orden });
+        renglones.push({
+          tareaId: fila.capa,
+          nivel,
+          etiqueta,
+          ...elemento,
+          cantidad,
+          orden,
+        });
       };
+
+      // La estructura primero: es el orden de la obra.
+      const estructura = medirEstructura(
+        planta.dibujo.estructura,
+        mpp,
+        planta.altura,
+        lugarDePlanta.pisoAPiso,
+      );
+      const agregarPieza = (
+        tareaId: string | null,
+        nombre: string,
+        medidas: (
+          unidad: string,
+        ) => {
+          forma: Forma;
+          a: number | null;
+          b: number | null;
+          c: number | null;
+        } | null,
+      ) => {
+        if (tareaId === null) return;
+        const unidad = unidadDe(tareaId);
+        const elegidas = unidad === null ? null : medidas(unidad);
+        if (!elegidas) {
+          noSeMiden.set(tareaId, unidad);
+          return;
+        }
+        const elemento = { ...elegidas, unidades };
+        const cantidad = cantidadDeElemento(elemento);
+        // Una pieza que queda entera adentro de otra no tiene hormigón propio.
+        if (cantidad <= 0) return;
+        renglones.push({
+          tareaId,
+          nivel,
+          etiqueta: nombre.trim() || "Sin nombre",
+          ...elemento,
+          cantidad,
+          orden,
+        });
+      };
+
+      if (estructura) {
+        for (const c of planta.dibujo.estructura.columnas) {
+          if (c.material === "metalica") continue;
+          const m = estructura.columnas.find((x) => x.id === c.id);
+          if (!m) continue;
+          agregarPieza(c.tarea, c.nombre, (unidad) =>
+            esVolumen(unidad)
+              ? cuentaDePrisma(m, c.ancho, c.profundidad, m.alto)
+              : null,
+          );
+        }
+        for (const v of planta.dibujo.estructura.vigas) {
+          if (v.material === "metalica") continue;
+          const m = estructura.vigas.find((x) => x.id === v.id);
+          if (!m) continue;
+          agregarPieza(v.tarea, v.nombre, (unidad) =>
+            esVolumen(unidad)
+              ? cuentaDePrisma(m, v.ancho, v.alto, m.largo)
+              : null,
+          );
+        }
+        for (const l of planta.dibujo.estructura.losas) {
+          const m = estructura.losas.find((x) => x.id === l.id);
+          if (!m) continue;
+          agregarPieza(l.tarea, l.nombre, (unidad) => {
+            // Una losa de viguetas se cotiza por su superficie.
+            if (esSuperficie(unidad)) {
+              return {
+                forma: "directo",
+                a: null,
+                b: null,
+                c: alCentimetro(m.superficie),
+              };
+            }
+            if (!esVolumen(unidad)) return null;
+            return Math.abs(m.bruto - m.neto) < 0.0005
+              ? {
+                  forma: "superficie",
+                  a: null,
+                  b: l.espesor,
+                  c: alCentimetro(m.superficie),
+                }
+              : { forma: "directo", a: null, b: null, c: alCentimetroCubico(m.neto) };
+          });
+        }
+      }
 
       for (const m of medida.muros) {
         // El muro trae su volumen ya hecho: cada uno tiene su espesor.
@@ -204,16 +337,38 @@ export function delPlano(
         unidades: r.unidades,
         cantidad: r.cantidad,
       })),
-    noSeMiden: Array.from(noSeMiden, ([tareaId, unidad]) => ({ tareaId, unidad })),
+    noSeMiden: Array.from(noSeMiden, ([tareaId, unidad]) => ({
+      tareaId,
+      unidad,
+    })),
     sinEscala,
     pendientes,
   };
 }
 
+/**
+ * El renglón de una columna o una viga: ancho × alto × largo, como en la
+ * planilla de estructura, **si la pieza no comparte nada con otra**. Si le
+ * tocó ceder un nudo —la viga que entra en una columna, o que la losa cubre—
+ * la cuenta de sus tres medidas daría la pieza entera y contaría el nudo dos
+ * veces: va su volumen, ya descontado.
+ */
+function cuentaDePrisma(
+  medida: { bruto: number; neto: number },
+  ancho: number,
+  segunda: number,
+  largo: number,
+): { forma: Forma; a: number | null; b: number | null; c: number | null } {
+  if (Math.abs(medida.bruto - medida.neto) < 0.0005) {
+    return { forma: "prisma", a: ancho, b: segunda, c: alMilimetro(largo) };
+  }
+  return { forma: "directo", a: null, b: null, c: alCentimetroCubico(medida.neto) };
+}
+
 /** Qué medidas lleva el renglón de una capa, según en qué se cotiza su tarea. */
 function medidasDe(
   fila: FilaDeCapa,
-  unidad: string | null
+  unidad: string | null,
 ): { forma: Forma; b: number | null; c: number | null } | null {
   if (unidad === null) return null;
 
@@ -222,7 +377,11 @@ function medidasDe(
   }
   if (esVolumen(unidad)) {
     if (fila.espesor !== null && fila.espesor > 0) {
-      return { forma: "superficie", b: fila.espesor, c: alCentimetro(fila.superficie) };
+      return {
+        forma: "superficie",
+        b: fila.espesor,
+        c: alCentimetro(fila.superficie),
+      };
     }
     const volumen = alMilimetro(fila.volumen);
     return { forma: "directo", b: null, c: volumen > 0 ? volumen : null };
@@ -238,6 +397,7 @@ export type RenglonGuardado = {
   nivel: string | null;
   etiqueta: string | null;
   forma: Forma;
+  a: number | null;
   b: number | null;
   c: number | null;
   unidades: number;
@@ -280,6 +440,7 @@ const firmaDe = (r: {
   nivel: string | null;
   etiqueta: string | null;
   forma: Forma;
+  a: number | null;
   b: number | null;
   c: number | null;
   unidades: number;
@@ -288,8 +449,9 @@ const firmaDe = (r: {
     (r.nivel ?? "").trim(),
     (r.etiqueta ?? "").trim(),
     r.forma,
-    r.b === null ? "" : r.b.toFixed(4),
-    r.c === null ? "" : r.c.toFixed(4),
+    r.a == null ? "" : r.a.toFixed(4),
+    r.b == null ? "" : r.b.toFixed(4),
+    r.c == null ? "" : r.c.toFixed(4),
     r.unidades.toFixed(4),
   ].join("|");
 
@@ -310,7 +472,7 @@ const firmaDe = (r: {
  */
 export function compararConComputo(
   renglones: RenglonDelPlano[],
-  items: ItemGuardado[]
+  items: ItemGuardado[],
 ): LineaDelPase[] {
   const porTarea = new Map<string, RenglonDelPlano[]>();
   for (const r of renglones) {
@@ -333,7 +495,9 @@ export function compararConComputo(
   return Array.from(tareas, (tareaId): LineaDelPase => {
     const nuevos = porTarea.get(tareaId) ?? [];
     const item = itemDe.get(tareaId) ?? null;
-    const guardados = (item?.medicion ?? []).filter((m) => m.origen === "plano");
+    const guardados = (item?.medicion ?? []).filter(
+      (m) => m.origen === "plano",
+    );
     const deMano = (item?.medicion ?? []).filter((m) => m.origen === "mano");
 
     const delPlano = nuevos.reduce((t, r) => t + r.cantidad, 0);
@@ -350,7 +514,10 @@ export function compararConComputo(
       aMano: alMilimetro(aMano),
       queda: alMilimetro(delPlano + aMano),
       pisaLaEscrita:
-        item !== null && item.medicion.length === 0 && item.cantidad > 0 && nuevos.length > 0,
+        item !== null &&
+        item.medicion.length === 0 &&
+        item.cantidad > 0 &&
+        nuevos.length > 0,
       cambia: item === null || antes !== despues,
       renglones: nuevos,
     };

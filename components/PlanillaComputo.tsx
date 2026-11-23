@@ -32,6 +32,11 @@ export type FilaPlanilla = {
   elementosMedidos: number;
   /** Cuántos de ellos vinieron del dibujo de las plantas. */
   elementosDelPlano: number;
+  /**
+   * La composición de la tarea en el catálogo, si el desglose de esta obra es
+   * distinto. Null si son iguales o la tarea es propia.
+   */
+  delCatalogo: RenglonInicial[] | null;
 };
 
 export type RubroPlanilla = {
@@ -152,6 +157,8 @@ export default function PlanillaComputo({
   // la de qué lleva cada m³.
   const [midiendo, setMidiendo] = useState<Set<string>>(() => new Set());
   const [errores, setErrores] = useState<Record<string, string>>({});
+  /** Qué les pasó a las otras obras al guardar un desglose como modelo. */
+  const [avisoDeModelo, setAvisoDeModelo] = useState("");
   const [ocupado, iniciar] = useTransition();
 
   const conmutar = (setter: typeof setEditando, id: string, abrir?: boolean) =>
@@ -217,12 +224,22 @@ export default function PlanillaComputo({
   const totalRubro = (r: RubroPlanilla) =>
     r.filas.reduce((acc, f) => sumar(acc, subtotal(f)), CERO);
   const totalObra = rubros.reduce((acc, r) => sumar(acc, totalRubro(r)), CERO);
+  // Las columnas del integrado van en todos los rubros si alguno lo usa: cada
+  // rubro es una tabla aparte, y con columnas distintas no quedaban alineadas
+  // una abajo de la otra.
+  const conIntegrado = rubros.some((r) => r.filas.some((f) => f.precioIntegrado > 0));
   const total = totalDe(totalObra);
 
   return (
     <form action={guardar}>
       <input type="hidden" name="slug" value={slug} />
       <input type="hidden" name="obra_id" value={obraId} />
+
+      {avisoDeModelo && (
+        <p style={avisoModelo} onClick={() => setAvisoDeModelo("")}>
+          {avisoDeModelo}
+        </p>
+      )}
 
       <div style={barra}>
         <label style={campoMes}>
@@ -270,7 +287,6 @@ export default function PlanillaComputo({
       <div style={lista}>
         {rubros.map((r) => {
           const t = totalRubro(r);
-          const conIntegrado = r.filas.some((f) => f.precioIntegrado > 0);
           const columnas = 3 + 4 + (conIntegrado ? 2 : 0) + 2;
 
           // Escondido y no sacado: ver el filtro, arriba.
@@ -289,6 +305,18 @@ export default function PlanillaComputo({
 
               <div style={scroll}>
                 <table style={tabla}>
+                  {/* Anchos fijos: todas las tablas de rubros quedan con las
+                      columnas en el mismo lugar. */}
+                  <colgroup>
+                    <col />
+                    <col style={{ width: "48px" }} />
+                    <col style={{ width: "116px" }} />
+                    {Array.from({ length: conIntegrado ? 6 : 4 }, (_, i) => (
+                      <col key={i} style={{ width: "104px" }} />
+                    ))}
+                    <col style={{ width: "124px" }} />
+                    <col style={{ width: "300px" }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th rowSpan={2} style={thIzq}>
@@ -434,9 +462,12 @@ export default function PlanillaComputo({
                                         : `Sale de ${f.elementosMedidos} elementos medidos`
                                   }
                                 >
-                                  {delPlano && <SignoDelPlano conAviso={convive} />}
-                                  {delPlano && " "}
-                                  {v.cantidad || "0"}
+                                  {/* La marca a la izquierda y el número a la derecha,
+                                      en el mismo borde que las cantidades a mano. */}
+                                  <span style={lugarDeMarca}>
+                                    {delPlano && <SignoDelPlano conAviso={convive} />}
+                                  </span>
+                                  <span>{v.cantidad || "0"}</span>
                                 </button>
                               ) : (
                                 <input
@@ -546,8 +577,12 @@ export default function PlanillaComputo({
                                     materiales={materiales}
                                     rubroNombre={r.rubro}
                                     puedeSerModelo={f.tareaId !== null}
+                                    delCatalogo={f.delCatalogo}
                                     guardar={guardarDesglose}
-                                    alGuardar={() => conmutar(setAbiertos, f.id, false)}
+                                    alGuardar={(aviso) => {
+                                      conmutar(setAbiertos, f.id, false);
+                                      if (aviso) setAvisoDeModelo(aviso);
+                                    }}
                                   />
                                 </div>
                               </td>
@@ -663,7 +698,8 @@ const scroll = {
 
 const tabla = {
   ...ui.table,
-  minWidth: "900px",
+  tableLayout: "fixed" as const,
+  minWidth: "1180px",
 };
 
 // Los títulos con el mismo relleno lateral que las celdas, y alineados igual
@@ -884,16 +920,26 @@ const botonTexto = {
 
 // Con la misma forma que "Confirmar", para que se lea como un botón que abre
 // algo. Negro cuando la tarea ya tiene desglose; con borde cuando todavía no.
+// Ancho fijo: con o sin cantidad entre paréntesis, los botones de todas las
+// filas quedan en la misma columna.
 const botonDesglose = {
   ...ui.button,
-  padding: "7px 12px",
+  padding: "7px 10px",
   fontSize: "13px",
+  width: "128px",
+  boxSizing: "border-box" as const,
+  textAlign: "center" as const,
+  marginLeft: "6px",
 };
 
 const botonDesglosar = {
   ...ui.secondaryButton,
-  padding: "7px 12px",
+  padding: "7px 10px",
   fontSize: "13px",
+  width: "128px",
+  boxSizing: "border-box" as const,
+  textAlign: "center" as const,
+  marginLeft: "6px",
 };
 
 const botonTacho = {
@@ -929,11 +975,28 @@ const totalFinal = {
 
 // La cantidad de una tarea medida: se ve como el número que es, no como un
 // campo, y clickearla abre la medición de la que sale.
+const avisoModelo = {
+  fontSize: "13px",
+  color: "#8a5a00",
+  background: "#fff4d6",
+  borderRadius: "10px",
+  padding: "10px 14px",
+  margin: "0 0 14px",
+};
+
 const cantidadMedida = {
   ...inputCantidad,
   background: "#f4f4f4",
   borderStyle: "dashed" as const,
   color: "#111111",
   cursor: "pointer",
-  textAlign: "right" as const,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  whiteSpace: "nowrap" as const,
+};
+
+const lugarDeMarca = {
+  display: "inline-flex",
+  width: "14px",
 };

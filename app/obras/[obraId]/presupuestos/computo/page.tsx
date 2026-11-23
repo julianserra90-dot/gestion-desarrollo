@@ -13,6 +13,7 @@ import {
   getComparacion,
   getComputo,
   getIndicesCac,
+  getMaterialesParaListado,
   incidenciaPorRubro,
   listadoDeMateriales,
   loCargadoPorTarea,
@@ -145,6 +146,41 @@ export default async function ComputoPage({
   const porOrden = <T extends { nombre: string }>(a: T, b: T) =>
     ordenDeRubro(a.nombre) - ordenDeRubro(b.nombre) || a.nombre.localeCompare(b.nombre, "es");
 
+  const renglonesDeModelo = new Map<string, Parameters<typeof firmaDeDesglose>[0]>();
+  for (const m of modelo ?? []) {
+    const lista = renglonesDeModelo.get(m.tarea_id) ?? [];
+    lista.push({
+      tipo: m.tipo,
+      descripcion: m.descripcion,
+      unidad: m.unidad,
+      cantidad: Number(m.cantidad),
+      precio: Number(m.precio_unitario),
+      materialId: m.material_id,
+      consumo: m.consumo === null ? null : Number(m.consumo),
+      consumoUnidad: m.consumo_unidad,
+    });
+    renglonesDeModelo.set(m.tarea_id, lista);
+  }
+  // La composición de cada tarea en el catálogo, para que el desglose de la
+  // obra avise si es distinto y la pueda traer.
+  const delCatalogo = (tareaId: string | null, renglones: Parameters<typeof firmaDeDesglose>[0]) => {
+    if (!tareaId) return null;
+    const delModelo = renglonesDeModelo.get(tareaId) ?? [];
+    // Sin composición en el catálogo no hay nada que traer.
+    if (delModelo.length === 0) return null;
+    if (firmaDeDesglose(delModelo) === firmaDeDesglose(renglones)) return null;
+    return delModelo.map((m) => ({
+      ...m,
+      tipo: m.tipo as "Materiales" | "Mano de obra" | "Integrado",
+      materialId: m.materialId ?? null,
+      consumo: m.consumo ?? null,
+      consumoUnidad: m.consumoUnidad ?? null,
+      presupuestoId: null,
+      usarCotizado: false,
+      cotizacion: null,
+    }));
+  };
+
   // La planilla agrupada por rubro, en el orden de la obra.
   const porRubro = new Map<string, RubroPlanilla>();
   for (const i of computo.items) {
@@ -166,6 +202,7 @@ export default async function ComputoPage({
       renglones: i.renglones,
       elementosMedidos: i.elementosMedidos,
       elementosDelPlano: i.elementosDelPlano,
+      delCatalogo: delCatalogo(i.tareaId, i.renglones),
     });
   }
   const planilla = [...porRubro.values()].sort(
@@ -183,21 +220,6 @@ export default async function ComputoPage({
   const catalogo = [...catalogoPorRubro.values()].sort(porOrden);
   const rubrosParaPropias = [...(rubros ?? [])].sort(porOrden);
 
-  const renglonesDeModelo = new Map<string, Parameters<typeof firmaDeDesglose>[0]>();
-  for (const m of modelo ?? []) {
-    const lista = renglonesDeModelo.get(m.tarea_id) ?? [];
-    lista.push({
-      tipo: m.tipo,
-      descripcion: m.descripcion,
-      unidad: m.unidad,
-      cantidad: Number(m.cantidad),
-      precio: Number(m.precio_unitario),
-      materialId: m.material_id,
-      consumo: m.consumo === null ? null : Number(m.consumo),
-      consumoUnidad: m.consumo_unidad,
-    });
-    renglonesDeModelo.set(m.tarea_id, lista);
-  }
   const cargadas = loCargadoPorTarea(
     computo.items,
     new Map([...renglonesDeModelo].map(([id, rs]) => [id, firmaDeDesglose(rs)]))
@@ -234,7 +256,10 @@ export default async function ComputoPage({
   // Sólo se arma la del cuadro que se está mirando: cada una pide lo suyo.
   const porNivel = vista === "niveles" ? await getResumenPorNivel(computo) : null;
 
-  const materiales = vista === "materiales" ? listadoDeMateriales(computo.items) : [];
+  const materiales =
+    vista === "materiales"
+      ? listadoDeMateriales(computo.items, await getMaterialesParaListado())
+      : [];
   const totalMateriales = materiales.reduce((a, m) => a + m.importe, 0);
   const incidencia =
     vista === "incidencia"
@@ -306,13 +331,9 @@ export default async function ComputoPage({
 
       {desactualizadas > 0 && (
         <p style={avisoPlano} data-no-imprimir>
-          El dibujo de las plantas cambió desde que se pasó al cómputo:{" "}
-          {desactualizadas === 1
-            ? "una tarea quedó distinta"
-            : `${desactualizadas} tareas quedaron distintas`}
-          .{" "}
+          El plano cambió: {desactualizadas === 1 ? "1 tarea distinta" : `${desactualizadas} tareas distintas`}.{" "}
           <Link href={`/obras/${obra.slug}/plantas`} style={enlaceAviso}>
-            Ir a Plantas para pasarlo de nuevo
+            Pasar de nuevo ›
           </Link>
         </p>
       )}
@@ -327,6 +348,12 @@ export default async function ComputoPage({
             rubrosObra={rubrosParaPropias}
             alternar={alternarTarea}
             crearPropia={crearTareaPropia}
+            configurar={Object.fromEntries(
+              (rubros ?? []).map((r) => [
+                r.nombre.toLowerCase(),
+                `/obras/${obra.slug}/rubros/${r.id}`,
+              ])
+            )}
           />
 
           <div style={columnaPlanilla}>
@@ -451,6 +478,7 @@ export default async function ComputoPage({
                     <th style={ui.th}>Material</th>
                     <th style={thCentro}>Unidad</th>
                     <th style={ui.thRight}>Cantidad</th>
+                    <th style={ui.th}>A comprar</th>
                     <th style={ui.thRight}>Precio unit.</th>
                     <th style={ui.thRight}>Importe</th>
                     <th style={thCentro}>Tareas</th>
@@ -464,6 +492,9 @@ export default async function ComputoPage({
                       <td style={ui.tdRight}>
                         {m.cantidad.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
                       </td>
+                      {/* Lo que se le pide al corralón: el material no se
+                          vende en 5 kg sino en bolsas de 25. */}
+                      <td style={m.comercial ? tdComercial : tdGris}>{m.comercial ?? "—"}</td>
                       <td style={tdGris}>
                         {m.cantidad > 0 ? formatMoney(m.importe / m.cantidad) : "—"}
                       </td>
@@ -472,7 +503,7 @@ export default async function ComputoPage({
                     </tr>
                   ))}
                   <tr>
-                    <td style={pie} colSpan={4}>
+                    <td style={pie} colSpan={5}>
                       Total materiales
                     </td>
                     <td style={pieNumero}>{formatMoney(totalMateriales)}</td>
@@ -676,6 +707,11 @@ const avisoPlano = {
 const enlaceAviso = {
   color: "inherit",
   fontWeight: 600,
+};
+
+const tdComercial = {
+  ...ui.td,
+  fontSize: "13px",
 };
 
 const errorBox = {
