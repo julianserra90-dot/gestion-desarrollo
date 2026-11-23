@@ -408,6 +408,13 @@ export type Viga = {
    * Con número, una viga invertida o una de un entrepiso.
    */
   nivel: number | null;
+  /**
+   * Un **tabique** de hormigón —el de un ascensor, un núcleo—: se dibuja como
+   * una viga, por su línea y su espesor (`ancho`), pero va de losa a losa como
+   * una columna, y como una columna se queda con el hormigón de los nudos.
+   * `alto` y `nivel` no se usan.
+   */
+  tabique: boolean;
 };
 
 /** Una losa: se dibuja como un ambiente, por su contorno. */
@@ -459,6 +466,8 @@ export const ESTRUCTURA_VACIA: Estructura = {
 /** Con qué arranca cada pieza: las secciones más comunes, para corregir de ahí. */
 export const COLUMNA_INICIAL = { ancho: 0.2, profundidad: 0.2 };
 export const VIGA_INICIAL = { ancho: 0.12, alto: 0.45 };
+/** El de un núcleo de ascensor, el más común. */
+export const TABIQUE_INICIAL = { ancho: 0.15 };
 export const LOSA_INICIAL = { espesor: 0.12 };
 
 /**
@@ -1176,6 +1185,7 @@ function leerEstructura(valor: unknown): Estructura {
       ancho: medida(r.ancho, VIGA_INICIAL.ancho),
       alto: medida(r.alto, VIGA_INICIAL.alto),
       nivel: numero(r.nivel),
+      tabique: r.tabique === true,
     });
   }
 

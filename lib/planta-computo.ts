@@ -287,7 +287,8 @@ export function delPlano(
           if (!m) continue;
           agregarPieza(v.tarea, v.nombre, (unidad) =>
             esVolumen(unidad)
-              ? cuentaDePrisma(m, v.ancho, v.alto, m.largo)
+              ? // Un tabique, de losa a losa: su alto es el que le toca, no el de viga.
+                cuentaDePrisma(m, v.ancho, v.tabique ? m.hasta - m.desde : v.alto, m.largo)
               : null,
           );
         }

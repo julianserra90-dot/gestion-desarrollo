@@ -115,7 +115,7 @@ export function normalizarGiro(grados: number): number {
  * La línea marcada es su eje o una de sus caras, igual que en un muro
  * (`cuerpoDeMuro`): el ancho crece centrado o entero hacia un lado.
  */
-export function huellaDeViga(viga: Viga, mpp: number): Punto[] {
+export function huellaDeViga(viga: Pick<Viga, "a" | "b" | "ancho" | "referencia">, mpp: number): Punto[] {
   const largo = distancia(viga.a, viga.b);
   if (!(largo > 0)) return [];
 
@@ -434,6 +434,25 @@ export function medirEstructura(
   const vigas = estructura.vigas.map((viga) => {
     const huella = huellaDeViga(viga, mpp);
     const metalica = viga.material === "metalica";
+    if (viga.tabique) {
+      // Un tabique va como una columna: de la cara de arriba de la losa de
+      // abajo al fondo de la losa más alta que tiene encima.
+      let fondoDeSuLosa: number | null = null;
+      for (const { prisma } of losas) {
+        if (!(areaDe(recortar(prisma.huella, huella)) * pixel2 > 1e-6)) continue;
+        fondoDeSuLosa = Math.max(fondoDeSuLosa ?? prisma.desde, prisma.desde);
+      }
+      const hasta = fondoDeSuLosa ?? sinLosa;
+      const prisma: Prisma = { huella, convexa: true, desde: arranque, hasta: Math.max(arranque, hasta) };
+      const largo = distancia(viga.a, viga.b) * mpp;
+      return {
+        viga,
+        prisma,
+        largo,
+        bajoLosa: null,
+        bruto: metalica ? 0 : viga.ancho * (prisma.hasta - prisma.desde) * largo,
+      };
+    }
     // Su cara de arriba: la de la losa más alta que tenga encima si es de
     // hormigón —se cuela con ella—, o el fondo de esa losa si es metálica
     // —la sostiene desde abajo—. Con el nivel puesto a mano, su losa es la que
@@ -471,9 +490,15 @@ export function medirEstructura(
   // Sólo las de hormigón se quedan con el nudo. Un perfil metálico que llega
   // a una viga o atraviesa una losa no les saca hormigón: su sección es el
   // rectángulo que lo envuelve, no lo que ocupa.
-  const prismasDeColumnas = columnas
+  // Los tabiques van con las columnas: se quedan con el nudo.
+  const deHormigon = (v: (typeof vigas)[number]) => v.viga.material === "hormigon";
+  const prismasDeColumnasSolas = columnas
     .filter((c) => c.columna.material === "hormigon")
     .map((c) => c.prisma);
+  const prismasDeColumnas = [
+    ...prismasDeColumnasSolas,
+    ...vigas.filter((v) => v.viga.tabique && deHormigon(v)).map((v) => v.prisma),
+  ];
   const prismasDeLosas = losas.map((l) => l.prisma);
 
   const columnasMedidas: ColumnaMedida[] = columnas.map(({ columna, prisma, altura, bruto }) => ({
@@ -509,21 +534,35 @@ export function medirEstructura(
     neto:
       viga.material === "metalica"
         ? 0
-        : Math.max(
-            0,
-            bruto -
-              tapado(prisma, [
-                ...prismasDeColumnas,
-                ...prismasDeLosas,
-                // Las vigas de hormigón de antes: el nudo es de la que se
-                // dibujó primero. Un perfil que la cruza no le saca nada.
-                ...vigas
-                  .slice(0, i)
-                  .filter((otra) => otra.viga.material === "hormigon")
-                  .map((otra) => otra.prisma),
-              ]) *
-                pixel2
-          ),
+        : viga.tabique
+          ? // Un tabique cede sólo ante las columnas y los tabiques de antes.
+            Math.max(
+              0,
+              bruto -
+                tapado(prisma, [
+                  ...prismasDeColumnasSolas,
+                  ...vigas
+                    .slice(0, i)
+                    .filter((otra) => otra.viga.tabique && deHormigon(otra))
+                    .map((otra) => otra.prisma),
+                ]) *
+                  pixel2
+            )
+          : Math.max(
+              0,
+              bruto -
+                tapado(prisma, [
+                  ...prismasDeColumnas,
+                  ...prismasDeLosas,
+                  // Las vigas de hormigón de antes: el nudo es de la que se
+                  // dibujó primero. Un perfil que la cruza no le saca nada.
+                  ...vigas
+                    .slice(0, i)
+                    .filter((otra) => !otra.viga.tabique && deHormigon(otra))
+                    .map((otra) => otra.prisma),
+                ]) *
+                  pixel2
+            ),
   }));
 
   const suma = (piezas: PiezaMedida[], cual: "bruto" | "neto") =>

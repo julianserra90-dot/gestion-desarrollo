@@ -21,6 +21,7 @@ export type NombreHerramienta =
   | "esquina"
   | "columna"
   | "viga"
+  | "tabique"
   | "losa"
   | "deshacer"
   | "encuadrar";
@@ -131,6 +132,8 @@ const TRAZOS: Record<NombreHerramienta, React.ReactNode> = {
   columna: <rect x="7" y="7" width="10" height="10" rx="0.5" fill="currentColor" />,
   // El perfil en doble T, que es como se dibuja "viga" en cualquier lado.
   viga: <path d="M6 5h12M6 19h12M12 5v14" />,
+  // Un tabique en planta: una franja larga y rayada, como se lo corta.
+  tabique: <path d="M4 9h16v6H4zM8 15l4-6M12 15l4-6" />,
   // Una placa vista en perspectiva, con su canto.
   losa: (
     <>

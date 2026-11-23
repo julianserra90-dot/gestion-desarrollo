@@ -414,6 +414,81 @@ function muroQueLaRecibe(muro: Muro, punta: Punto, muros: Muro[], mpp: number | 
   return null;
 }
 
+/**
+ * Con qué otro muro se une uno en una de sus puntas, y cómo: `continua` si el
+ * otro sigue de largo (una T: tiene un compañero en línea ahí, o la punta
+ * llega a su cara sin partirlo); si no, es una esquina. Null si la punta está
+ * suelta o sigue en línea con otro muro.
+ */
+function unionEnPunta(
+  muro: Muro,
+  punta: "a" | "b",
+  muros: Muro[],
+  mpp: number | null
+): { otro: Muro; continua: boolean } | null {
+  const p = muro[punta];
+  const largo = distancia(muro.a, muro.b);
+  if (!(largo > 0)) return null;
+  const n = { x: -(muro.b.y - muro.a.y) / largo, y: (muro.b.x - muro.a.x) / largo };
+  const vecinos = muros.filter(
+    (o) => o.id !== muro.id && (mismoPunto(o.a, p) || mismoPunto(o.b, p)) && distancia(o.a, o.b) > 0
+  );
+  const paralelo = (o: Muro, normal: Punto) => {
+    const l = distancia(o.a, o.b);
+    return Math.abs(((o.b.x - o.a.x) / l) * normal.x + ((o.b.y - o.a.y) / l) * normal.y) < 0.1;
+  };
+  if (vecinos.length === 0) {
+    // Sin nadie en la punta: puede llegar contra la cara de otro, una T
+    // marcada sin partir la pared de enfrente.
+    const recibe = muroQueLaRecibe(muro, p, muros, mpp);
+    return recibe ? { otro: recibe, continua: true } : null;
+  }
+  // Sigue en línea con otro muro: no hay unión que cortar.
+  if (vecinos.some((o) => paralelo(o, n))) return null;
+  const otro = vecinos[0];
+  const largoOtro = distancia(otro.a, otro.b);
+  const nOtro = { x: -(otro.b.y - otro.a.y) / largoOtro, y: (otro.b.x - otro.a.x) / largoOtro };
+  // ¿El otro sigue de largo —una T—? Tiene un compañero en línea en esa punta.
+  const continua = vecinos.some((o) => o.id !== otro.id && paralelo(o, nOtro));
+  return { otro, continua };
+}
+
+/**
+ * Entre dónde y dónde se computa la mampostería de un muro, a lo largo de su
+ * línea marcada (0 es su punta a): **por el eje del ladrillo**, como se
+ * computa en obra. En una esquina, hasta donde se cruza con el eje del
+ * ladrillo del otro —cada muro se lleva medio rincón, y el rincón se cuenta una
+ * vez—; en una T, hasta la cara del ladrillo de la pared a la que llega —no
+ * se mete en la de ella—; suelta o en línea, donde se marcó.
+ *
+ * Con la línea marcada sola, dos muros marcados por la cara de adentro de una
+ * L no contaban el rincón, y marcados por la de afuera lo contaban dos veces.
+ */
+export function tramoDeMamposteria(muro: Muro, muros: Muro[], mpp: number | null): [number, number] {
+  const largo = distancia(muro.a, muro.b);
+  if (!(largo > 0) || mpp === null) return [0, largo];
+  const propias = lineasDeMuro(muro, mpp);
+  const eje = (propias.k[1] + propias.k[2]) / 2;
+  const hasta = (punta: "a" | "b"): number => {
+    const enLaPunta = punta === "a" ? 0 : largo;
+    const union = unionEnPunta(muro, punta, muros, mpp);
+    if (!union) return enLaPunta;
+    const otro = lineasDeMuro(union.otro, mpp);
+    const e = punta === "a" ? { x: -propias.d.x, y: -propias.d.y } : propias.d;
+    const enE = otro.n.x * e.x + otro.n.y * e.y;
+    const linea = union.continua ? (enE >= 0 ? otro.k[1] : otro.k[2]) : (otro.k[1] + otro.k[2]) / 2;
+    // El eje de éste: muro.a + n·eje + d·s. Sobre la línea del otro: (P − otro.a)·otro.n = linea.
+    const base =
+      (muro.a.x + propias.n.x * eje - otro.a.x) * otro.n.x + (muro.a.y + propias.n.y * eje - otro.a.y) * otro.n.y;
+    const paso = propias.d.x * otro.n.x + propias.d.y * otro.n.y;
+    if (Math.abs(paso) < 1e-9) return enLaPunta;
+    return (linea - base) / paso;
+  };
+  const s0 = hasta("a");
+  const s1 = hasta("b");
+  return s1 > s0 ? [s0, s1] : [0, largo];
+}
+
 /** Lo que queda de un polígono convexo del lado de una recta donde `lado(p) ≤ 0`. */
 function deUnLado(poligono: Punto[], lado: (p: Punto) => number): Punto[] {
   const salida: Punto[] = [];
@@ -696,38 +771,9 @@ export function franjasEnPlanta(muro: Muro, muros: Muro[], mpp: number | null): 
     const p = muro[punta];
     const enLaPunta = punta === "a" ? 0 : largo;
     const sinCambio = () => [enLaPunta, enLaPunta] as [number, number];
-    const vecinos = muros.filter(
-      (o) => o.id !== muro.id && (mismoPunto(o.a, p) || mismoPunto(o.b, p)) && distancia(o.a, o.b) > 0
-    );
-    const paralelo = (o: Muro) => {
-      const l = distancia(o.a, o.b);
-      return Math.abs(((o.b.x - o.a.x) / l) * n.x + ((o.b.y - o.a.y) / l) * n.y) < 0.1;
-    };
-    let otro: Muro;
-    let continua: boolean;
-    if (vecinos.length === 0) {
-      // Sin nadie en la punta: puede llegar contra la cara de otro, una T
-      // marcada sin partir la pared de enfrente.
-      const recibe = muroQueLaRecibe(muro, p, muros, mpp);
-      if (!recibe) return sinCambio;
-      otro = recibe;
-      continua = true;
-    } else {
-      // Sigue en línea con otro muro: no hay unión que cortar.
-      if (vecinos.some(paralelo)) return sinCambio;
-      otro = vecinos[0];
-      const n0 = lineasDe(otro).n;
-      // ¿El otro sigue de largo —una T—? Tiene un compañero en línea en esa punta.
-      continua = muros.some(
-        (o) =>
-          o.id !== otro.id &&
-          o.id !== muro.id &&
-          (mismoPunto(o.a, p) || mismoPunto(o.b, p)) &&
-          Math.abs(
-            ((o.b.x - o.a.x) / distancia(o.a, o.b)) * n0.x + ((o.b.y - o.a.y) / distancia(o.a, o.b)) * n0.y
-          ) < 0.1
-      );
-    }
+    const union = unionEnPunta(muro, punta, muros, mpp);
+    if (!union) return sinCambio;
+    const { otro, continua } = union;
     const lineas = lineasDe(otro);
     // Hacia dónde va el muro en esta punta (e), y hacia dónde se va el otro (f).
     const e = punta === "a" ? { x: -d.x, y: -d.y } : d;
@@ -742,17 +788,17 @@ export function franjasEnPlanta(muro: Muro, muros: Muro[], mpp: number | null): 
     const afuera = (lado: -1 | 1) => lado * (n.x * f.x + n.y * f.y) < 0;
 
     return (franja) => {
-      let linea: number;
-      if (continua) {
-        linea = franja.clase === "nucleo" ? nucleoCerca : caraCerca;
-      } else if (franja.clase === "nucleo") {
-        linea = nucleoLejos;
-      } else {
-        const lado = franja.clase === "exterior" ? -1 : 1;
-        linea = afuera(lado) ? caraLejos : nucleoCerca;
-      }
-      const s0 = corteEn(franja.n0, lineas, linea);
-      const s1 = corteEn(franja.n1, lineas, linea);
+      /** Contra qué línea del otro termina el borde de la franja de ese lado. */
+      const lineaDe = (lado: -1 | 1): number => {
+        if (continua) return franja.clase === "nucleo" ? nucleoCerca : caraCerca;
+        // El ladrillo de una esquina, a inglete: su borde de afuera llega a la
+        // cara lejana del ladrillo del otro, el de adentro a la cercana. Cada
+        // muro se queda con medio rincón, que es como se lo computa (por eje).
+        if (franja.clase === "nucleo") return afuera(lado) ? nucleoLejos : nucleoCerca;
+        return afuera(franja.clase === "exterior" ? -1 : 1) ? caraLejos : nucleoCerca;
+      };
+      const s0 = corteEn(franja.n0, lineas, lineaDe(-1));
+      const s1 = corteEn(franja.n1, lineas, lineaDe(1));
       return [s0 ?? enLaPunta, s1 ?? enLaPunta];
     };
   };
@@ -1122,21 +1168,33 @@ export function vanosDeMuro(
  * puertas y ventanas y menos lo que ocupa el hormigón. Devuelve también
  * cuánto fue de hormigón, para poder decirlo.
  *
- * El largo es el de la línea con que se lo marcó, sin estirar en las
- * esquinas: es el que se computa.
+ * El largo es el del eje del ladrillo, de unión a unión (`tramoDeMamposteria`):
+ * en una esquina cada muro llega al eje del otro, así el rincón se cuenta una
+ * vez. Sin `muros`, el de la línea marcada.
  */
 export function mamposteriaDeMuro(
   muro: Muro,
   aberturas: Abertura[],
   hormigon: { huella: Punto[]; desde: number; hasta: number }[],
   mpp: number,
-  alto: number
+  alto: number,
+  muros: Muro[] = []
 ): { superficie: number; hormigon: number } {
   // El hormigón reemplaza al ladrillo, no al revoque: se lo busca en el núcleo.
   const { nucleo } = cuerpoDeMuro(muro, [], mpp, 0);
-  const eje = { a: nucleo.ejeA, b: nucleo.ejeB };
-  const largo = distancia(eje.a, eje.b);
-  const vanos = vanosDeMuro(aberturas, muro.id, largo, 0, mpp);
+  const largoMarcado = distancia(nucleo.ejeA, nucleo.ejeB);
+  const [s0, s1] = muros.length > 0 ? tramoDeMamposteria(muro, muros, mpp) : [0, largoMarcado];
+  const d =
+    largoMarcado > 0
+      ? { x: (nucleo.ejeB.x - nucleo.ejeA.x) / largoMarcado, y: (nucleo.ejeB.y - nucleo.ejeA.y) / largoMarcado }
+      : { x: 0, y: 0 };
+  const eje = {
+    a: { x: nucleo.ejeA.x + d.x * s0, y: nucleo.ejeA.y + d.y * s0 },
+    b: { x: nucleo.ejeA.x + d.x * s1, y: nucleo.ejeA.y + d.y * s1 },
+  };
+  const largo = s1 - s0;
+  // Las aberturas van sobre la línea marcada: corridas lo que el tramo arranca antes o después.
+  const vanos = vanosDeMuro(aberturas, muro.id, largoMarcado, -s0, mpp);
   const sombras = hormigon
     .map((prisma) => sombraEnMuro(eje, nucleo.grosor, prisma))
     .filter((s): s is Pano => s !== null);
@@ -2413,7 +2471,7 @@ export function medirCaras(
   let hormigonEnMuros = 0;
   for (const muro of dibujo.muros) {
     const alto = muro.altura ?? alturaDePlanta;
-    const medida = mamposteriaDeMuro(muro, dibujo.aberturas, hormigon, mpp, alto);
+    const medida = mamposteriaDeMuro(muro, dibujo.aberturas, hormigon, mpp, alto, dibujo.muros);
     const { superficie } = medida;
     hormigonEnMuros += medida.hormigon;
 

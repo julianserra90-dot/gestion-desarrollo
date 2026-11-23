@@ -1,7 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import BotonDefinirPisos from "@/components/BotonDefinirPisos";
-import Edificio3D, { type PisoEn3D } from "@/components/Edificio3D";
+import Edificio3D, { type PisoEn3D, type TareaDeAvance } from "@/components/Edificio3D";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
@@ -13,8 +13,9 @@ import {
   getTiposDeMuro,
   getTiposDeMuroDeObra,
 } from "@/lib/plantas";
+import { createClient } from "@/lib/supabase/server";
 import { conSusTipos } from "@/lib/tipos-de-muro";
-import { editarEnPlanta, guardarPisos } from "../actions";
+import { editarEnPlanta, guardarPisos, marcarEnElPlano } from "../actions";
 
 /**
  * El edificio en 3D: cada piso de la obra con la planta que le toca, a su
@@ -29,10 +30,14 @@ import { editarEnPlanta, guardarPisos } from "../actions";
  */
 export default async function Edificio3DPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ obraId: string }>;
+  /** `desde`: la planta de la que se vino, para poder volver a ella. */
+  searchParams: Promise<{ desde?: string }>;
 }) {
   const { obraId } = await params;
+  const { desde } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -47,6 +52,7 @@ export default async function Edificio3DPage({
     getTiposDeMuroDeObra(obra.id),
   ]);
   const mapaDeTipos = new Map(tiposDeLaObra.map((t) => [t.id, t]));
+  const plantaDeOrigen = desde ? plantas.find((p) => p.id === desde) ?? null : null;
   // Cómo se llama cada tarea del catálogo: es lo que dice de qué está hecho
   // un muro o qué capas lleva un piso al tocarlo.
   const nombres = new Map([...capas, ...tiposDeMuro].map((t) => [t.id, t.nombre]));
@@ -62,9 +68,56 @@ export default async function Edificio3DPage({
       ...planta,
       dibujo: { ...planta.dibujo, muros: conSusTipos(planta.dibujo.muros, mapaDeTipos) },
     };
-    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres);
+    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres, mapaDeTipos);
     if (modelo && modelo.solidos.length > 0) modelos[planta.id] = modelo;
   }
+
+  // El avance: las tareas que el dibujo lleva, con su rubro y lo que el
+  // cómputo tiene de cada una, y lo ya marcado como hecho, piso por piso.
+  const supabase = await createClient();
+  const [{ data: items }, { data: marcadas, error: alLeerMarcas }] = await Promise.all([
+    supabase
+      .from("computo_items")
+      .select("tarea_id, unidad, cantidad")
+      .eq("obra_id", obra.id)
+      .not("tarea_id", "is", null),
+    supabase
+      .from("avances_del_plano")
+      .select("planta_id, piso, objeto, tarea_id, cantidad, fecha")
+      .eq("obra_id", obra.id),
+  ]);
+  // Sin la tabla todavía —la migración sin aplicar—, no hay nada marcado.
+  if (alLeerMarcas) console.error("avances_del_plano:", alLeerMarcas.message);
+  const catalogo = new Map([...capas, ...tiposDeMuro].map((t) => [t.id, t]));
+  const unidadDelCatalogo = new Map(tiposDeMuro.map((t) => [t.id, t.unidad]));
+  const enComputo = new Map<string, { unidad: string; cantidad: number }>();
+  for (const i of items ?? []) {
+    if (!i.tarea_id) continue;
+    const ya = enComputo.get(i.tarea_id);
+    enComputo.set(i.tarea_id, { unidad: ya?.unidad ?? i.unidad, cantidad: (ya?.cantidad ?? 0) + Number(i.cantidad) });
+  }
+  const usadas = new Set(
+    Object.values(modelos).flatMap((m) => Object.values(m.objetos).flatMap((f) => (f.tareas ?? []).map((t) => t.tarea)))
+  );
+  const tareasDeAvance: TareaDeAvance[] = Array.from(usadas, (id) => {
+    const delCatalogo = catalogo.get(id);
+    const computada = enComputo.get(id);
+    return {
+      id,
+      nombre: delCatalogo?.nombre ?? nombres.get(id) ?? "Tarea que ya no está en el catálogo",
+      rubro: delCatalogo?.rubro ?? "Sin rubro",
+      unidad: computada?.unidad ?? unidadDelCatalogo.get(id) ?? "m²",
+      enComputo: computada !== undefined,
+    };
+  }).sort((a, b) => a.rubro.localeCompare(b.rubro, "es") || a.nombre.localeCompare(b.nombre, "es"));
+  const marcas = (marcadas ?? []).map((m) => ({
+    planta: m.planta_id,
+    piso: m.piso,
+    objeto: m.objeto,
+    tarea: m.tarea_id,
+    cantidad: Number(m.cantidad),
+    fecha: m.fecha,
+  }));
 
   const pisos: PisoEn3D[] = pisosDeObra.map((p) => ({
     numero: p.numero,
@@ -94,11 +147,19 @@ export default async function Edificio3DPage({
             </Link>
             <h2 style={titulo}>{obra.nombre} en 3D</h2>
           </div>
-          <BotonDefinirPisos
-            pisos={pisosDeObra}
-            plantas={plantas.map((p) => ({ id: p.id, nombre: p.nombre }))}
-            guardar={guardarPisos.bind(null, obra.slug, obra.id)}
-          />
+          <div style={lado}>
+            {/* Si se vino de una planta, se vuelve a ella y no a la lista. */}
+            {plantaDeOrigen && (
+              <Link href={`/obras/${obra.slug}/plantas/${plantaDeOrigen.id}`} style={ui.secondaryButton}>
+                ← {plantaDeOrigen.nombre || "Volver a la planta"}
+              </Link>
+            )}
+            <BotonDefinirPisos
+              pisos={pisosDeObra}
+              plantas={plantas.map((p) => ({ id: p.id, nombre: p.nombre }))}
+              guardar={guardarPisos.bind(null, obra.slug, obra.id)}
+            />
+          </div>
         </div>
 
         {(sinPlanta > 0 || sinDibujo > 0) && hayAlgo && (
@@ -121,6 +182,9 @@ export default async function Edificio3DPage({
             pisos={pisos}
             rutaDePlantas={`/obras/${obra.slug}/plantas`}
             editar={editarEnPlanta.bind(null, obra.slug)}
+            tareasDeAvance={tareasDeAvance}
+            marcas={marcas}
+            marcar={marcarEnElPlano.bind(null, obra.id)}
           />
         ) : (
           <p style={ui.vacio}>

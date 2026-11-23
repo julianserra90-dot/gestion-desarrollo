@@ -7,6 +7,7 @@ import BotonConfirmar from "@/components/BotonConfirmar";
 import DefinicionDePisos from "@/components/DefinicionDePisos";
 import IconoHerramienta from "@/components/IconoHerramienta";
 import TipoDeMuroEditor, { ListaDeCapas } from "@/components/TipoDeMuroEditor";
+import { type CapaDeVista, useCapasDeVista } from "@/lib/capas-de-vista";
 import {
   AlturaDeCapa,
   BotonIcono,
@@ -38,6 +39,7 @@ import {
 import {
   CAPA_NUEVA,
   conSusTipos,
+  aMedioCentimetro,
   espesorTotal,
   ladoDeCara,
   type CapaDeMuro,
@@ -83,6 +85,7 @@ import {
   type ReferenciaDeMuro,
   ESPESORES,
   ESPESOR_INICIAL,
+  TABIQUE_INICIAL,
   VIGA_INICIAL,
   areaDe,
   centroDe,
@@ -144,6 +147,7 @@ type Herramienta =
   | "esquina"
   | "columna"
   | "viga"
+  | "tabique"
   | "losa";
 
 /**
@@ -158,8 +162,6 @@ type Modo = "arquitectura" | "estructura";
  * Lo que se puede ocultar del plano mientras se dibuja: el PDF de fondo y cada
  * clase de cosa dibujada. Oculto no se toca.
  */
-type CapaDeVista = "plano" | "ambientes" | "muros" | "capas" | "aberturas" | "cajones" | "estructura" | "cotas";
-
 const CAPAS_DE_VISTA: { valor: CapaDeVista; nombre: string }[] = [
   { valor: "plano", nombre: "Plano de fondo" },
   { valor: "ambientes", nombre: "Ambientes" },
@@ -330,6 +332,7 @@ const HERRAMIENTAS: Record<Modo, { valor: Herramienta; nombre: string }[]> = {
     { valor: "mover", nombre: "Mover" },
     { valor: "columna", nombre: "Columna" },
     { valor: "viga", nombre: "Viga" },
+    { valor: "tabique", nombre: "Tabique" },
     { valor: "losa", nombre: "Losa" },
     { valor: "medir", nombre: "Medir" },
   ],
@@ -496,6 +499,18 @@ export default function EditorPlanta({
     perfil: "",
     tarea: tareaSugerida(tiposDeMuro, "vigas"),
   }));
+  /** El tabique se traza como una viga; va de losa a losa como una columna. */
+  const [moldeDeTabique, setMoldeDeTabique] = useState<{
+    nombre: string;
+    ancho: number;
+    referencia: Referencia;
+    tarea: string | null;
+  }>(() => ({
+    nombre: "",
+    ancho: TABIQUE_INICIAL.ancho,
+    referencia: "centro",
+    tarea: tareaSugerida(tiposDeMuro, "tabiques"),
+  }));
   const [moldeDeLosa, setMoldeDeLosa] = useState(() => ({
     nombre: "",
     espesor: LOSA_INICIAL.espesor,
@@ -557,9 +572,10 @@ export default function EditorPlanta({
   /** El guardado de cada tipo de abertura, demorado: cuando se deja de tocar. */
   const aberturasPendientes = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   /** Lo que está oculto del plano, y si está abierto el menú para elegirlo. */
-  const [ocultas, setOcultas] = useState<Set<CapaDeVista>>(() => new Set());
+  // Las mismas que en el 3D: lo que se oculta acá se oculta allá.
+  const { ve, poner: ponerCapaDeVista, ocultasDe } = useCapasDeVista();
+  const ocultas = ocultasDe(CAPAS_DE_VISTA.map((c) => c.valor));
   const [capasAbiertas, setCapasAbiertas] = useState(false);
-  const ve = (c: CapaDeVista) => !ocultas.has(c);
   /** Con la herramienta Capa: si se marca a mano, tramo por tramo, o se
    *  elige un ambiente y va por todo su perímetro. */
   const [capaAMano, setCapaAMano] = useState(false);
@@ -981,6 +997,51 @@ export default function EditorPlanta({
     });
   };
 
+  /**
+   * Las piezas de hormigón sin tarea —dibujadas antes de que salieran con la
+   * suya—, con la que les sugiere el catálogo por su clase: sin tarea no
+   * pasan al cómputo ni se pueden marcar en el avance.
+   */
+  const sugeridas = {
+    columnas: tareaSugerida(tiposDeMuro, "columnas"),
+    vigas: tareaSugerida(tiposDeMuro, "vigas"),
+    tabiques: tareaSugerida(tiposDeMuro, "tabiques"),
+    losas: tareaSugerida(tiposDeMuro, "losas"),
+  };
+  const piezasSinTarea = {
+    columnas: sugeridas.columnas
+      ? estructura.columnas.filter((c) => c.material !== "metalica" && c.tarea === null)
+      : [],
+    vigas: estructura.vigas.filter(
+      (v) => v.material !== "metalica" && v.tarea === null && (v.tabique ? sugeridas.tabiques : sugeridas.vigas)
+    ),
+    losas: sugeridas.losas ? estructura.losas.filter((l) => l.tarea === null) : [],
+  };
+  const cuantasSinTarea =
+    piezasSinTarea.columnas.length + piezasSinTarea.vigas.length + piezasSinTarea.losas.length;
+  const ponerTareasSugeridas = () => {
+    const con = <T extends { id: string; tarea: string | null }>(
+      lista: T[],
+      sin: T[],
+      tarea: (p: T) => string | null
+    ) => {
+      const ids = new Set(sin.map((p) => p.id));
+      return lista.map((p) => (ids.has(p.id) ? { ...p, tarea: tarea(p) } : p));
+    };
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        estructura: {
+          ...estructura,
+          columnas: con(estructura.columnas, piezasSinTarea.columnas, () => sugeridas.columnas),
+          vigas: con(estructura.vigas, piezasSinTarea.vigas, (v) => (v.tabique ? sugeridas.tabiques : sugeridas.vigas)),
+          losas: con(estructura.losas, piezasSinTarea.losas, () => sugeridas.losas),
+        },
+      },
+    });
+  };
+
   const agregarAEstructura = (cambios: Partial<Estructura>) =>
     cambiar({ escala, dibujo: { ...dibujo, estructura: { ...estructura, ...cambios } } });
 
@@ -989,6 +1050,10 @@ export default function EditorPlanta({
   const proximaColumna = nombreQueSigue(
     moldeDeColumna.material === "metalica" ? "CM" : "C",
     estructura.columnas.filter((c) => c.material === moldeDeColumna.material)
+  );
+  const proximoTabique = nombreQueSigue(
+    "M",
+    estructura.vigas.filter((v) => v.tabique)
   );
   const proximaViga = nombreQueSigue(
     moldeDeViga.material === "metalica" ? "VM" : "V",
@@ -2004,6 +2069,34 @@ export default function EditorPlanta({
       return;
     }
 
+    if (herramienta === "tabique") {
+      // Como una viga: el que sigue arranca donde terminó este.
+      if (ultimo && !mismoPunto(ultimo, p)) {
+        agregarAEstructura({
+          vigas: [
+            ...estructura.vigas,
+            {
+              id: crypto.randomUUID(),
+              nombre: moldeDeTabique.nombre.trim() || proximoTabique,
+              a: ultimo,
+              b: p,
+              referencia: moldeDeTabique.referencia,
+              material: "hormigon",
+              perfil: "",
+              tarea: moldeDeTabique.tarea,
+              ancho: moldeDeTabique.ancho,
+              alto: VIGA_INICIAL.alto,
+              nivel: null,
+              tabique: true,
+            },
+          ],
+        });
+        setMoldeDeTabique({ ...moldeDeTabique, nombre: "" });
+      }
+      setEnCurso([p]);
+      return;
+    }
+
     if (herramienta === "viga") {
       // Como los muros: la que sigue arranca donde terminó esta.
       if (ultimo && !mismoPunto(ultimo, p)) {
@@ -2022,6 +2115,7 @@ export default function EditorPlanta({
               ancho: moldeDeViga.ancho,
               alto: moldeDeViga.alto,
               nivel: null,
+              tabique: false,
             },
           ],
         });
@@ -2550,6 +2644,7 @@ export default function EditorPlanta({
       herramienta === "medir" ||
       herramienta === "columna" ||
       herramienta === "viga" ||
+      herramienta === "tabique" ||
       herramienta === "losa" ||
       herramienta === "cajon"
     ) {
@@ -3112,6 +3207,7 @@ export default function EditorPlanta({
     herramienta === "ambiente" ||
     herramienta === "medir" ||
     herramienta === "viga" ||
+    herramienta === "tabique" ||
     herramienta === "losa" ||
     herramienta === "cajon";
   // La columna no traza nada, pero su punto se marca con el mismo imán.
@@ -3217,9 +3313,15 @@ export default function EditorPlanta({
         )
       : null;
   const vigaEnCurso =
-    herramienta === "viga" && previo && cursor && mpp !== null && !mismoPunto(previo, cursor.punto)
+    (herramienta === "viga" || herramienta === "tabique") &&
+    previo &&
+    cursor &&
+    mpp !== null &&
+    !mismoPunto(previo, cursor.punto)
       ? huellaDeViga(
-          { ...moldeDeViga, id: "", nombre: "", a: previo, b: cursor.punto, nivel: null },
+          herramienta === "tabique"
+            ? { ancho: moldeDeTabique.ancho, referencia: moldeDeTabique.referencia, a: previo, b: cursor.punto }
+            : { ...moldeDeViga, a: previo, b: cursor.punto },
           mpp
         )
       : null;
@@ -3503,7 +3605,7 @@ export default function EditorPlanta({
     if (!muroElegido || mpp === null) return null;
     const alto = muroElegido.altura ?? alturaDePlanta;
     const prismas = prismasDeHormigon(estructura, mpp, alturaDePlanta, pisoAPiso);
-    const { superficie } = mamposteriaDeMuro(muroElegido, dibujo.aberturas, prismas, mpp, alto);
+    const { superficie } = mamposteriaDeMuro(muroElegido, dibujo.aberturas, prismas, mpp, alto, dibujo.muros);
     const espesor = tipoDelElegido ? tipoDelElegido.nucleo.espesor : muroElegido.espesor;
     return { largo: distancia(muroElegido.a, muroElegido.b) * mpp, superficie, volumen: superficie * espesor };
   })();
@@ -3637,7 +3739,7 @@ export default function EditorPlanta({
           {/* El edificio armado con lo guardado: por eso es un enlace a otra
               pantalla y no una vista de lo que se está dibujando. */}
           <Link
-            href={`/obras/${slug}/plantas/3d`}
+            href={`/obras/${slug}/plantas/3d?desde=${planta.id}`}
             title={sucio ? "El 3D muestra lo guardado: guardá antes para ver estos cambios" : undefined}
             style={{ ...botonDeNiveles, textDecoration: "none" }}
           >
@@ -3747,7 +3849,7 @@ export default function EditorPlanta({
               if (herramienta === "ambiente") cerrarAmbiente(enCurso);
               else if (herramienta === "losa") cerrarLosa(enCurso);
               else if (herramienta === "cajon") cerrarCajon(enCurso);
-              else if (herramienta === "muro" || herramienta === "viga") setEnCurso([]);
+              else if (herramienta === "muro" || herramienta === "viga" || herramienta === "tabique") setEnCurso([]);
               else if (herramienta === "capa" && capaAMano) terminarCapaAMano();
             }}
             onContextMenu={(e) => e.preventDefault()}
@@ -4829,7 +4931,7 @@ export default function EditorPlanta({
               >
                 <IconoHerramienta nombre="capa" size={14} />
                 Capas
-                {ocultas.size > 0 && <span style={{ color: ACENTO }}>· {ocultas.size}</span>}
+                {ocultas > 0 && <span style={{ color: ACENTO }}>· {ocultas}</span>}
               </button>
               {capasAbiertas && (
                 <div style={menuDeCapas}>
@@ -4838,14 +4940,7 @@ export default function EditorPlanta({
                       <input
                         type="checkbox"
                         checked={ve(c.valor)}
-                        onChange={() =>
-                          setOcultas((antes) => {
-                            const ahora = new Set(antes);
-                            if (ahora.has(c.valor)) ahora.delete(c.valor);
-                            else ahora.add(c.valor);
-                            return ahora;
-                          })
-                        }
+                        onChange={(e) => ponerCapaDeVista(c.valor, e.target.checked)}
                       />
                       {c.nombre}
                     </label>
@@ -5663,6 +5758,41 @@ export default function EditorPlanta({
               </section>
             )}
 
+            {herramienta === "tabique" && (
+              <section style={bloque}>
+                <h3 style={tituloBloque}>Tabique</h3>
+                <label style={campo}>
+                  <span style={rotulo}>Nombre</span>
+                  <input
+                    type="text"
+                    value={moldeDeTabique.nombre}
+                    placeholder={proximoTabique}
+                    onChange={(e) => setMoldeDeTabique({ ...moldeDeTabique, nombre: e.target.value })}
+                    style={ui.input}
+                  />
+                </label>
+                <TareaDePieza
+                  valor={moldeDeTabique.tarea}
+                  tipos={tareasDePieza(tiposDeMuro, "tabiques")}
+                  alCambiar={(tarea) => setMoldeDeTabique({ ...moldeDeTabique, tarea })}
+                />
+                <label style={campo}>
+                  <span style={rotulo}>Espesor (m)</span>
+                  <CampoMetros
+                    valor={moldeDeTabique.ancho}
+                    alCambiar={(ancho) => setMoldeDeTabique({ ...moldeDeTabique, ancho })}
+                  />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Línea de referencia</span>
+                  <SelectorReferencia
+                    valor={moldeDeTabique.referencia}
+                    alCambiar={(referencia) => setMoldeDeTabique({ ...moldeDeTabique, referencia })}
+                  />
+                </label>
+              </section>
+            )}
+
             {herramienta === "losa" && (
               <section style={bloque}>
                 <h3 style={tituloBloque}>Losa</h3>
@@ -5759,8 +5889,10 @@ export default function EditorPlanta({
                       unidad="cm"
                       factor={100}
                       paso={0.5}
-                      alCambiar={(espesor) => {
-                        if (espesor === null || !(espesor > 0)) return;
+                      alCambiar={(escrito) => {
+                        if (escrito === null || !(escrito > 0)) return;
+                        // Al medio centímetro: 12, 15, 16,5.
+                        const espesor = Math.max(0.005, aMedioCentimetro(escrito));
                         if (tipoDelElegido) {
                           cambiarTipoDeMuro(tipoDelElegido.id, {
                             composicion: {
@@ -6328,7 +6460,68 @@ export default function EditorPlanta({
               </section>
             )}
 
-            {vigaElegida && (
+            {vigaElegida && vigaElegida.tabique && (
+              <section style={bloque}>
+                <h3 style={tituloBloque}>Tabique seleccionado</h3>
+                <label style={campo}>
+                  <span style={rotulo}>Nombre</span>
+                  <input
+                    type="text"
+                    value={vigaElegida.nombre}
+                    onChange={(e) =>
+                      cambiarPieza("vigas", vigaElegida.id, { nombre: e.target.value }, false)
+                    }
+                    style={ui.input}
+                  />
+                </label>
+                <TareaDePieza
+                  valor={vigaElegida.tarea}
+                  tipos={tareasDePieza(tiposDeMuro, "tabiques")}
+                  alCambiar={(tarea) => cambiarPieza("vigas", vigaElegida.id, { tarea })}
+                  sinTarea={estructura.vigas.filter(
+                    (p) => p.id !== vigaElegida.id && p.tabique && p.tarea === null
+                  )}
+                  plural="tabiques"
+                  ponerA={(ids, tarea) => cambiarPiezas("vigas", ids, { tarea })}
+                />
+                <label style={campo}>
+                  <span style={rotulo}>Espesor (m)</span>
+                  <CampoMetros
+                    key={vigaElegida.id}
+                    valor={vigaElegida.ancho}
+                    alCambiar={(ancho) => cambiarPieza("vigas", vigaElegida.id, { ancho })}
+                  />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Línea de referencia</span>
+                  <SelectorReferencia
+                    valor={vigaElegida.referencia}
+                    alCambiar={(referencia) => cambiarPieza("vigas", vigaElegida.id, { referencia })}
+                  />
+                </label>
+                {(() => {
+                  const medida = hormigon?.vigas.find((v) => v.id === vigaElegida.id);
+                  if (!medida) return null;
+                  return (
+                    <>
+                      <Renglon nombre="Largo">{formatMetros(medida.largo)}</Renglon>
+                      <Renglon nombre="Alto">{formatMetros(medida.hasta - medida.desde)}</Renglon>
+                      <Renglon nombre="Nivel">
+                        {formatNivel(medida.desde)} a {formatNivel(medida.hasta)}
+                      </Renglon>
+                      <Renglon nombre="Hormigón" fuerte>
+                        {formatM3(medida.neto)}
+                      </Renglon>
+                    </>
+                  );
+                })()}
+                <button type="button" onClick={borrarSeleccion} style={botonBorrar}>
+                  Borrar tabique
+                </button>
+              </section>
+            )}
+
+            {vigaElegida && !vigaElegida.tabique && (
               <section style={bloque}>
                 <h3 style={tituloBloque}>Viga seleccionada</h3>
                 <label style={campo}>
@@ -6356,7 +6549,7 @@ export default function EditorPlanta({
                     alCambiar={(tarea) => cambiarPieza("vigas", vigaElegida.id, { tarea })}
                     sinTarea={estructura.vigas.filter(
                       (p) =>
-                        p.id !== vigaElegida.id && p.tarea === null && p.material !== "metalica"
+                        p.id !== vigaElegida.id && p.tarea === null && p.material !== "metalica" && !p.tabique
                     )}
                     plural="vigas"
                     ponerA={(ids, tarea) => cambiarPiezas("vigas", ids, { tarea })}
@@ -6968,6 +7161,15 @@ export default function EditorPlanta({
                 Definir pisos
               </button>
             </section>
+
+            {modo === "estructura" && cuantasSinTarea > 0 && (
+              <section style={bloque}>
+                <h3 style={tituloBloque}>Tareas del cómputo</h3>
+                <button type="button" onClick={ponerTareasSugeridas} style={botonChico}>
+                  Ponerles su tarea a {cuantasSinTarea === 1 ? "la pieza" : `las ${cuantasSinTarea} piezas`} sin tarea
+                </button>
+              </section>
+            )}
 
             {modo === "estructura" && (
               <section style={bloque}>
@@ -8126,7 +8328,7 @@ function Renglon({
 /** Los rubros donde está casi todo lo que puede ser un muro. */
 const RUBROS_DE_MURO = ["Mamposterías y Tabiquerías", "Estructuras"];
 
-type ClaseConTarea = "columnas" | "vigas" | "losas";
+type ClaseConTarea = "columnas" | "vigas" | "tabiques" | "losas";
 
 const esM3 = (unidad: string) => /^m[³3]$/i.test(unidad.trim());
 const esM2 = (unidad: string) => /^m[²2]$/i.test(unidad.trim());
@@ -8144,6 +8346,7 @@ function tareasDePieza(tipos: TipoDeMuro[], clase: ClaseConTarea): TipoDeMuro[] 
 const SUGERENCIA: Record<ClaseConTarea, RegExp[]> = {
   columnas: [/columna/i],
   vigas: [/viga/i],
+  tabiques: [/tabique.*h°/i, /tabique/i],
   // La maciza antes que cualquier otra losa: es la que se dibuja por contorno
   // con su espesor.
   losas: [/losa.*maciza/i, /losa/i],
@@ -8287,6 +8490,8 @@ function perfilesDeVigas(vigas: Viga[], medidas: { id: string; largo: number }[]
 /** Cómo se nombra la sección de una viga: su perfil si es metálica y lo tiene
  *  cargado, y si no sus medidas. */
 function nombreDeSeccion(viga: Viga) {
+  // Un tabique se nombra por su espesor, como en la planilla: "M1: 15".
+  if (viga.tabique) return String(Math.round(viga.ancho * 1000) / 10).replace(".", ",");
   return viga.material === "metalica" && viga.perfil.trim() !== ""
     ? viga.perfil.trim()
     : formatSeccion(viga.ancho, viga.alto);

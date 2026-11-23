@@ -113,12 +113,52 @@ export type Database = {
           },
         ]
       }
+      avances_del_plano: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          creado_por: string | null
+          fecha: string
+          id: string
+          objeto: string
+          obra_id: string
+          piso: number
+          planta_id: string
+          tarea_id: string
+        }
+        Insert: {
+          cantidad: number
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          id?: string
+          objeto: string
+          obra_id: string
+          piso: number
+          planta_id: string
+          tarea_id: string
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          id?: string
+          objeto?: string
+          obra_id?: string
+          piso?: number
+          planta_id?: string
+          tarea_id?: string
+        }
+        Relationships: []
+      }
       avances: {
         Row: {
           actualizado_en: string
           actualizado_por: string | null
           actualizado_por_nombre: string | null
           comentario: string | null
+          desde_el_plano: boolean
           fecha_desde: string
           fecha_hasta: string
           id: string
@@ -131,6 +171,7 @@ export type Database = {
           actualizado_por?: string | null
           actualizado_por_nombre?: string | null
           comentario?: string | null
+          desde_el_plano?: boolean
           fecha_desde?: string
           fecha_hasta?: string
           id?: string
@@ -143,6 +184,7 @@ export type Database = {
           actualizado_por?: string | null
           actualizado_por_nombre?: string | null
           comentario?: string | null
+          desde_el_plano?: boolean
           fecha_desde?: string
           fecha_hasta?: string
           id?: string

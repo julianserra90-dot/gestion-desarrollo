@@ -7,6 +7,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import * as ui from "@/components/ui";
+import { type CapaDeVista, useCapasDeVista } from "@/lib/capas-de-vista";
+import { cantidadEnUnidad } from "@/lib/avance-del-plano";
 import { formatNivel } from "@/lib/format";
 import type { Campo, ClaseDeSolido, Modelo, Solido } from "@/lib/planta-3d";
 
@@ -20,11 +22,35 @@ export type PisoEn3D = {
   planta: string | null;
 };
 
+/** Una tarea que el dibujo lleva, para marcar su avance. */
+export type TareaDeAvance = {
+  id: string;
+  nombre: string;
+  rubro: string;
+  /** En qué se cotiza: dice si lo que se suma son m² o m³. */
+  unidad: string;
+  /** Si está en el cómputo: sin eso no hay con qué pesarla en el avance. */
+  enComputo: boolean;
+};
+
+/** Una cosa marcada como hecha, en un piso, de una tarea. */
+export type MarcaDeAvance = {
+  planta: string;
+  piso: number;
+  objeto: string;
+  tarea: string;
+  cantidad: number;
+  fecha: string;
+};
+
 /** Qué se tocó: una cosa del dibujo de una planta, en uno de sus pisos. */
 type Elegido = { piso: number; planta: string; objeto: string };
 
 /** Qué hace arrastrar con el botón izquierdo. */
 type Modo = "girar" | "mover";
+
+/** Para qué se mira: el edificio, o el avance de una tarea. */
+type Vista = "ver" | "avance";
 
 /**
  * El edificio levantado, para recorrerlo con el mouse.
@@ -45,6 +71,9 @@ export default function Edificio3D({
   pisos,
   rutaDePlantas,
   editar,
+  tareasDeAvance = [],
+  marcas = [],
+  marcar,
 }: {
   /** El modelo de cada planta, por su id. */
   modelos: Record<string, Modelo>;
@@ -58,6 +87,17 @@ export default function Edificio3D({
     clave: string,
     valor: number | null
   ) => Promise<{ error?: string }>;
+  tareasDeAvance?: TareaDeAvance[];
+  marcas?: MarcaDeAvance[];
+  /** Marca o desmarca una cosa como hecha, y rehace el avance de su rubro. */
+  marcar?: (marca: {
+    planta: string;
+    piso: number;
+    objeto: string;
+    tarea: string;
+    hecho: boolean;
+    fecha: string;
+  }) => Promise<{ error?: string }>;
 }) {
   const router = useRouter();
   const caja = useRef<HTMLDivElement>(null);
@@ -74,13 +114,32 @@ export default function Edificio3D({
   /** Las mallas que se pueden tocar, con qué es cada triángulo. */
   const tocables = useRef<THREE.Mesh[]>([]);
 
-  const [ver, setVer] = useState({ arquitectura: true, estructura: true, cielorrasos: false });
+  // Las mismas capas de vista que la planta: lo que se oculta allá se oculta acá.
+  const { ve, poner } = useCapasDeVista();
+  /** Las que se ven, en una cadena: cambia sólo cuando cambia alguna. */
+  const prendidas = OPCIONES.filter((o) => ve(o.clave))
+    .map((o) => o.clave)
+    .join(",");
   /** El piso que se mira solo, por su número; null son todos. */
   const [soloElPiso, setSoloElPiso] = useState<number | null>(null);
   const [modo, setModo] = useState<Modo>("girar");
   const [elegido, setElegido] = useState<Elegido | null>(null);
   const [errorAlEditar, setErrorAlEditar] = useState<string | null>(null);
   const [guardando, iniciarGuardado] = useTransition();
+  const [vista, setVista] = useState<Vista>("ver");
+  /** La tarea cuyo avance se mira, por su id. */
+  const [tareaVista, setTareaVista] = useState<string | null>(null);
+  /** El día con que se marca lo hecho. */
+  const [dia, setDia] = useState(hoy);
+  const [marcando, iniciarMarcado] = useTransition();
+  const [errorAlMarcar, setErrorAlMarcar] = useState<string | null>(null);
+  const tareaEnAvance = vista === "avance" ? tareaVista : null;
+  /** Lo hecho de la tarea que se mira: planta, piso y cosa. */
+  const hechasDeLaTarea = marcas
+    .filter((m) => m.tarea === tareaEnAvance)
+    .map((m) => `${m.planta}|${m.piso}|${m.objeto}`)
+    .sort()
+    .join(",");
 
   /** Guarda una medida de lo elegido y vuelve a pedir el edificio: el modelo
    *  se rehace en el servidor, con las mismas cuentas de siempre. */
@@ -254,12 +313,8 @@ export default function Edificio3D({
     // Lo anterior se tira entero: geometrías y materiales son de la placa de
     // video y no se liberan solos.
     const descartables: { dispose: () => void }[] = [];
-    const visibles = (clase: ClaseDeSolido) =>
-      clase === "cielorraso"
-        ? ver.arquitectura && ver.cielorrasos
-        : ESTRUCTURA.has(clase)
-          ? ver.estructura
-          : ver.arquitectura;
+    const seVen = new Set(prendidas.split(","));
+    const visibles = (clase: ClaseDeSolido) => seVen.has(CAPA_DE[clase]);
 
     const materiales = new Map<ClaseDeSolido, THREE.Material>();
     const materialDe = (clase: ClaseDeSolido) => {
@@ -339,7 +394,72 @@ export default function Edificio3D({
 
     // Y se repite en cada piso que la tiene, a su cota.
     const mallas: THREE.Mesh[] = [];
-    for (const piso of pisos) {
+    if (tareaEnAvance) {
+      // ---- El avance de una tarea ----
+      // Piso por piso, porque cada uno avanza por su lado: lo hecho en verde,
+      // lo que falta en blanco, y lo que no lleva la tarea apenas insinuado,
+      // para ubicarse. Sólo lo que la lleva se puede tocar.
+      const hechas = new Set(hechasDeLaTarea.split(","));
+      const aspecto = {
+        hecho: new THREE.MeshLambertMaterial({ color: HECHO }),
+        pendiente: new THREE.MeshLambertMaterial({ color: "#f8f8f6" }),
+        contexto: new THREE.MeshBasicMaterial({
+          color: "#b8bcc2",
+          transparent: true,
+          opacity: 0.1,
+          depthWrite: false,
+        }),
+      };
+      const filoDeAvance = new THREE.LineBasicMaterial({ color: "#5c5f66" });
+      descartables.push(aspecto.hecho, aspecto.pendiente, aspecto.contexto, filoDeAvance);
+      for (const piso of pisos) {
+        if (soloElPiso !== null && piso.numero !== soloElPiso) continue;
+        const modelo = piso.planta ? modelos[piso.planta] : undefined;
+        if (!piso.planta || !modelo) continue;
+        const nivel = new THREE.Group();
+        nivel.position.y = piso.cota;
+        const grupos = {
+          hecho: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
+          pendiente: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
+          contexto: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
+        };
+        for (const solido of modelo.solidos) {
+          const lleva = modelo.objetos[solido.objeto]?.tareas?.some((t) => t.tarea === tareaEnAvance);
+          const estado = !lleva
+            ? "contexto"
+            : hechas.has(`${piso.planta}|${piso.numero}|${solido.objeto}`)
+              ? "hecho"
+              : "pendiente";
+          grupos[estado].geometrias.push(geometriaDe(solido));
+          grupos[estado].objetos.push(solido.objeto);
+        }
+        for (const estado of ["hecho", "pendiente", "contexto"] as const) {
+          const { geometrias, objetos } = grupos[estado];
+          if (geometrias.length === 0) continue;
+          const hasta: number[] = [];
+          let triangulos = 0;
+          for (const g of geometrias) {
+            triangulos += (g.index ? g.index.count : g.getAttribute("position").count) / 3;
+            hasta.push(triangulos);
+          }
+          const fundida = mergeGeometries(geometrias);
+          for (const g of geometrias) g.dispose();
+          if (!fundida) continue;
+          descartables.push(fundida);
+          const malla = new THREE.Mesh(fundida, aspecto[estado]);
+          nivel.add(malla);
+          if (estado === "contexto") continue;
+          const datos: DatosDeMalla = { planta: piso.planta, piso: piso.numero, clase: "muro", objetos, hasta };
+          malla.userData = datos;
+          mallas.push(malla);
+          const bordes = new THREE.EdgesGeometry(fundida, 25);
+          descartables.push(bordes);
+          nivel.add(new THREE.LineSegments(bordes, filoDeAvance));
+        }
+        edificio.add(nivel);
+      }
+    }
+    for (const piso of tareaEnAvance ? [] : pisos) {
       if (soloElPiso !== null && piso.numero !== soloElPiso) continue;
       const planta = piso.planta ? plantas.get(piso.planta) : undefined;
       if (!piso.planta || !planta) continue;
@@ -392,7 +512,7 @@ export default function Edificio3D({
       tocables.current = [];
       for (const cosa of descartables) cosa.dispose();
     };
-  }, [modelos, pisos, ver, soloElPiso]);
+  }, [modelos, pisos, prendidas, soloElPiso, tareaEnAvance, hechasDeLaTarea]);
 
   // ---- Lo elegido, resaltado ----------------------------------------------
   useEffect(() => {
@@ -440,6 +560,42 @@ export default function Edificio3D({
   const ficha = elegido ? modelos[elegido.planta]?.objetos[elegido.objeto] ?? null : null;
   const pisoElegido = elegido ? pisos.find((p) => p.numero === elegido.piso) ?? null : null;
 
+  // ---- El avance de la tarea que se mira ----------------------------------
+  const rubros = Array.from(new Set(tareasDeAvance.map((t) => t.rubro)));
+  const tareaElegida = tareasDeAvance.find((t) => t.id === tareaVista) ?? null;
+  const rubroElegido = tareaElegida?.rubro ?? null;
+  /** Lo que mide una cosa de la tarea elegida, en su unidad. */
+  const cuantoDe = (planta: string, objeto: string) => {
+    const t = modelos[planta]?.objetos[objeto]?.tareas?.find((x) => x.tarea === tareaElegida?.id);
+    return t && tareaElegida ? cantidadEnUnidad(t, tareaElegida.unidad) ?? 0 : 0;
+  };
+  // Todo lo que el edificio tiene de la tarea, piso por piso, y lo hecho.
+  let totalDeLaTarea = 0;
+  if (tareaElegida) {
+    for (const p of conPlanta) {
+      for (const objeto of Object.keys(modelos[p.planta!].objetos)) totalDeLaTarea += cuantoDe(p.planta!, objeto);
+    }
+  }
+  const marcasDeLaTarea = marcas.filter((m) => m.tarea === tareaElegida?.id);
+  const hechoDeLaTarea = marcasDeLaTarea.reduce((s, m) => s + m.cantidad, 0);
+  const marcaDelElegido = elegido
+    ? marcasDeLaTarea.find(
+        (m) => m.planta === elegido.planta && m.piso === elegido.piso && m.objeto === elegido.objeto
+      ) ?? null
+    : null;
+  const elegidoLleva = elegido !== null && tareaElegida !== null && cuantoDe(elegido.planta, elegido.objeto) > 0;
+
+  /** Marca o desmarca lo elegido como hecho; el edificio vuelve con el avance rehecho. */
+  const alternarHecho = () => {
+    if (!elegido || !tareaElegida || !marcar) return;
+    const { planta, piso, objeto } = elegido;
+    iniciarMarcado(async () => {
+      const r = await marcar({ planta, piso, objeto, tarea: tareaElegida.id, hecho: !marcaDelElegido, fecha: dia });
+      setErrorAlMarcar(r.error ?? null);
+      if (!r.error) router.refresh();
+    });
+  };
+
   return (
     <div style={marco}>
       <div style={barra}>
@@ -458,16 +614,78 @@ export default function Edificio3D({
               </button>
             ))}
           </div>
-          {OPCIONES.map((o) => (
-            <label key={o.clave} style={casilla}>
-              <input
-                type="checkbox"
-                checked={ver[o.clave]}
-                onChange={(e) => setVer({ ...ver, [o.clave]: e.target.checked })}
-              />
-              {o.nombre}
-            </label>
-          ))}
+          {/* Para qué se mira: el edificio, o el avance de una tarea. */}
+          <div style={selectorDeModo} role="group" aria-label="Para qué se mira">
+            {VISTAS.map((v) => (
+              <button
+                key={v.valor}
+                type="button"
+                aria-pressed={vista === v.valor}
+                onClick={() => {
+                  setVista(v.valor);
+                  setElegido(null);
+                }}
+                style={vista === v.valor ? botonDeModoActivo : botonDeModo}
+              >
+                {v.nombre}
+              </button>
+            ))}
+          </div>
+          {vista === "ver" &&
+            OPCIONES.map((o) => (
+              <label key={o.clave} style={casilla}>
+                <input
+                  type="checkbox"
+                  checked={ve(o.clave)}
+                  onChange={(e) => poner(o.clave, e.target.checked)}
+                />
+                {o.nombre}
+              </label>
+            ))}
+          {vista === "avance" && (
+            <>
+              <select
+                value={rubroElegido ?? ""}
+                onChange={(e) => {
+                  // Al cambiar de rubro, su primera tarea.
+                  setTareaVista(tareasDeAvance.find((t) => t.rubro === e.target.value)?.id ?? null);
+                  setElegido(null);
+                }}
+                style={selector}
+                aria-label="Rubro"
+              >
+                <option value="" disabled>
+                  Rubro
+                </option>
+                {rubros.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={tareaVista ?? ""}
+                onChange={(e) => {
+                  setTareaVista(e.target.value || null);
+                  setElegido(null);
+                }}
+                style={{ ...selector, maxWidth: "340px" }}
+                aria-label="Tarea"
+                disabled={!rubroElegido}
+              >
+                <option value="" disabled>
+                  Tarea
+                </option>
+                {tareasDeAvance
+                  .filter((t) => t.rubro === rubroElegido)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nombre}
+                    </option>
+                  ))}
+              </select>
+            </>
+          )}
         </div>
 
         <label style={casilla}>
@@ -492,7 +710,79 @@ export default function Edificio3D({
         <div ref={caja} style={{ ...lienzo, cursor: modo === "mover" ? "move" : "grab" }} />
 
         <aside style={panel}>
-          {ficha && elegido ? (
+          {vista === "avance" ? (
+            tareaElegida ? (
+              <>
+                <div>
+                  <p style={sobretitulo}>{tareaElegida.rubro}</p>
+                  <h3 style={tituloDeFicha}>{tareaElegida.nombre}</h3>
+                </div>
+                <div style={{ display: "grid", gap: "6px" }}>
+                  <div style={barraDeAvance}>
+                    <div
+                      style={{
+                        ...rellenoDeAvance,
+                        width: `${totalDeLaTarea > 0 ? Math.min(100, (hechoDeLaTarea / totalDeLaTarea) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <p style={dondeEsta}>
+                    {formatCantidad(hechoDeLaTarea)} de {formatCantidad(totalDeLaTarea)} {tareaElegida.unidad}
+                    {totalDeLaTarea > 0 && ` · ${Math.round((hechoDeLaTarea / totalDeLaTarea) * 100)} %`}
+                  </p>
+                </div>
+                {!tareaElegida.enComputo && <p style={errorDeCampo}>No está en el cómputo</p>}
+                {ficha && elegido && elegidoLleva && (
+                  <div style={modificar}>
+                    <div>
+                      {/* De una capa por cara, la cara: a qué ambiente da. */}
+                      <p style={sobretitulo}>{ficha.titulo === "Capa" ? "Cara" : ficha.titulo}</p>
+                      <h3 style={tituloDeFicha}>
+                        {ficha.renglones.find(([que]) => que === "Cara")?.[1] ?? (ficha.nombre || ficha.titulo)}
+                      </h3>
+                      {pisoElegido && (
+                        <p style={dondeEsta}>
+                          {nombreDe(pisoElegido)} · {formatCantidad(cuantoDe(elegido.planta, elegido.objeto))}{" "}
+                          {tareaElegida.unidad}
+                        </p>
+                      )}
+                    </div>
+                    {marcaDelElegido ? (
+                      <>
+                        <p style={{ ...cuantoEs, color: HECHO, fontWeight: 600 }}>
+                          Realizado el {formatDia(marcaDelElegido.fecha)}
+                        </p>
+                        <button type="button" onClick={alternarHecho} disabled={marcando} style={botonSecundario}>
+                          {marcando ? "…" : "Desmarcar"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="date"
+                          value={dia}
+                          onChange={(e) => setDia(e.target.value || hoy())}
+                          style={ui.input}
+                          aria-label="Día"
+                        />
+                        <button
+                          type="button"
+                          onClick={alternarHecho}
+                          disabled={marcando || !tareaElegida.enComputo || !marcar}
+                          style={botonPrincipal}
+                        >
+                          {marcando ? "Marcando…" : "Marcar realizado"}
+                        </button>
+                      </>
+                    )}
+                    {errorAlMarcar && <p style={errorDeCampo}>{errorAlMarcar}</p>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={vacio}>Elegí un rubro y una tarea.</p>
+            )
+          ) : ficha && elegido ? (
             <>
               <div>
                 <p style={sobretitulo}>{ficha.titulo}</p>
@@ -657,11 +947,53 @@ const ACENTO = "#e8590c";
 /** Lo que se prende y se apaga con "Estructura". */
 const ESTRUCTURA = new Set<ClaseDeSolido>(["losa", "viga", "columna", "metal"]);
 
-const OPCIONES: { clave: "arquitectura" | "estructura" | "cielorrasos"; nombre: string }[] = [
-  { clave: "arquitectura", nombre: "Arquitectura" },
-  { clave: "estructura", nombre: "Estructura" },
+/** Las capas de vista del 3D: las de la planta que tienen volumen. */
+const OPCIONES: { clave: CapaDeVista; nombre: string }[] = [
+  { clave: "muros", nombre: "Muros" },
+  { clave: "capas", nombre: "Capas" },
+  { clave: "aberturas", nombre: "Aberturas" },
+  { clave: "ambientes", nombre: "Pisos" },
   { clave: "cielorrasos", nombre: "Cielorrasos" },
+  { clave: "estructura", nombre: "Estructura" },
 ];
+
+/** Con qué capa de vista se prende y apaga cada clase de sólido. */
+const CAPA_DE: Record<ClaseDeSolido, CapaDeVista> = {
+  muro: "muros",
+  capa: "capas",
+  vidrio: "aberturas",
+  puerta: "aberturas",
+  piso: "ambientes",
+  cielorraso: "cielorrasos",
+  losa: "estructura",
+  viga: "estructura",
+  columna: "estructura",
+  metal: "estructura",
+};
+
+const VISTAS: { valor: Vista; nombre: string }[] = [
+  { valor: "ver", nombre: "Ver" },
+  { valor: "avance", nombre: "Avance" },
+];
+
+/** Lo hecho, en el 3D y en el panel. */
+const HECHO = "#2f9e44";
+
+/** Hoy, en el día de quien mira (no en el de Greenwich): AAAA-MM-DD. */
+function hoy() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 2026-11-23 → 23/11/2026. */
+function formatDia(fecha: string) {
+  const [a, m, d] = fecha.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+function formatCantidad(n: number) {
+  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(n);
+}
 
 const MODOS: { valor: Modo; nombre: string }[] = [
   { valor: "girar", nombre: "Girar" },
@@ -675,6 +1007,9 @@ const MODOS: { valor: Modo; nombre: string }[] = [
  */
 const ASPECTO: Record<ClaseDeSolido, { color: string; opacidad: number }> = {
   muro: { color: "#fbfaf7", opacidad: 1 },
+  // Un pelo más cálida que el ladrillo: se lee dónde termina el muro y
+  // empieza el revoque.
+  capa: { color: "#f2eee6", opacidad: 1 },
   vidrio: { color: "#7cc4e8", opacidad: 0.4 },
   puerta: { color: "#b08457", opacidad: 1 },
   piso: { color: "#e3d7c3", opacidad: 1 },
@@ -821,6 +1156,37 @@ const cuantoEs = {
   fontSize: "14px",
   color: "#111111",
   overflowWrap: "anywhere" as const,
+};
+
+const barraDeAvance = {
+  height: "8px",
+  borderRadius: "999px",
+  background: "#eeeeee",
+  overflow: "hidden" as const,
+};
+
+const rellenoDeAvance = {
+  height: "100%",
+  background: HECHO,
+};
+
+const botonPrincipal = {
+  background: "#111111",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: "10px",
+  padding: "10px 14px",
+  fontSize: "14px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const botonSecundario = {
+  ...botonPrincipal,
+  background: "#ffffff",
+  color: "#111111",
+  border: "1px solid #dddddd",
+  fontWeight: 500,
 };
 
 const enlace = {

@@ -9,9 +9,11 @@ import { getPase, type Pase } from "@/lib/pase-al-computo";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala, leerTiposDeAbertura } from "@/lib/planta-dibujo";
-import { getTiposDeMuroDeObra } from "@/lib/plantas";
+import { getPisos, getPlantas, getTiposDeMuroDeObra } from "@/lib/plantas";
+import { cantidadEnUnidad, cargasDelPlano, type TareaDelRubro } from "@/lib/avance-del-plano";
+import { modeloDePlanta } from "@/lib/planta-3d";
 import { aplicarCambio } from "@/lib/planta-edicion";
-import { leerComposicion, medidasDelMuro } from "@/lib/tipos-de-muro";
+import { conSusTipos, leerComposicion, medidasDelMuro } from "@/lib/tipos-de-muro";
 import { createClient } from "@/lib/supabase/server";
 import { alternarTarea } from "../presupuestos/computo/actions";
 
@@ -647,4 +649,163 @@ export async function eliminarPlanta(formData: FormData) {
 
   revalidatePath("/", "layout");
   redirect(`/obras/${slug}/plantas`);
+}
+
+/** Lo que llega del 3D al marcar una cosa. */
+export type MarcaEnElPlano = {
+  planta: string;
+  piso: number;
+  objeto: string;
+  tarea: string;
+  hecho: boolean;
+  /** El día que se hizo, AAAA-MM-DD. */
+  fecha: string;
+};
+
+const ES_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Una cosa del 3D: un muro, un ambiente, una pieza de la estructura; una cara
+// de un muro (`cara:<muro>:<lado>`), o una capa dibujada en una cara
+// (`capa:<capa>:<muro>:<lado>`). El lado es 1, -1, o la punta a o b.
+const UUID = "[0-9a-f-]{36}";
+const LADO = "(1|-1|a|b)";
+const ES_OBJETO = new RegExp(
+  `^((muro|ambiente|losa|viga|columna):${UUID}|cara:${UUID}:${LADO}|capa:${UUID}:${UUID}:${LADO})$`,
+  "i"
+);
+const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Marca —o desmarca— una cosa del 3D como hecha: este muro, en este piso, de
+ * esta tarea. Lo que mide no lo dice el navegador: se rehace el modelo de la
+ * planta y se lo lee de ahí, en la unidad con que el cómputo cotiza la tarea.
+ *
+ * Después se rehacen **todas** las cargas del plano del rubro de esa tarea
+ * (`cargasDelPlano`): una por día, con lo que avanzó. Las cargas a mano no se
+ * tocan.
+ */
+export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Promise<Resultado> {
+  const { planta: plantaId, objeto, tarea: tareaId, hecho, fecha } = crudo;
+  const piso = Number(crudo.piso);
+  if (!ES_ID.test(String(plantaId)) || !ES_ID.test(String(tareaId)) || !ES_OBJETO.test(String(objeto))) {
+    return { error: "Eso no se puede marcar." };
+  }
+  if (!Number.isInteger(piso) || !ES_FECHA.test(String(fecha))) return { error: "Falta el piso o el día." };
+
+  const supabase = await createClient();
+  const [plantas, pisos, tiposDeLaObra] = await Promise.all([
+    getPlantas(obraId),
+    getPisos(obraId),
+    getTiposDeMuroDeObra(obraId),
+  ]);
+  const planta = plantas.find((p) => p.id === plantaId);
+  const suPiso = pisos.find((p) => p.numero === piso && p.plantaId === plantaId);
+  if (!planta || !suPiso) return { error: "Ese piso no tiene esa planta." };
+
+  // La tarea en el cómputo: su rubro y en qué se cotiza.
+  const { data: items, error: alLeerItems } = await supabase
+    .from("computo_items")
+    .select("rubro_id, tarea_id, unidad, cantidad, precio_materiales, precio_mano_obra, precio_integrado")
+    .eq("obra_id", obraId)
+    .not("tarea_id", "is", null);
+  if (alLeerItems) return { error: alLeerItems.message };
+  const deLaTarea = (items ?? []).find((i) => i.tarea_id === tareaId);
+  if (!deLaTarea) {
+    return { error: "Esa tarea no está en el cómputo: pasá el plano al cómputo para poder marcar su avance." };
+  }
+
+  if (hecho) {
+    // Lo que mide, del modelo de la planta, como lo levanta el 3D.
+    const primerPiso = pisos.find((p) => p.plantaId === plantaId) ?? suPiso;
+    const tipos = new Map(tiposDeLaObra.map((t) => [t.id, t]));
+    const modelo = modeloDePlanta(
+      { ...planta, dibujo: { ...planta.dibujo, muros: conSusTipos(planta.dibujo.muros, tipos) } },
+      primerPiso.altura,
+      new Map(),
+      tipos
+    );
+    const medida = modelo?.objetos[objeto]?.tareas?.find((t) => t.tarea === tareaId);
+    const cantidad = medida ? cantidadEnUnidad(medida, deLaTarea.unidad) : null;
+    if (cantidad === null) return { error: "Esa cosa no lleva esa tarea, o el plano no la mide en su unidad." };
+
+    const { data, error } = await supabase
+      .from("avances_del_plano")
+      .upsert(
+        { obra_id: obraId, planta_id: plantaId, piso, objeto, tarea_id: tareaId, cantidad, fecha },
+        { onConflict: "obra_id,planta_id,piso,objeto,tarea_id" }
+      )
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(data)) return { error: sinPermisoPara("marcar el avance") };
+  } else {
+    const { data, error } = await supabase
+      .from("avances_del_plano")
+      .delete()
+      .eq("obra_id", obraId)
+      .eq("planta_id", plantaId)
+      .eq("piso", piso)
+      .eq("objeto", objeto)
+      .eq("tarea_id", tareaId)
+      .select("id");
+    if (error) return { error: error.message };
+    if (noTocoNada(data)) return { error: sinPermisoPara("marcar el avance") };
+  }
+
+  // Las cargas del plano del rubro, de nuevo y enteras.
+  const rubroId = deLaTarea.rubro_id;
+  const porTarea = new Map<string, TareaDelRubro>();
+  for (const i of items ?? []) {
+    if (i.rubro_id !== rubroId || !i.tarea_id) continue;
+    const ya = porTarea.get(i.tarea_id) ?? { tareaId: i.tarea_id, cantidad: 0, costo: 0 };
+    ya.cantidad += Number(i.cantidad);
+    ya.costo +=
+      Number(i.cantidad) * (Number(i.precio_materiales) + Number(i.precio_mano_obra) + Number(i.precio_integrado));
+    porTarea.set(i.tarea_id, ya);
+  }
+  const { data: marcas, error: alLeerMarcas } = await supabase
+    .from("avances_del_plano")
+    .select("tarea_id, cantidad, fecha")
+    .eq("obra_id", obraId)
+    .in("tarea_id", Array.from(porTarea.keys()));
+  if (alLeerMarcas) return { error: alLeerMarcas.message };
+
+  const cargas = cargasDelPlano(
+    (marcas ?? []).map((m) => ({ tareaId: m.tarea_id, cantidad: Number(m.cantidad), fecha: m.fecha })),
+    Array.from(porTarea.values())
+  );
+
+  const { error: alBorrar } = await supabase
+    .from("avances")
+    .delete()
+    .eq("obra_id", obraId)
+    .eq("rubro_id", rubroId)
+    .eq("desde_el_plano", true);
+  if (alBorrar) return { error: alBorrar.message };
+
+  if (cargas.length > 0) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: perfil } = await supabase
+      .from("perfiles")
+      .select("nombre")
+      .eq("id", user?.id ?? "")
+      .maybeSingle();
+    const { error: alCargar } = await supabase.from("avances").insert(
+      cargas.map((c) => ({
+        obra_id: obraId,
+        rubro_id: rubroId,
+        porcentaje: c.porcentaje,
+        fecha_desde: c.fecha,
+        fecha_hasta: c.fecha,
+        comentario: `Marcado en el 3D: ${c.cosas} ${c.cosas === 1 ? "cosa" : "cosas"}`,
+        desde_el_plano: true,
+        actualizado_por: user?.id ?? null,
+        actualizado_por_nombre: perfil?.nombre ?? null,
+      }))
+    );
+    if (alCargar) return { error: alCargar.message };
+  }
+
+  revalidatePath("/", "layout");
+  return {};
 }

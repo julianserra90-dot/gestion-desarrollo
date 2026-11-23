@@ -13,6 +13,7 @@
  */
 
 import type { Dibujo } from "@/lib/planta-dibujo";
+import { aMedioCentimetro } from "@/lib/tipos-de-muro";
 
 /** Cómo tiene que ser el valor de una medida. */
 type Regla = {
@@ -83,8 +84,14 @@ export function aplicarCambio(
 
   // Una losa no queda por encima del piso que sostiene: con signo o sin él,
   // es cuánto más abajo.
+  // El espesor de un muro va al medio centímetro, como en el editor.
   const cambio = {
-    [clave]: tipo === "losa" && clave === "bajoNpt" && valor !== null ? Math.abs(valor) : valor,
+    [clave]:
+      tipo === "losa" && clave === "bajoNpt" && valor !== null
+        ? Math.abs(valor)
+        : tipo === "muro" && clave === "espesor" && valor !== null
+          ? Math.max(0.005, aMedioCentimetro(valor))
+          : valor,
   };
   /** Cambia la medida en los de una lista que cumplan, y dice si hubo alguno. */
   const en = <T extends { id: string }>(lista: T[], cuales: (item: T) => boolean = (i) => i.id === id) => {

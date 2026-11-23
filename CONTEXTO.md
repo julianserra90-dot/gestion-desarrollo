@@ -1454,6 +1454,91 @@ fondo y lo que se va dibujando.
   terminada a cara terminada, capas dibujadas incluidas (`formaDeAbertura`).
   Antes tapaba sólo el cuerpo y los bordes de las capas asomaban en las jambas
   como un escalón al lado del marco.
+- **El avance se marca en el 3D** (pedido del usuario: "un selector de tareas
+  por rubro para ver y en base a eso ir marcando qué está realizado").
+  Migración `20261125100000_el_avance_se_marca_en_el_3d` (la aplica el
+  usuario): tabla `avances_del_plano` —planta, piso, cosa (`muro:<id>`,
+  `capa:<id>`, `columna:<id>`…), tarea, cantidad en la unidad del cómputo,
+  fecha— y la columna `avances.desde_el_plano`.
+  - **En el 3D**: Ver / Avance. En Avance se elige rubro y tarea —sólo las
+    que el dibujo lleva— y el edificio muestra sólo lo que la lleva: lo hecho
+    en verde, lo que falta en blanco, el resto apenas insinuado. Piso por
+    piso: una planta tipo son varios pisos y cada uno avanza aparte. El panel
+    dice cuánto va de la tarea (m² o m³ y %), y al tocar una cosa, lo que
+    mide, el día y "Marcar realizado" / "Desmarcar".
+  - **Qué lleva cada cosa** (`Ficha.tareas`, en `modeloDePlanta`): el muro su
+    ladrillo (mampostería sin vanos ni hormigón); el ambiente su piso y su
+    cielorraso; losa, viga y columna su hormigón neto. Con las mismas cuentas
+    que el pase al cómputo (`prueba49`).
+  - **Lo que va sobre el ladrillo, por cara** (pedido del usuario: "capaz se
+    revocó sólo la parte interior y la exterior se hace en otro momento"):
+    revoques, aislaciones y revestimientos se marcan cara por cara. Cada lado
+    de un muro es su cosa, `cara:<muro>:<lado>` (lado 1 / -1, o la punta a /
+    b), con las capas de su tipo o de su ambiente; cada capa dibujada se parte
+    en sus caras, `capa:<capa>:<muro>:<lado>`. En el 3D las franjas del tipo
+    son de su cara, y una cara con capas que no tienen franja —las que toma
+    de su ambiente, las de una punta— lleva una piel fina para verla y
+    tocarla. La ficha dice a qué ambiente da ("Cara · Estar-Comedor Frente").
+    El total de la tarea es el mismo: sólo se reparte distinto.
+  - **De lo marcado a Avances** (`marcarEnElPlano`, `lib/avance-del-plano.ts`):
+    la cantidad la rehace el servidor; cada cosa pesa lo que mide sobre lo que
+    el cómputo tiene de su tarea, y la tarea lo que cuesta en su rubro (igual
+    si no hay precios). Las cargas del plano del rubro se rehacen enteras, una
+    por día, comentadas "Marcado en el 3D". Como `avances.porcentaje` es
+    entero, se redondea el **acumulado** y cada día lleva la diferencia: diez
+    marcas del 0,4 % hacen 4 % (`prueba48`). Las cargas a mano no se tocan.
+    Una tarea que no está en el cómputo no se puede marcar.
+- **Tabiques de hormigón** (pedido del usuario: el núcleo del ascensor, "como
+  las vigas pero con la altura de una columna"). Son una **variante de la
+  viga** (`Viga.tabique`): se trazan igual —por su línea, con su espesor
+  (`ancho`) y su línea de referencia, de punta a punta como los muros— con la
+  herramienta Tabique del modo Estructura, y se nombran M01, M02 como en la
+  planilla. En `medirEstructura` van **como una columna**: de la cara de
+  arriba de la losa de abajo al fondo de la losa que tienen encima, y se
+  quedan con el hormigón de los nudos (la losa y las vigas les ceden; ellos
+  sólo a las columnas y a los tabiques de antes). Le sacan lugar al ladrillo
+  como el resto del hormigón. En la planta van rayados (el plano de corte los
+  atraviesa) con "M01 15"; en el 3D, del color de las columnas, con su ficha;
+  al cómputo van por su tarea (sugerida: Tabiques H°A°) con espesor × alto ×
+  largo; y se marcan en el avance como cualquier pieza (`prueba51`).
+- **Del 3D se vuelve a la planta de la que se vino**: el botón 3D del editor
+  abre `/plantas/3d?desde=<planta>`, y el 3D muestra arriba a la derecha
+  "← <nombre de la planta>" para volver a ella sin pasar por la lista.
+  Entrando desde la lista de plantas no aparece.
+- **La estructura, en el rubro Estructuras del avance**: el 3D ya la ponía
+  ahí por la tarea de cada pieza, pero las piezas dibujadas antes de que
+  salieran con su tarea sugerida (`tareaSugerida`) no tenían ninguna —no se
+  pasaban al cómputo ni aparecían para marcar—. En modo Estructura, solapa
+  Planta, "Ponerles su tarea a las N piezas sin tarea" les pone a todas
+  juntas la sugerida de su clase: Columnas H°A°, Vigas H°A°, Losa H°A°
+  maciza (las metálicas no: se cotizan en kg). Después se guarda y se pasa
+  el plano al cómputo; una losa de viguetas se cambia a mano.
+- **La mampostería se computa por eje** (pregunta del usuario: en una
+  esquina el 3D tomaba los dos muros, "¿se repite el material?"). No se
+  repetía: **faltaba**. Se medía la línea marcada, y dos muros marcados por
+  la cara de adentro de una L no contaban el rincón (marcados por la de
+  afuera, lo contaban dos veces). Ahora `tramoDeMamposteria` mide por el eje
+  del ladrillo de unión a unión: en una esquina cada muro llega al eje del
+  otro —medio rincón cada uno, el rincón una vez—; en una T, hasta la cara del
+  ladrillo de la pared a la que llega; suelto, donde se marcó. Una L de 20
+  da 7,5 m² marcada al eje, por adentro o por afuera (`prueba50`). En la
+  esquina del baño de Andonaegui: 2,26 → 2,47 m² (los 0,21 del rincón). Y el
+  ladrillo de una esquina se corta **a inglete** (`franjasEnPlanta`): en el
+  3D cada muro tiene su medio rincón y al tocar uno no se pinta el del otro.
+  Los muros marcados por una cara cambian su cantidad: hay que volver a pasar
+  el plano al cómputo.
+- **Las capas de vista son las mismas en la planta y en el 3D**
+  (`lib/capas-de-vista.ts`, `useCapasDeVista`): se guardan en el navegador
+  —no en la base: son de quien mira— y lo que se oculta en uno se oculta en el
+  otro, también en otra pestaña. El 3D muestra las que tienen volumen: Muros,
+  Capas, Aberturas, Pisos (los ambientes), Cielorrasos (apagados al empezar:
+  tapan el edificio desde arriba) y Estructura. Para eso las capas —las
+  dibujadas y las de un tipo de antes— son su propia clase de sólido
+  (`capa`), un pelo más cálidas que el ladrillo, con sus aristas aparte.
+- **Espesores redondos**: la suma de las capas de un tipo se limpia del polvo
+  de los decimales (0,16 y no 0,15999…, `espesorTotal`), y el espesor que se
+  escribe —en la planta o en el 3D— va al medio centímetro
+  (`aMedioCentimetro`): 12, 15, 16,5.
 - **La cota del muro elegido** (`CotaDeMuro`): en vez del rótulo chico pegado
   al muro —quedaba encima del punto del medio y de la línea marcada—, una
   línea de cota de plano en naranja, afuera del muro pasando sus capas, del

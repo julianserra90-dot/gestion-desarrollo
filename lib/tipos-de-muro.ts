@@ -42,10 +42,23 @@ export type Lado = (typeof LADOS)[number];
 
 export const CAPA_NUEVA: CapaDeMuro = { tarea: null, espesor: 0.015, desde: 0, hasta: "techo" };
 
+/**
+ * Un espesor de muro como se lo da en obra: al medio centímetro —12, 15,
+ * 16,5—. Lo que se escribe se lleva ahí.
+ */
+export function aMedioCentimetro(metros: number): number {
+  return Math.round(metros * 200) / 200;
+}
+
+/** Sin el polvo de sumar decimales: 0,02 + 0,12 + 0,02 da 0,16 y no 0,15999…. */
+function limpio(metros: number): number {
+  return Math.round(metros * 10000) / 10000;
+}
+
 /** El espesor del muro: el núcleo y todas sus capas. */
 export function espesorTotal(c: Composicion): number {
   const suma = (capas: CapaDeMuro[]) => capas.reduce((t, k) => t + k.espesor, 0);
-  return c.nucleo.espesor + suma(c.exterior) + suma(c.interior);
+  return limpio(c.nucleo.espesor + suma(c.exterior) + suma(c.interior));
 }
 
 /**
@@ -62,7 +75,7 @@ export function medidasDelMuro(c: Composicion): {
   return {
     espesor: espesorTotal(c),
     tarea: c.nucleo.tarea,
-    revestimiento: { exterior: suma(c.exterior), interior: suma(c.interior) },
+    revestimiento: { exterior: limpio(suma(c.exterior)), interior: limpio(suma(c.interior)) },
   };
 }
 

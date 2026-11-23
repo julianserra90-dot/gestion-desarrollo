@@ -47,7 +47,9 @@ import {
   recortar,
 } from "@/lib/planta-estructura";
 import { piezasDeCapas } from "@/lib/planta-capas";
+import type { Composicion } from "@/lib/tipos-de-muro";
 import {
+  type Cara,
   type Pano,
   adentro as dentro,
   arranqueDe,
@@ -55,6 +57,7 @@ import {
   cuerpoDeMuro,
   franjasEnPlanta,
   mamposteriaDeMuro,
+  medirCaras,
   panosDeMuro,
   sombraEnMuro,
   vanosDeMuro,
@@ -63,6 +66,8 @@ import {
 /** Qué es cada sólido: decide de qué color va y con qué se prende o apaga. */
 export type ClaseDeSolido =
   | "muro"
+  /** Lo que va sobre el ladrillo: revoques, revestimientos, pintura. */
+  | "capa"
   | "vidrio"
   | "puerta"
   | "piso"
@@ -95,7 +100,16 @@ export type Ficha = {
   renglones: [string, string][];
   /** Lo que se le puede cambiar desde acá: sus alturas y sus medidas. */
   campos: Campo[];
+  /**
+   * Las tareas del cómputo que lleva, con lo que mide de cada una: el muro su
+   * ladrillo y las capas de su tipo, una capa dibujada su revoque, una columna
+   * su hormigón. Es con lo que se marca el avance en el 3D.
+   */
+  tareas?: TareaDeObjeto[];
 };
+
+/** Una tarea de una cosa del dibujo y cuánto lleva de ella, en m² y en m³. */
+export type TareaDeObjeto = { tarea: string; superficie: number; volumen: number };
 
 /**
  * Una medida de una cosa que se puede corregir mirando el 3D, en metros.
@@ -152,7 +166,8 @@ type EnObra = Solido & { grupo: string };
 export function modeloDePlanta(
   planta: { dibujo: Dibujo; escala: Escala | null; altura: number },
   pisoAPiso: number | null,
-  nombres: Map<string, string> = new Map()
+  nombres: Map<string, string> = new Map(),
+  tipos: Map<string, Composicion> = new Map()
 ): Modelo | null {
   const mpp = metrosPorPixel(planta.escala);
   if (mpp === null) return null;
@@ -192,6 +207,84 @@ export function modeloDePlanta(
   // El hormigón, con las mismas alturas con que se lo computa: es lo que le
   // saca lugar a los muros.
   const hormigon = prismasDeHormigon(dibujo.estructura, mpp, planta.altura, pisoAPiso);
+
+  // ---- Las caras ---------------------------------------------------------
+  // Lo que va sobre el ladrillo —revoques, aislaciones, revestimientos— se
+  // hace cara por cara: el revoque de adentro un mes, el de afuera otro. Por
+  // eso cada lado de un muro, con lo que lleva, es su propia cosa
+  // (`cara:<muro>:<lado>`), y cada capa dibujada se parte en sus caras
+  // (`capa:<capa>:<muro>:<lado>`). El lado es 1 o -1; una punta, "a" o "b".
+  const medidas = medirCaras(dibujo, mpp, planta.altura, pisoAPiso, tipos);
+  const nombreDeAmbiente = new Map(dibujo.ambientes.map((a) => [a.id, a.nombre]));
+  const claveDeCara = (c: Pick<Cara, "lado" | "punta">) => String(c.punta ?? c.lado);
+  /** A qué da una cara: sus ambientes, o afuera. */
+  const nombreDeCara = (muroId: string, clave: string) => {
+    if (clave === "a" || clave === "b") return "Punta";
+    const nombres = new Set<string>();
+    for (const c of medidas?.caras ?? []) {
+      if (c.muroId !== muroId || claveDeCara(c) !== clave) continue;
+      nombres.add(c.ambienteId ? nombreDeAmbiente.get(c.ambienteId) || "Ambiente" : "Afuera");
+    }
+    return Array.from(nombres).join(" · ") || "Afuera";
+  };
+  const fichaDeCara = (objeto: string, muroTarea: string | null, muroId: string, clave: string, mas: [string, string][] = []) => {
+    objetos[objeto] ??= {
+      titulo: "Cara",
+      nombre: nombreDeCara(muroId, clave),
+      renglones: [["Muro", tarea(muroTarea)], ...mas],
+      campos: [],
+    };
+  };
+
+  /**
+   * Una piel sobre una cara —una capa dibujada, o las capas de una cara que
+   * no tienen franja en el muro—: su huella entre `s0` y `s1` a lo largo, sin
+   * los vanos de su muro que la cruzan a su altura.
+   */
+  const levantarPiel = (
+    cara: Cara,
+    puntos: Punto[],
+    s0: number,
+    s1: number,
+    abajo: number,
+    arriba: number,
+    objeto: string,
+    grupo: string
+  ) => {
+    const muro = dibujo.muros.find((m) => m.id === cara.muroId);
+    if (!muro) return;
+    const largo = cara.largo > 0 ? cara.largo : 1;
+    const d = { x: (cara.b.x - cara.a.x) / largo, y: (cara.b.y - cara.a.y) / largo };
+    const lado = cara.punta === null ? cara.lado : 1;
+    const o = { x: -d.y * lado, y: d.x * lado };
+    const en = (s: number, n: number): Punto => ({
+      x: cara.a.x + d.x * (s - cara.desde) + o.x * n,
+      y: cara.a.y + d.y * (s - cara.desde) + o.y * n,
+    });
+    // Los vanos de su muro, a lo largo de la pieza. Un canto no tiene.
+    const cuerpo = cuerpoDeMuro(muro, dibujo.muros, mpp, 0);
+    const arranque = arranqueDe(cuerpo);
+    const vanos =
+      cara.punta === null
+        ? vanosDeMuro(dibujo.aberturas, muro.id, distancia(cuerpo.ejeA, cuerpo.ejeB), arranque, mpp).map(
+            (v): Pano => ({ ...v, desde: v.desde - arranque - s0, hasta: v.hasta - arranque - s0 })
+          )
+        : [];
+    const largoDePieza = s1 - s0;
+    for (const pano of panosDeMuro(largoDePieza, arriba, vanos)) {
+      const de = Math.max(pano.abajo, abajo);
+      const a = Math.min(pano.arriba, arriba);
+      if (!(a - de > MINIMO)) continue;
+      // El paño, a lo largo; en las puntas de la pieza, sin límite, para no
+      // cortarle el inglete de la esquina.
+      const p0 = pano.desde <= 1e-9 ? -1e4 : s0 + pano.desde;
+      const p1 = pano.hasta >= largoDePieza - 1e-9 ? 1e4 : s0 + pano.hasta;
+      const huella = recortar(puntos, [en(p0, -1e4), en(p1, -1e4), en(p1, 1e4), en(p0, 1e4)]);
+      if (huella.length < 3) continue;
+      sumar("capa", objeto, grupo, huella, de, a);
+    }
+    return en;
+  };
 
   // ---- Los muros, con sus vanos y sin el hormigón ------------------------
   for (const muro of dibujo.muros) {
@@ -241,7 +334,7 @@ export function modeloDePlanta(
     // Los muros de lo mismo son una sola pieza: sin junta entre sus tramos ni
     // en las esquinas. Entre dos materiales distintos, la línea queda.
     const grupo = `muro|${muro.tarea ?? ""}`;
-    const mamposteria = mamposteriaDeMuro(muro, dibujo.aberturas, hormigon, mpp, alto);
+    const mamposteria = mamposteriaDeMuro(muro, dibujo.aberturas, hormigon, mpp, alto, dibujo.muros);
     objetos[objeto] = {
       titulo: "Muro",
       nombre: "",
@@ -265,7 +358,7 @@ export function modeloDePlanta(
           valor: muro.altura,
           vacio: `${dosDecimales(techo)} — la de la planta`,
         },
-        { clave: "espesor", nombre: "Espesor (m)", valor: muro.espesor },
+        { clave: "espesor", nombre: "Espesor (m)", valor: Math.round(muro.espesor * 10000) / 10000 },
       ],
     };
 
@@ -294,7 +387,17 @@ export function modeloDePlanta(
         const tramoDelPano = tramoEntre(inicio + pano.desde, inicio + pano.hasta, -1e4, 1e4);
         const huella = recortar(franja.puntos, tramoDelPano);
         if (huella.length < 3) continue;
-        sumar("muro", objeto, grupo, huella, pano.abajo, pano.arriba);
+        // El ladrillo es muro; las capas del tipo, capa: se prenden y apagan
+        // aparte, y sus aristas van con las de las capas.
+        if (franja.clase === "nucleo") {
+          sumar("muro", objeto, grupo, huella, pano.abajo, pano.arriba);
+        } else {
+          // Cada lado es su cara: el exterior va hacia −normal.
+          const clave = franja.clase === "exterior" ? "-1" : "1";
+          const deCara = `cara:${muro.id}:${clave}`;
+          fichaDeCara(deCara, muro.tarea, muro.id, clave);
+          sumar("capa", deCara, `capa|tipo|${franja.clase}`, huella, pano.abajo, pano.arriba);
+        }
       }
     }
 
@@ -356,35 +459,19 @@ export function modeloDePlanta(
 
   // ---- Las capas dibujadas sobre las caras --------------------------------
   // Cada pieza, como una piel con su espesor entre sus alturas, sin los vanos
-  // de su muro. Una pintura no tiene espesor: en el 3D no se ve.
+  // de su muro. Una pintura no tiene espesor: en el 3D no se ve. Cada una es
+  // de su cara: el revoque del baño y el del pasillo se marcan por separado.
   const caras = carasVisibles(dibujo.muros, dibujo.ambientes, mpp);
   for (const pieza of piezasDeCapas(dibujo, caras, mpp, techo)) {
     if (!(pieza.capa.espesor > 0)) continue;
     const { cara } = pieza;
-    const muro = dibujo.muros.find((m) => m.id === cara.muroId);
-    if (!muro) continue;
-    const largo = cara.largo > 0 ? cara.largo : 1;
-    const d = { x: (cara.b.x - cara.a.x) / largo, y: (cara.b.y - cara.a.y) / largo };
-    const lado = cara.punta === null ? cara.lado : 1;
-    const o = { x: -d.y * lado, y: d.x * lado };
-    const en = (s: number, n: number): Punto => ({
-      x: cara.a.x + d.x * (s - cara.desde) + o.x * n,
-      y: cara.a.y + d.y * (s - cara.desde) + o.y * n,
-    });
-    // Los vanos de su muro, a lo largo de la pieza. Un canto no tiene.
-    const cuerpo = cuerpoDeMuro(muro, dibujo.muros, mpp, 0);
-    const arranque = arranqueDe(cuerpo);
-    const vanos =
-      cara.punta === null
-        ? vanosDeMuro(dibujo.aberturas, muro.id, distancia(cuerpo.ejeA, cuerpo.ejeB), arranque, mpp).map(
-            (v): Pano => ({ ...v, desde: v.desde - arranque - pieza.s0, hasta: v.hasta - arranque - pieza.s0 })
-          )
-        : [];
-    const objeto = `capa:${pieza.capa.id}`;
+    const clave = claveDeCara(cara);
+    const objeto = `capa:${pieza.capa.id}:${cara.muroId}:${clave}`;
     objetos[objeto] ??= {
       titulo: "Capa",
       nombre: tarea(pieza.capa.tarea),
       renglones: [
+        ["Cara", nombreDeCara(cara.muroId, clave)],
         ["Espesor", cm(pieza.capa.espesor)],
         [
           "Altura",
@@ -393,19 +480,33 @@ export function modeloDePlanta(
       ],
       campos: [],
     };
-    const largoDePieza = pieza.s1 - pieza.s0;
-    for (const pano of panosDeMuro(largoDePieza, pieza.arriba, vanos)) {
-      const abajo = Math.max(pano.abajo, pieza.abajo);
-      const arriba = Math.min(pano.arriba, pieza.arriba);
-      if (!(arriba - abajo > MINIMO)) continue;
-      // El paño, a lo largo; en las puntas de la pieza, sin límite, para no
-      // cortarle el inglete de la esquina.
-      const s0 = pano.desde <= 1e-9 ? -1e4 : pieza.s0 + pano.desde;
-      const s1 = pano.hasta >= largoDePieza - 1e-9 ? 1e4 : pieza.s0 + pano.hasta;
-      const huella = recortar(pieza.puntos, [en(s0, -1e4), en(s1, -1e4), en(s1, 1e4), en(s0, 1e4)]);
-      if (huella.length < 3) continue;
-      sumar("muro", objeto, `capa|${pieza.capa.tarea ?? ""}`, huella, abajo, arriba);
-    }
+    levantarPiel(cara, pieza.puntos, pieza.s0, pieza.s1, pieza.abajo, pieza.arriba, objeto, `capa|${pieza.capa.tarea ?? ""}`);
+  }
+
+  // Las caras con capas que no son franja del muro —las que toma de su
+  // ambiente, o las de una punta—: una piel fina, para verlas y tocarlas.
+  for (const cara of medidas?.caras ?? []) {
+    const deAntes = cara.capas.filter((c) => !c.dibujada);
+    if (deAntes.length === 0) continue;
+    const muro = dibujo.muros.find((m) => m.id === cara.muroId);
+    if (!muro) continue;
+    const conFranja =
+      cara.punta === null && (cara.lado === -1 ? muro.revestimiento.exterior : muro.revestimiento.interior) > 0;
+    if (conFranja) continue;
+    const clave = claveDeCara(cara);
+    const objeto = `cara:${muro.id}:${clave}`;
+    fichaDeCara(objeto, muro.tarea, muro.id, clave, [["Capas", capas(deAntes)]]);
+    const grosor = Math.max(deAntes.reduce((s, c) => s + (c.espesor ?? 0), 0), FINO / 2) / mpp;
+    const largo = cara.largo > 0 ? cara.largo : 1;
+    const d = { x: (cara.b.x - cara.a.x) / largo, y: (cara.b.y - cara.a.y) / largo };
+    const lado = cara.punta === null ? cara.lado : 1;
+    const o = { x: -d.y * lado, y: d.x * lado };
+    const en = (s: number, n: number): Punto => ({
+      x: cara.a.x + d.x * (s - cara.desde) + o.x * n,
+      y: cara.a.y + d.y * (s - cara.desde) + o.y * n,
+    });
+    const puntos = [en(cara.desde, 0), en(cara.hasta, 0), en(cara.hasta, grosor), en(cara.desde, grosor)];
+    levantarPiel(cara, puntos, cara.desde, cara.hasta, 0, cara.alto, objeto, `capa|cara|${clave}`);
   }
 
   // ---- Los cajones de cielorraso -----------------------------------------
@@ -526,13 +627,30 @@ export function modeloDePlanta(
       const metalica = viga.material === "metalica";
       const objeto = `viga:${viga.id}`;
       sumar(
-        metalica ? "metal" : "viga",
+        metalica ? "metal" : viga.tabique ? "columna" : "viga",
         objeto,
-        metalica ? objeto : "viga",
+        metalica ? objeto : viga.tabique ? "columna" : "viga",
         huellaDeViga(viga, mpp),
         m.desde,
         m.hasta
       );
+      if (viga.tabique) {
+        // Un tabique se ve y se lee como una columna larga.
+        objetos[objeto] = {
+          titulo: "Tabique",
+          nombre: viga.nombre,
+          renglones: [
+            ["Material", "Hormigón armado"],
+            ["Espesor", cm(viga.ancho)],
+            ["Largo", formatMetros(m.largo)],
+            ["Altura", formatMetros(m.hasta - m.desde)],
+            niveles(m.desde, m.hasta),
+            ["Hormigón", formatM3(m.neto)],
+          ],
+          campos: [{ clave: "ancho", nombre: "Espesor (m)", valor: viga.ancho }],
+        };
+        continue;
+      }
       objetos[objeto] = {
         titulo: "Viga",
         nombre: viga.nombre,
@@ -605,6 +723,65 @@ export function modeloDePlanta(
         ],
       };
     }
+  }
+
+  // ---- Las tareas de cada cosa, con lo que mide ---------------------------
+  // Con las mismas cuentas que el pase al cómputo: la mampostería sin vanos ni
+  // hormigón, cada capa por sus caras, el piso por la superficie del ambiente
+  // y el hormigón ya descontado de los nudos.
+  const porObjeto = new Map<string, Map<string, { superficie: number; volumen: number }>>();
+  const anotar = (objeto: string, tarea: string | null, superficie: number, volumen: number) => {
+    if (!tarea || !objetos[objeto] || !(superficie > 0 || volumen > 0)) return;
+    const de = porObjeto.get(objeto) ?? new Map<string, { superficie: number; volumen: number }>();
+    const ya = de.get(tarea) ?? { superficie: 0, volumen: 0 };
+    de.set(tarea, { superficie: ya.superficie + superficie, volumen: ya.volumen + volumen });
+    porObjeto.set(objeto, de);
+  };
+  for (const muro of dibujo.muros) {
+    const { superficie } = mamposteriaDeMuro(muro, dibujo.aberturas, hormigon, mpp, muro.altura ?? techo, dibujo.muros);
+    // El volumen es el del núcleo: el ladrillo, sin sus revoques.
+    const delNucleo = muro.tipo ? tipos.get(muro.tipo)?.nucleo.espesor : undefined;
+    anotar(`muro:${muro.id}`, muro.tarea, superficie, superficie * (delNucleo ?? muro.espesor));
+  }
+  for (const cara of medidas?.caras ?? []) {
+    const clave = claveDeCara(cara);
+    for (const capa of cara.capas) {
+      // Cara por cara: la dibujada, en su pedazo de esa cara; la del tipo o la
+      // del ambiente, en la cara del muro.
+      const objeto =
+        capa.dibujada && capa.capaId
+          ? `capa:${capa.capaId}:${cara.muroId}:${clave}`
+          : `cara:${cara.muroId}:${clave}`;
+      anotar(objeto, capa.tarea, capa.superficie, capa.superficie * (capa.espesor ?? 0));
+    }
+  }
+  for (const ambiente of dibujo.ambientes) {
+    const superficie = areaDe(ambiente.puntos) * mpp * mpp;
+    for (const capa of [...ambiente.piso, ...ambiente.cielorraso]) {
+      anotar(`ambiente:${ambiente.id}`, capa.tarea, superficie, superficie * (capa.espesor ?? 0));
+    }
+  }
+  if (medida) {
+    for (const losa of dibujo.estructura.losas) {
+      const m = medida.losas.find((l) => l.id === losa.id);
+      if (m) anotar(`losa:${losa.id}`, losa.tarea, m.superficie, m.neto);
+    }
+    for (const viga of dibujo.estructura.vigas) {
+      const m = medida.vigas.find((v) => v.id === viga.id);
+      if (m && viga.material !== "metalica") anotar(`viga:${viga.id}`, viga.tarea, 0, m.neto);
+    }
+    for (const columna of dibujo.estructura.columnas) {
+      const m = medida.columnas.find((c) => c.id === columna.id);
+      if (m && columna.material !== "metalica") anotar(`columna:${columna.id}`, columna.tarea, 0, m.neto);
+    }
+  }
+  const alDecimoDeMilimetro = (n: number) => Math.round(n * 1e6) / 1e6;
+  for (const [objeto, de] of porObjeto) {
+    objetos[objeto].tareas = Array.from(de, ([tarea, v]) => ({
+      tarea,
+      superficie: alDecimoDeMilimetro(v.superficie),
+      volumen: alDecimoDeMilimetro(v.volumen),
+    }));
   }
 
   if (enObra.length === 0) return { solidos: [], aristas: [], objetos, ancho: 0, fondo: 0 };
