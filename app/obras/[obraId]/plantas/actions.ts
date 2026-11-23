@@ -7,6 +7,7 @@ import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala } from "@/lib/planta-dibujo";
+import { aplicarCambio } from "@/lib/planta-edicion";
 import { createClient } from "@/lib/supabase/server";
 
 type Resultado = { error?: string };
@@ -235,6 +236,53 @@ export async function guardarPisos(
       .eq("obra_id", obraId);
     if (error) return { error: error.message };
   }
+
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/**
+ * Cambia una medida de una cosa de una planta, desde el 3D.
+ *
+ * Lee el dibujo guardado, le aplica el cambio (`aplicarCambio`, que es quien
+ * decide qué se puede tocar) y lo vuelve a guardar. Va contra lo guardado y
+ * no contra lo que haya abierto en un editor: si la misma planta está abierta
+ * con cambios sin guardar, al guardarla ahí se pisa esto.
+ */
+export async function editarEnPlanta(
+  slug: string,
+  plantaId: string,
+  objeto: string,
+  clave: string,
+  valor: number | null
+): Promise<Resultado> {
+  const supabase = await createClient();
+
+  const { data: planta, error: alLeer } = await supabase
+    .from("plantas")
+    .select("dibujo")
+    .eq("id", plantaId)
+    .maybeSingle();
+
+  if (alLeer) return { error: alLeer.message };
+  if (!planta) return { error: "No se encontró la planta." };
+
+  const resultado = aplicarCambio(
+    leerDibujo(planta.dibujo),
+    String(objeto),
+    String(clave),
+    valor === null ? null : Number(valor)
+  );
+  if ("error" in resultado) return { error: resultado.error };
+
+  const { data, error } = await supabase
+    .from("plantas")
+    .update({ dibujo: resultado.dibujo as unknown as Json })
+    .eq("id", plantaId)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("modificar esta planta") };
 
   revalidatePath("/", "layout");
   return {};

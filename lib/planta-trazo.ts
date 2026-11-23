@@ -20,6 +20,7 @@ import {
   areaDe,
   distancia,
 } from "@/lib/planta-dibujo";
+import { prismasDeHormigon, recortar } from "@/lib/planta-estructura";
 
 export function mismoPunto(a: Punto, b: Punto) {
   return Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
@@ -418,6 +419,193 @@ export function crucesDeCaras(
   }
 
   return puntos;
+}
+
+// ---- Dónde hay muro de verdad ---------------------------------------------
+
+/** Un rectángulo en la elevación de un muro: entre qué distancias de su
+ *  punta, en píxeles, y entre qué alturas, en metros. */
+export type Pano = { desde: number; hasta: number; abajo: number; arriba: number };
+
+/**
+ * Lo que una pieza de hormigón le saca a un muro, visto en su elevación: el
+ * tramo del muro que ocupa y entre qué alturas. Null si no lo toca, o si lo
+ * toca apenas.
+ *
+ * **Donde hay hormigón no hay ladrillo**: la columna que está adentro del
+ * muro y la viga que lo corona no se levantan de mampostería. Cuenta cuando
+ * la pieza ocupa al menos la mitad del espesor del muro en ese tramo: una
+ * columna de 13 en un muro de 15 lo corta; una viga de 12 que pasa por un
+ * muro de 30 no, porque el ladrillo sigue al lado.
+ *
+ * `eje` es el eje del cuerpo del muro y `grosor` su espesor, en píxeles.
+ */
+export function sombraEnMuro(
+  eje: { a: Punto; b: Punto },
+  grosor: number,
+  prisma: { huella: Punto[]; desde: number; hasta: number }
+): Pano | null {
+  const largo = distancia(eje.a, eje.b);
+  if (!(largo > 0) || !(grosor > 0)) return null;
+
+  const dx = (eje.b.x - eje.a.x) / largo;
+  const dy = (eje.b.y - eje.a.y) / largo;
+  const medio = grosor / 2;
+  const cuerpo: Punto[] = [
+    { x: eje.a.x - dy * medio, y: eje.a.y + dx * medio },
+    { x: eje.b.x - dy * medio, y: eje.b.y + dx * medio },
+    { x: eje.b.x + dy * medio, y: eje.b.y - dx * medio },
+    { x: eje.a.x + dy * medio, y: eje.a.y - dx * medio },
+  ];
+  const adentro = recortar(prisma.huella, cuerpo);
+  if (adentro.length < 3) return null;
+
+  let desde = Infinity;
+  let hasta = -Infinity;
+  for (const p of adentro) {
+    const s = (p.x - eje.a.x) * dx + (p.y - eje.a.y) * dy;
+    desde = Math.min(desde, s);
+    hasta = Math.max(hasta, s);
+  }
+  const tramo = hasta - desde;
+  if (!(tramo > 1e-6) || areaDe(adentro) / (tramo * grosor) < 0.5) return null;
+  return { desde, hasta, abajo: prisma.desde, arriba: prisma.hasta };
+}
+
+/**
+ * Los paños de un muro: su elevación —de punta a punta y del piso a su
+ * altura— menos los `huecos`: los vanos de sus aberturas y lo que ocupa el
+ * hormigón (`sombraEnMuro`).
+ *
+ * La elevación se corta en una grilla por cada borde de cada hueco, se tira lo
+ * que cae adentro de alguno y lo que queda se vuelve a juntar: primero de
+ * abajo hacia arriba, y después a lo largo, donde dos tramos vecinos quedaron
+ * iguales. Los huecos pueden pisarse entre sí —una viga sobre una puerta—:
+ * lo tapado se cuenta una vez.
+ *
+ * De acá salen las dos cosas: cuánta mampostería hay —la suma de los paños—
+ * y qué cajas dibujar en el 3D.
+ */
+export function panosDeMuro(largo: number, alto: number, huecos: Pano[]): Pano[] {
+  if (!(largo > 0) || !(alto > 0)) return [];
+
+  const HOLGURA = 1e-6;
+  const recortados = huecos
+    .map((h) => ({
+      desde: Math.max(0, h.desde),
+      hasta: Math.min(largo, h.hasta),
+      abajo: Math.max(0, h.abajo),
+      arriba: Math.min(alto, h.arriba),
+    }))
+    .filter((h) => h.hasta - h.desde > HOLGURA && h.arriba - h.abajo > HOLGURA);
+
+  const cortes = (valores: number[]) =>
+    Array.from(new Set(valores)).sort((p, q) => p - q);
+  const aLoLargo = cortes([0, largo, ...recortados.flatMap((h) => [h.desde, h.hasta])]);
+  const aLoAlto = cortes([0, alto, ...recortados.flatMap((h) => [h.abajo, h.arriba])]);
+
+  // Cada tramo a lo largo, con sus franjas de muro ya juntadas en altura.
+  const tramos: { desde: number; hasta: number; franjas: [number, number][] }[] = [];
+  for (let i = 0; i + 1 < aLoLargo.length; i++) {
+    const s0 = aLoLargo[i];
+    const s1 = aLoLargo[i + 1];
+    if (!(s1 - s0 > HOLGURA)) continue;
+    const s = (s0 + s1) / 2;
+
+    const franjas: [number, number][] = [];
+    for (let k = 0; k + 1 < aLoAlto.length; k++) {
+      const z0 = aLoAlto[k];
+      const z1 = aLoAlto[k + 1];
+      if (!(z1 - z0 > HOLGURA)) continue;
+      const z = (z0 + z1) / 2;
+      const tapado = recortados.some(
+        (h) => s > h.desde && s < h.hasta && z > h.abajo && z < h.arriba
+      );
+      if (tapado) continue;
+      const ultima = franjas[franjas.length - 1];
+      if (ultima && Math.abs(ultima[1] - z0) < HOLGURA) ultima[1] = z1;
+      else franjas.push([z0, z1]);
+    }
+
+    // Si quedó igual que el tramo de al lado, es el mismo paño más largo.
+    const anterior = tramos[tramos.length - 1];
+    const igual =
+      anterior &&
+      Math.abs(anterior.hasta - s0) < HOLGURA &&
+      anterior.franjas.length === franjas.length &&
+      anterior.franjas.every(
+        (f, k) => Math.abs(f[0] - franjas[k][0]) < HOLGURA && Math.abs(f[1] - franjas[k][1]) < HOLGURA
+      );
+    if (igual) anterior.hasta = s1;
+    else tramos.push({ desde: s0, hasta: s1, franjas });
+  }
+
+  return tramos.flatMap((t) =>
+    t.franjas.map(([abajo, arriba]) => ({ desde: t.desde, hasta: t.hasta, abajo, arriba }))
+  );
+}
+
+/**
+ * Los vanos de un muro como huecos de su elevación. `arranque` es a cuánto de
+ * la punta del eje que se está usando empieza el eje sin estirar, que es
+ * sobre el que van las aberturas: cero si es el mismo.
+ */
+export function vanosDeMuro(
+  aberturas: Abertura[],
+  muroId: string,
+  largoDelEje: number,
+  arranque: number,
+  mpp: number
+): (Pano & { abertura: Abertura })[] {
+  return aberturas
+    .filter((ab) => ab.muroId === muroId)
+    .map((ab) => {
+      const centro = arranque + ab.t * largoDelEje;
+      const mitad = ab.ancho / mpp / 2;
+      const abajo = ab.antepecho ?? 0;
+      return {
+        abertura: ab,
+        desde: centro - mitad,
+        hasta: centro + mitad,
+        abajo,
+        arriba: abajo + ab.alto,
+      };
+    });
+}
+
+/**
+ * Cuánta mampostería tiene un muro, en m²: su largo por su altura, menos sus
+ * puertas y ventanas y menos lo que ocupa el hormigón. Devuelve también
+ * cuánto fue de hormigón, para poder decirlo.
+ *
+ * El largo es el de la línea con que se lo marcó, sin estirar en las
+ * esquinas: es el que se computa.
+ */
+export function mamposteriaDeMuro(
+  muro: Muro,
+  aberturas: Abertura[],
+  hormigon: { huella: Punto[]; desde: number; hasta: number }[],
+  mpp: number,
+  alto: number
+): { superficie: number; hormigon: number } {
+  const cuerpo = cuerpoDeMuro(muro, [], mpp, 0);
+  const eje = { a: cuerpo.ejeA, b: cuerpo.ejeB };
+  const largo = distancia(eje.a, eje.b);
+  const vanos = vanosDeMuro(aberturas, muro.id, largo, 0, mpp);
+  const sombras = hormigon
+    .map((prisma) => sombraEnMuro(eje, cuerpo.grosor, prisma))
+    .filter((s): s is Pano => s !== null);
+
+  const medir = (huecos: Pano[]) =>
+    panosDeMuro(largo, alto, huecos).reduce(
+      (t, p) => t + (p.hasta - p.desde) * mpp * (p.arriba - p.abajo),
+      0
+    );
+  const sinHormigon = sombras.length > 0 ? medir([...vanos, ...sombras]) : medir(vanos);
+  return {
+    superficie: sinHormigon,
+    hormigon: sombras.length > 0 ? medir(vanos) - sinHormigon : 0,
+  };
 }
 
 // ---- Las aberturas, cuando su muro cambia ---------------------------------
@@ -1117,6 +1305,9 @@ export type MedidaDeCaras = {
   muros: { capa: string; superficie: number; volumen: number }[];
   /** m² de muro que todavía no tienen tipo. */
   murosSinTipo: number;
+  /** m² que se les descontaron a los muros por el hormigón que tienen
+   *  adentro: ya no están en `muros` ni en `murosSinTipo`. */
+  hormigonEnMuros: number;
 };
 
 /**
@@ -1137,15 +1328,22 @@ export type MedidaDeCaras = {
  *
  * La mampostería se mide por muro y no por cara: el largo de la línea con que
  * se lo marcó por su altura, menos sus puertas y ventanas, una sola vez —un
- * muro es un muro aunque tenga dos caras—. El volumen es esa superficie por
- * su espesor.
+ * muro es un muro aunque tenga dos caras—, y **menos el hormigón que tiene
+ * adentro** (`mamposteriaDeMuro`): el hormigón tiene prioridad, y donde hay
+ * una columna o una viga no se levanta ladrillo. A las terminaciones no se
+ * les descuenta: el revoque tapa la columna igual que al muro. El volumen es
+ * esa superficie por su espesor.
+ *
+ * `pisoAPiso` es lo que hay al piso terminado de arriba, si la planta es de
+ * algún piso: de ahí salen los niveles de la estructura.
  *
  * Es de **un** piso, como `medir`. Null sin escala.
  */
 export function medirCaras(
   dibujo: Dibujo,
   mpp: number | null,
-  altura: number
+  altura: number,
+  pisoAPiso: number | null = null
 ): MedidaDeCaras | null {
   if (mpp === null) return null;
 
@@ -1284,16 +1482,17 @@ export function medirCaras(
     for (const capa of sinRepetir(ambiente.cielorraso)) cielorrasos.sumar(capa, superficie);
   }
 
+  // Donde hay hormigón no hay ladrillo: a cada muro se le saca la columna que
+  // tiene adentro y la viga que lo corona.
+  const hormigon = prismasDeHormigon(dibujo.estructura, mpp, altura, pisoAPiso);
   const porTipo = new Map<string, { superficie: number; volumen: number }>();
   let murosSinTipo = 0;
+  let hormigonEnMuros = 0;
   for (const muro of dibujo.muros) {
     const alto = muro.altura ?? alturaDePlanta;
-    const largo = distancia(muro.a, muro.b) * mpp;
-    let vanos = 0;
-    for (const ab of dibujo.aberturas) {
-      if (ab.muroId === muro.id) vanos += Math.min(ab.ancho, largo) * Math.min(ab.alto, alto);
-    }
-    const superficie = Math.max(0, largo * alto - vanos);
+    const medida = mamposteriaDeMuro(muro, dibujo.aberturas, hormigon, mpp, alto);
+    const { superficie } = medida;
+    hormigonEnMuros += medida.hormigon;
 
     if (muro.tarea === null) {
       murosSinTipo += superficie;
@@ -1316,5 +1515,6 @@ export function medirCaras(
     sinCielorraso,
     muros: Array.from(porTipo, ([capa, m]) => ({ capa, ...m })),
     murosSinTipo,
+    hormigonEnMuros,
   };
 }

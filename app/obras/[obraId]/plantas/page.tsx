@@ -83,6 +83,9 @@ export default async function PlantasPage({
             plantas={todas.map((p) => ({ id: p.id, nombre: p.nombre }))}
             guardar={guardarPisos.bind(null, obra.slug, obra.id)}
           />
+          <Link href={`/obras/${obra.slug}/plantas/3d`} style={ui.secondaryButton}>
+            Ver en 3D
+          </Link>
           <Link href={`/obras/${obra.slug}/plantas/nueva`} style={ui.button}>
             Nueva planta
           </Link>

@@ -603,7 +603,11 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   ocupan el contrapiso, la carpeta y el piso. Se carga en la solapa Planta,
   en modo Estructura, que muestra lo que resulta (NPT que sostiene, cara de
   arriba, fondo de losa, arranque de columnas). Una losa rebajada —un baño,
-  un balcón— lleva el suyo (`losa.bajoNpt`). Las columnas arrancan en la losa
+  un balcón— lleva el suyo (`losa.bajoNpt`). **En pantalla se carga como un
+  nivel, con su signo: −0,05** (`CampoBajoNpt`). Guardado va en positivo
+  —cuánto más abajo—, pero el campo que pedía "0,05" rechazaba el "−0,05" sin
+  avisar, que es como lo escribe cualquiera, y el usuario lo vio como "no me
+  lo toma". Sin signo vale lo mismo. Las columnas arrancan en la losa
   de abajo, lo mismo por debajo del ±0,00, y llegan al fondo de la losa que
   las cubre. Sin `bajoNpt`, o si la planta no es de ningún piso, no hay de
   dónde colgarla: la losa va con su fondo a la altura de piso a techo de la
@@ -774,6 +778,94 @@ porque el dibujo va a servir para más que cotizar (avance, fotos por ambiente).
   atraen a su propia punta —se perseguiría a sí mismo—. Todo esto se calcula
   con `useMemo`, cuando cambian los muros, las aberturas, la escala o el zoom,
   y no en cada movimiento del puntero.
+- **El hormigón tiene prioridad sobre el muro** (pedido del usuario: "al muro
+  de ladrillo se le descontaría el hormigón"). Donde hay una columna o una
+  viga no se levanta ladrillo, y eso vale para las dos cosas que salen del
+  dibujo:
+  la **mampostería**, que ya no es largo por altura menos vanos sino eso
+  menos lo que ocupa el hormigón (`mamposteriaDeMuro`; Medidas dice cuántos
+  m² se descontaron); y el **3D**, donde el muro ya no pisa la estructura.
+  Sale todo de una sola función, `panosDeMuro`: la elevación del muro —de
+  punta a punta y del piso a su altura— menos sus **huecos**, que son los
+  vanos de las aberturas y la **sombra** de cada pieza de hormigón
+  (`sombraEnMuro`: el tramo del muro que ocupa y entre qué alturas). Se corta
+  en una grilla, se tira lo tapado y lo que queda se vuelve a juntar: de ahí
+  salen los m² y las cajas a dibujar. Una pieza cuenta cuando ocupa **al
+  menos la mitad del espesor** del muro en ese tramo: una columna de 13 en un
+  muro de 15 lo corta; una viga de 12 que pasa por uno de 30, no. Las
+  metálicas no descuentan: el muro las rodea. **A las terminaciones no se les
+  descuenta nada**: el revoque tapa la columna igual que al muro. Caso de
+  control: muro de 4,00 × 2,60 de 15 con una puerta de 0,80 × 2,05, una
+  columna de 20 en cada punta y una viga de 45 que lo corona → de 8,76 a
+  6,10 m².
+- **El edificio en 3D, en general** (`/obras/<slug>/plantas/3d`;
+  `lib/planta-3d.ts`, `components/Edificio3D.tsx`; three.js, sumado para
+  esto). Se entra desde "Ver en 3D" en el listado y desde el botón "3D" de la
+  barra del editor. **Muestra lo guardado**, no lo que se está dibujando.
+  Cada planta se vuelve **prismas** —una huella en metros y entre qué alturas
+  está, desde su piso terminado— (`modeloDePlanta`): los muros partidos en
+  paños, antepechos y dinteles alrededor de sus vanos, con el vidrio de las
+  ventanas; el piso de cada ambiente con el espesor de sus capas, y su
+  cielorraso si es suspendido; y la estructura con los mismos niveles con que
+  se computa el hormigón (`medirEstructura`). Los prismas se arman **en el
+  servidor** y al visor le llegan hechos: lo que se ve es lo que se computa.
+  El visor repite el modelo de cada planta en cada piso que la tiene
+  asignada, a su cota; se gira con el mouse, se prenden y apagan
+  Arquitectura, Estructura y Cielorrasos (apagados de entrada: tapan), y se
+  puede mirar un piso solo. Avisa cuántos pisos no aparecen por no tener
+  planta, o por tener una sin escala.
+  **Lo del mismo material se lee como una sola pieza** (pedido del usuario:
+  "no dibujar líneas por todos lados"). Un muro con una puerta son varias
+  cajas, y dos muros se pisan en la esquina: el borde de cada caja dejaba una
+  línea en cada junta. Las aristas ya no las saca el visor de cada caja sino
+  el servidor del **conjunto** (`aristasDe`): se mira alrededor de cada tramo
+  de arista dónde hay sólido, y se dibuja sólo si es un quiebre de verdad
+  —una esquina, un rincón, el filo de un vano—; si alrededor está todo lleno,
+  o justo la mitad de corrido (una cara lisa que sigue de largo), es una
+  junta y no va. Cada arista se parte antes donde otro prisma la cruza,
+  porque la jamba de una puerta es filo hasta el dintel y junta de ahí para
+  arriba, y se suman los rincones, que no son esquina de ninguna caja. Los
+  conjuntos: los muros por su tipo —entre dos materiales distintos la línea
+  queda, y dice algo—, y las columnas, las vigas y las losas cada una con las
+  suyas.
+  **Las puertas se ven**: la hoja, cerrada, en el vano.
+  **Cada cosa se toca y dice qué es** (`Modelo.objetos`): un clic que no fue
+  un arrastre la elige, queda resaltada y el panel de la derecha muestra su
+  ficha —de un muro, su tipo, espesor, largo, altura y m² sin vanos; de una
+  abertura, su nombre y medidas; de un ambiente, su superficie y sus capas;
+  de una pieza de estructura, su material, sección, niveles y hormigón—, en
+  qué piso está y un enlace a su planta. Las fichas se arman en el servidor,
+  con los nombres de las tareas del catálogo. Donde una columna coincide con
+  la cara de un muro, el clic elige la columna.
+  **Girar | Mover** dice qué hace arrastrar con el botón izquierdo; el
+  derecho mueve siempre.
+  **Se puede corregir mirando el edificio**: la ficha de lo elegido trae sus
+  medidas editables (`Ficha.campos`) —la altura y el espesor de un muro; el
+  ancho, el alto y el antepecho de una abertura; la altura del cielorraso; las
+  separaciones y la sección de una columna; la sección y el nivel de una viga;
+  el espesor de una losa—. Se guarda al salir del campo (`editarEnPlanta`), y
+  el modelo se rehace en el servidor sin mover la cámara. Qué se puede tocar
+  lo decide una lista cerrada (`lib/planta-edicion.ts`): lo que no figura se
+  rechaza. El ancho y el alto de una abertura cambian en todas las de su
+  tipo, como en el editor. **Va contra lo guardado**: si la misma planta está
+  abierta en el editor con cambios sin guardar, guardarla ahí pisa esto.
+  Es a propósito un modelo general —el usuario lo pidió así, "porque faltan
+  ajustar bastantes cosas"—: no dibuja las carpinterías en detalle. **Lo que
+  le falta y se sabe**: las plantas se apilan por la esquina de su huella
+  porque **no hay un punto de referencia común** entre planos distintos
+  (coinciden si todos los pisos ocupan lo mismo); las terminaciones no se
+  ven; y no hay techo ni terreno.
+  Donde una columna coincide con un muro, la arquitectura se dibuja un pelo
+  más atrás (`polygonOffset`) para que no salga rayado.
+- **Las capas de piso y de cielorraso, dichas** (el usuario: "no están muy
+  claras"). En la ficha del ambiente cada una va en su caja y dice **en qué
+  orden van sus capas**: el piso, de la losa hacia arriba —la última es la
+  que se pisa—; el cielorraso, hacia abajo —la última es la que se ve—; las
+  paredes, del muro hacia afuera. El orden se corrige con "↑" en cada capa.
+  Al pie va **cuánto suman** los espesores: el paquete de piso, que es lo que
+  separa la losa del piso terminado, y si la estructura dice otra cosa
+  (`estructura.bajoNpt`) se avisa. El cielorraso sin altura es aplicado,
+  contra la losa; con altura, suspendido.
 - **Cada capa lleva su espesor** (`Capa.espesor`, en metros; null = sin
   cargar; pedido del usuario: "no es lo mismo un revoque de 1 cm que uno de
   2"). La superficie alcanza para la mano de obra, pero **el material sale
@@ -2373,12 +2465,12 @@ acción de borrar el pago del lote viaja como prop.
   costados de un vano tienen superficie —el espesor del muro por el alto de
   la abertura, de cada lado— y hoy no cuentan. Las aberturas son cantidades por sí mismas: las carpinterías se
   computan por unidad y por tipo, y la planilla ya las da así.
-  **Etapa 3 — vista 3D y aberturas.** El usuario la quiere **girable con el
-  mouse**, lo que pide sumar una librería 3D (three.js); la isométrica fija
-  en SVG, como `VolumenLote`, se descartó. Cada planta se levanta en la cota
-  de cada piso que la tiene asignada (tabla `pisos`). Tiene que mostrar también la
-  **estructura**, que ya está en 2D con sus niveles (cada pieza es un prisma:
-  `medirEstructura` da de dónde a dónde va en altura).
+  **Etapa 3 — vista 3D.** Hecha en general (ver "El edificio en 3D"),
+  girable con el mouse, con three.js; la isométrica fija en SVG, como
+  `VolumenLote`, se descartó. **Falta**: un punto de referencia común para
+  alinear plantas calcadas sobre planos distintos; ver las terminaciones;
+  techo y terreno; y decidir si hace falta verlo también adentro del editor,
+  con lo que se está dibujando y no sólo con lo guardado.
   **Estructura, lo que falta**: mandar el hormigón al cómputo (m³ de
   columnas, vigas y losas contra las tareas de Estructuras), bases y
   fundaciones, encadenados, y que una pieza lleve su tarea del catálogo como

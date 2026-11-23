@@ -144,7 +144,7 @@ export function huellaDeViga(viga: Viga, mpp: number): Punto[] {
  * (Sutherland–Hodgman). El primero puede tener cualquier forma: la losa en L
  * recortada por el rectángulo de una viga.
  */
-function recortar(sujeto: Punto[], convexo: Punto[]): Punto[] {
+export function recortar(sujeto: Punto[], convexo: Punto[]): Punto[] {
   if (sujeto.length < 3 || convexo.length < 3) return [];
 
   // De qué lado queda el adentro depende de en qué sentido está recorrido.
@@ -526,6 +526,44 @@ export function medirEstructura(
     total,
     descontado: bruto - total,
   };
+}
+
+/**
+ * Las piezas de hormigón de la planta como volúmenes: la huella de cada una,
+ * en píxeles, y entre qué alturas está, en metros sobre el piso terminado.
+ *
+ * Es lo que le saca lugar a lo demás: **donde hay hormigón no hay ladrillo**,
+ * así que con esto se le descuenta a cada muro la columna que tiene adentro y
+ * la viga que lo corona. Las metálicas no van: un perfil no ocupa el
+ * rectángulo que lo envuelve, y el muro lo rodea.
+ */
+export function prismasDeHormigon(
+  estructura: Estructura,
+  mpp: number | null,
+  alturaDePlanta: number,
+  pisoAPiso: number | null = null
+): { huella: Punto[]; desde: number; hasta: number }[] {
+  const medida = medirEstructura(estructura, mpp, alturaDePlanta, pisoAPiso);
+  if (!medida || mpp === null) return [];
+
+  const niveles = new Map(
+    [...medida.columnas, ...medida.vigas, ...medida.losas].map((m) => [m.id, m] as const)
+  );
+  const prismas: { huella: Punto[]; desde: number; hasta: number }[] = [];
+  const sumar = (id: string, huella: Punto[]) => {
+    const n = niveles.get(id);
+    if (n && huella.length >= 3 && n.hasta > n.desde) {
+      prismas.push({ huella, desde: n.desde, hasta: n.hasta });
+    }
+  };
+  for (const c of estructura.columnas) {
+    if (c.material === "hormigon") sumar(c.id, huellaDeColumna(c, mpp));
+  }
+  for (const v of estructura.vigas) {
+    if (v.material === "hormigon") sumar(v.id, huellaDeViga(v, mpp));
+  }
+  for (const l of estructura.losas) sumar(l.id, l.puntos);
+  return prismas;
 }
 
 /**

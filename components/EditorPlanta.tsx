@@ -527,8 +527,8 @@ export default function EditorPlanta({
   // Las caras de los muros con sus m² y sus capas: lo que se termina.
   const alturaDePlanta = Number(altura) || 0;
   const terminaciones = useMemo(
-    () => medirCaras(dibujo, mpp, alturaDePlanta),
-    [dibujo, mpp, alturaDePlanta]
+    () => medirCaras(dibujo, mpp, alturaDePlanta, pisoAPiso),
+    [dibujo, mpp, alturaDePlanta, pisoAPiso]
   );
   const nombreDeCapa = useMemo(
     () => new Map(capasDisponibles.map((c) => [c.id, c.nombre])),
@@ -1937,6 +1937,11 @@ export default function EditorPlanta({
   // El contorno que se está editando: el de un ambiente o el de una losa. Se
   // corrigen igual —se arrastra un punto, se corre un lado, doble clic suma o
   // saca un punto—, así que comparten los mismos agarres.
+  /** Cuánto suman las capas de piso del ambiente elegido: el paquete que va
+   *  sobre la losa. */
+  const paqueteDePiso = ambienteElegido
+    ? ambienteElegido.piso.reduce((t, capa) => t + (capa.espesor ?? 0), 0)
+    : 0;
   /** Si Propiedades no tiene nada que mostrar: ni algo elegido ni una
    *  herramienta con opciones. */
   const sinPropiedades =
@@ -2108,6 +2113,15 @@ export default function EditorPlanta({
                   pisosDeLaPlanta.length > 1 ? ` · ${pisosDeLaPlanta.length} pisos` : ""
                 }`}
           </button>
+          {/* El edificio armado con lo guardado: por eso es un enlace a otra
+              pantalla y no una vista de lo que se está dibujando. */}
+          <Link
+            href={`/obras/${slug}/plantas/3d`}
+            title={sucio ? "El 3D muestra lo guardado: guardá antes para ver estos cambios" : undefined}
+            style={{ ...botonDeNiveles, textDecoration: "none" }}
+          >
+            3D
+          </Link>
           <span style={nombreEnBarra}>{nombre || "Planta sin nombre"}</span>
         </div>
 
@@ -3677,39 +3691,70 @@ export default function EditorPlanta({
                     </Renglon>
                   </>
                 )}
-                <p style={subtitulo}>Cielorraso</p>
-                <label style={campo}>
-                  <span style={rotulo}>Altura (m)</span>
-                  <CampoMetros
-                    key={ambienteElegido.id}
-                    valor={ambienteElegido.alturaCielorraso}
-                    vacio={`${formatMedida(alturaDePlanta)} — sin cielorraso, la losa`}
-                    alCambiar={(alturaCielorraso) =>
-                      cambiarAmbiente(ambienteElegido.id, { alturaCielorraso })
-                    }
-                    alVaciar={() => cambiarAmbiente(ambienteElegido.id, { alturaCielorraso: null })}
+                {/* Las tres terminaciones del ambiente, cada una en su caja y de
+                    abajo hacia arriba como en un corte: el piso, el
+                    cielorraso y las paredes. Cada caja dice en qué orden van
+                    sus capas, que es lo que no se entendía. */}
+                <div style={cajaDeCapas}>
+                  <p style={tituloDeCaja}>Piso</p>
+                  <p style={nota}>
+                    Lo que va sobre la losa, en orden hacia arriba: la primera apoya en la losa y
+                    la última es la que se pisa. Se mide por la superficie del ambiente.
+                  </p>
+                  <EditorDeCapas
+                    capas={ambienteElegido.piso}
+                    disponibles={capasDisponibles}
+                    primero={RUBROS_DE_PISO}
+                    conTotal
+                    alCambiar={(nuevas) => cambiarAmbiente(ambienteElegido.id, { piso: nuevas })}
                   />
-                </label>
-                <EditorDeCapas
-                  capas={ambienteElegido.cielorraso}
-                  disponibles={capasDisponibles}
-                  primero={RUBROS_DE_CIELORRASO}
-                  alCambiar={(nuevas) =>
-                    cambiarAmbiente(ambienteElegido.id, { cielorraso: nuevas })
-                  }
-                />
+                  {/* El paquete de piso es lo que separa la losa del piso
+                      terminado: si la estructura dice otra cosa, una de las
+                      dos está mal. */}
+                  {estructura.bajoNpt !== null &&
+                    paqueteDePiso > 0 &&
+                    Math.abs(paqueteDePiso - estructura.bajoNpt) > 0.005 && (
+                      <p style={alerta}>
+                        Estas capas suman {formatCm(paqueteDePiso)} y la estructura dice que la
+                        losa queda {formatCm(estructura.bajoNpt)} bajo el piso terminado.
+                      </p>
+                    )}
+                </div>
 
-                <p style={subtitulo}>Piso</p>
-                <EditorDeCapas
-                  capas={ambienteElegido.piso}
-                  disponibles={capasDisponibles}
-                  primero={RUBROS_DE_PISO}
-                  alCambiar={(nuevas) =>
-                    cambiarAmbiente(ambienteElegido.id, { piso: nuevas })
-                  }
-                />
+                <div style={cajaDeCapas}>
+                  <p style={tituloDeCaja}>Cielorraso</p>
+                  <label style={campo}>
+                    <span style={rotulo}>A qué altura del piso está (m)</span>
+                    <CampoMetros
+                      key={ambienteElegido.id}
+                      valor={ambienteElegido.alturaCielorraso}
+                      vacio={`${formatMedida(alturaDePlanta)} — contra la losa`}
+                      alCambiar={(alturaCielorraso) =>
+                        cambiarAmbiente(ambienteElegido.id, { alturaCielorraso })
+                      }
+                      alVaciar={() =>
+                        cambiarAmbiente(ambienteElegido.id, { alturaCielorraso: null })
+                      }
+                    />
+                  </label>
+                  <p style={nota}>
+                    {ambienteElegido.alturaCielorraso === null
+                      ? "Sin altura es un cielorraso aplicado: va contra la losa. Con altura es suspendido, y las capas de pared pueden llegar hasta él."
+                      : "Suspendido a esa altura. Las capas, en orden hacia abajo: la primera es la que cuelga de la losa y la última, la que se ve."}
+                  </p>
+                  <EditorDeCapas
+                    capas={ambienteElegido.cielorraso}
+                    disponibles={capasDisponibles}
+                    primero={RUBROS_DE_CIELORRASO}
+                    conTotal
+                    alCambiar={(nuevas) =>
+                      cambiarAmbiente(ambienteElegido.id, { cielorraso: nuevas })
+                    }
+                  />
+                </div>
 
                 <p style={subtitulo}>Paredes</p>
+                <p style={nota}>Del muro hacia afuera: la última es la que queda a la vista.</p>
                 <EditorDeCapas
                   capas={ambienteElegido.capas}
                   disponibles={capasDisponibles}
@@ -4019,25 +4064,23 @@ export default function EditorPlanta({
                     />
                   </label>
                   <label style={campo}>
-                    <span style={rotulo}>Bajo el NPT (m)</span>
-                    <CampoMetros
+                    <span style={rotulo}>Nivel, desde el NPT (m)</span>
+                    <CampoBajoNpt
                       key={losaElegida.id}
-                      desdeCero
                       valor={losaElegida.bajoNpt}
                       vacio={
                         estructura.bajoNpt !== null
-                          ? `${formatMedida(estructura.bajoNpt)} — el de la planta`
+                          ? `${formatNivel(-estructura.bajoNpt)} — el de la planta`
                           : "sin definir"
                       }
                       alCambiar={(bajoNpt) => cambiarPieza("losas", losaElegida.id, { bajoNpt })}
-                      alVaciar={() => cambiarPieza("losas", losaElegida.id, { bajoNpt: null })}
                     />
                   </label>
                 </div>
                 {/* Sólo si no es lo de toda la planta: una losa rebajada. */}
                 <p style={nota}>
-                  Cuánto más abajo que el piso terminado que sostiene queda su cara de arriba, si
-                  no es lo de toda la planta.
+                  Dónde queda su cara de arriba respecto del piso terminado que sostiene: −0,05 es
+                  cinco centímetros más abajo. Vacío, lo de toda la planta.
                   {pisoAPiso === null && " Hace falta que la planta sea de algún piso de la obra."}
                 </p>
                 {(() => {
@@ -4236,6 +4279,14 @@ export default function EditorPlanta({
                         <Renglon nombre="Muros sin tipo">
                           {formatM2(terminaciones.murosSinTipo)}
                         </Renglon>
+                      )}
+                      {/* Para que el número no parezca corto contra el largo
+                          por la altura: donde hay hormigón no hay ladrillo. */}
+                      {terminaciones.hormigonEnMuros > 0.005 && (
+                        <p style={detalleRenglon}>
+                          Ya descontados {formatM2(terminaciones.hormigonEnMuros)} que ocupan las
+                          columnas y las vigas.
+                        </p>
                       )}
                     </Grupo>
                   )}
@@ -4502,18 +4553,19 @@ export default function EditorPlanta({
                     que sostiene el piso de arriba termina unos centímetros
                     antes. Eso es lo que se carga acá, y de ahí sale todo. */}
                 <label style={campo}>
-                  <span style={rotulo}>La losa, bajo el NPT que sostiene (m)</span>
-                  <CampoMetros
-                    desdeCero
+                  <span style={rotulo}>Nivel de la losa, desde el NPT que sostiene (m)</span>
+                  <CampoBajoNpt
                     valor={estructura.bajoNpt}
                     vacio={
                       nivelesDeLaLosa.bajoNpt !== null
-                        ? `${formatMedida(nivelesDeLaLosa.bajoNpt)} — lo que deja la altura`
+                        ? `${formatNivel(-nivelesDeLaLosa.bajoNpt)} — lo que deja la altura`
                         : "sin definir"
                     }
                     alCambiar={(bajoNpt) => agregarAEstructura({ bajoNpt })}
-                    alVaciar={() => agregarAEstructura({ bajoNpt: null })}
                   />
+                  <span style={nota}>
+                    La cara de arriba de la losa: −0,05 es cinco centímetros bajo el piso terminado.
+                  </span>
                 </label>
                 {pisoAPiso === null ? (
                   <p style={nota}>
@@ -4658,6 +4710,7 @@ function EditorDeCapas({
   alCambiar,
   primero,
   conAltura = false,
+  conTotal = false,
   alturaCielorraso = null,
 }: {
   capas: Capa[];
@@ -4666,6 +4719,8 @@ function EditorDeCapas({
   /** Los rubros que van arriba en el desplegable. */
   primero: string[];
   conAltura?: boolean;
+  /** Si al pie va cuánto suman los espesores: el paquete de un piso. */
+  conTotal?: boolean;
   /** La del cielorraso del ambiente, para decirla en la opción. */
   alturaCielorraso?: number | null;
 }) {
@@ -4681,6 +4736,15 @@ function EditorDeCapas({
     alCambiar(capas.map((capa, k) => (k === cual ? { ...capa, hasta } : capa)));
   const ponerEspesor = (cual: number, espesor: number | null) =>
     alCambiar(capas.map((capa, k) => (k === cual ? { ...capa, espesor } : capa)));
+  /** Sube una capa un lugar: el orden es parte de lo que se carga. */
+  const subir = (cual: number) =>
+    alCambiar(
+      capas.map((capa, k) =>
+        k === cual - 1 ? capas[cual] : k === cual ? capas[cual - 1] : capa
+      )
+    );
+  const total = capas.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
+  const sinEspesor = capas.filter((capa) => capa.espesor === null).length;
 
   return (
     <div style={campo}>
@@ -4693,14 +4757,28 @@ function EditorDeCapas({
                 {i + 1}. {nombres.get(capa.tarea) ?? "Tarea que ya no está en el catálogo"}
               </span>
             </span>
-            <button
-              type="button"
-              onClick={() => alCambiar(capas.filter((_, k) => k !== i))}
-              title="Sacar esta capa"
-              style={botonQuitar}
-            >
-              ×
-            </button>
+            <span style={accionesDeCapa}>
+              {i > 0 && (
+                <button
+                  type="button"
+                  onClick={() => subir(i)}
+                  title="Pasarla antes que la de arriba"
+                  aria-label="Subir esta capa"
+                  style={botonQuitar}
+                >
+                  ↑
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => alCambiar(capas.filter((_, k) => k !== i))}
+                title="Sacar esta capa"
+                aria-label="Sacar esta capa"
+                style={botonQuitar}
+              >
+                ×
+              </button>
+            </span>
           </div>
           {conAltura && (
             <div style={alturaDeCapa}>
@@ -4757,7 +4835,9 @@ function EditorDeCapas({
         }}
         style={ui.input}
       >
-        <option value="">{capas.length === 0 ? "Agregar una capa…" : "Agregar otra capa…"}</option>
+        <option value="">
+          {capas.length === 0 ? "Agregar la primera capa…" : "Agregar la capa que sigue…"}
+        </option>
         {rubros.map((rubro) => (
           <optgroup key={rubro} label={rubro}>
             {disponibles
@@ -4770,6 +4850,16 @@ function EditorDeCapas({
           </optgroup>
         ))}
       </select>
+      {conTotal && total > 0 && (
+        <div style={renglonFuerte}>
+          <span style={nombreRenglon}>
+            Suman
+            {sinEspesor > 0 &&
+              ` (sin ${sinEspesor === 1 ? "la que no tiene" : `las ${sinEspesor} que no tienen`} espesor)`}
+          </span>
+          <span style={valorRenglon}>{formatCm(total)}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -5153,6 +5243,36 @@ function CampoNivel({
         if (Number.isFinite(n)) alCambiar(n);
       }}
       style={quieto ? campoQuieto : ui.input}
+    />
+  );
+}
+
+/**
+ * Dónde queda la cara de arriba de una losa respecto del piso terminado que
+ * sostiene, **escrito como un nivel**: −0,05.
+ *
+ * Lo que se guarda es cuánto más abajo queda (`bajoNpt`, en positivo), pero
+ * así no lo escribe nadie: un nivel por debajo de otro lleva el signo menos,
+ * y el campo que pedía "0,05" rechazaba el "−0,05" sin decir nada. Acá se
+ * muestra y se escribe con su signo. Si se lo escribe sin él vale lo mismo:
+ * una losa no queda por encima del piso que sostiene.
+ */
+function CampoBajoNpt({
+  valor,
+  vacio,
+  alCambiar,
+}: {
+  /** Cuánto más abajo, en metros y en positivo, o null si no se cargó. */
+  valor: number | null;
+  vacio?: string;
+  alCambiar: (bajoNpt: number | null) => void;
+}) {
+  return (
+    <CampoNivel
+      // Cero sin signo: "-0" en el campo no dice nada.
+      valor={valor === null ? null : valor === 0 ? 0 : -valor}
+      vacio={vacio}
+      alCambiar={(nivel) => alCambiar(nivel === null ? null : Math.abs(nivel))}
     />
   );
 }
@@ -6489,6 +6609,31 @@ const alturaDeCapa = {
   alignItems: "center",
   gap: "8px",
   paddingLeft: "18px",
+};
+
+/** Una terminación del ambiente —su piso, su cielorraso— en su propia caja:
+ *  lo que hay adentro es de ella y de nada más. */
+const cajaDeCapas = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr)",
+  gap: "10px",
+  padding: "12px",
+  border: "1px solid #e8e8e8",
+  borderRadius: "12px",
+  background: "#fafafa",
+};
+
+const tituloDeCaja = {
+  fontSize: "14px",
+  fontWeight: 600,
+  color: "#111111",
+  margin: 0,
+};
+
+const accionesDeCapa = {
+  flex: "0 0 auto",
+  display: "flex",
+  alignItems: "center",
 };
 
 /** El espesor de una capa: un campo chico con su unidad al lado. */
