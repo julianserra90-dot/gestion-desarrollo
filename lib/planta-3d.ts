@@ -97,6 +97,21 @@ export type Solido = {
   tareas?: string[];
 };
 
+/**
+ * Un dato de la ficha: qué es, cuánto, y —cuando el valor es una lista de
+ * capas— de qué tarea sale cada pedazo.
+ *
+ * Eso es lo que deja mirar un rubro y que la ficha hable **sólo de él**: el
+ * baño mirando Aislaciones muestra su cementicia y no el durlock del
+ * cielorraso ni el porcelanato del piso, que son de otros rubros. Sin
+ * `partes`, el renglón no es de ningún rubro en particular —la superficie, un
+ * espesor, un nivel— y se muestra siempre.
+ */
+export type Renglon = [que: string, cuanto: string, partes?: ParteDeRenglon[]];
+
+/** Un pedazo de un renglón y la tarea de la que sale; null, sin definir. */
+export type ParteDeRenglon = { texto: string; tarea: string | null };
+
 /** Lo que se muestra de una cosa al tocarla. */
 export type Ficha = {
   /** Qué es: "Muro", "Puerta", "Columna". */
@@ -104,7 +119,7 @@ export type Ficha = {
   /** Su nombre, si tiene: "P1", "C03", "Baño". */
   nombre: string;
   /** Sus datos, de a pares: qué es y cuánto. */
-  renglones: [string, string][];
+  renglones: Renglon[];
   /** Lo que se le puede cambiar desde acá: sus alturas y sus medidas. */
   campos: Campo[];
   /**
@@ -143,6 +158,13 @@ export type Campo = {
   conSigno?: boolean;
   /** Si puede ser cero: un antepecho. */
   desdeCero?: boolean;
+  /**
+   * Las tareas de las que es este campo, cuando es de una parte de la cosa y
+   * no de toda: la altura del cielorraso es del cielorraso. Mirando otro
+   * rubro no se muestra. Sin esto, el campo es de la cosa y se muestra
+   * siempre.
+   */
+  tareas?: string[];
 };
 
 export type Modelo = {
@@ -221,6 +243,13 @@ export function modeloDePlanta(
   };
   const tarea = (id: string | null) =>
     id === null ? "Sin definir" : nombres.get(id) ?? "Tarea que ya no está en el catálogo";
+  /** Las mismas capas, una por una y con su tarea, para que el 3D pueda
+   *  quedarse con las del rubro que se está mirando. */
+  const partesDe = (lista: Capa[]): ParteDeRenglon[] =>
+    lista.map((c) => ({
+      texto: `${tarea(c.tarea)}${c.espesor !== null ? ` (${cm(c.espesor)})` : ""}`,
+      tarea: c.tarea,
+    }));
   /** Las capas en una línea, de la primera a la última, con su espesor. */
   const capas = (lista: Capa[]) =>
     lista.length === 0
@@ -552,7 +581,7 @@ export function modeloDePlanta(
       renglones: [
         ["Fondo a", formatMetros(cajon.fondo)],
         ["Frente", formatMetros(Math.max(0, tope - cajon.fondo))],
-        ["Capas", capas(cajon.capas)],
+        ["Capas", capas(cajon.capas), partesDe(cajon.capas)],
       ],
       campos: [],
     };
@@ -604,15 +633,18 @@ export function modeloDePlanta(
       nombre: ambiente.nombre,
       renglones: [
         ["Superficie", formatM2(areaDe(ambiente.puntos) * mpp * mpp)],
-        ["Piso", capas(ambiente.piso)],
-        ...((paquete > 0 ? [["Paquete de piso", cm(paquete)]] : []) as [string, string][]),
+        ["Piso", capas(ambiente.piso), partesDe(ambiente.piso)],
+        // Sin partes: es cuánto mide el paquete, no de qué está hecho. Como la
+        // superficie, es del ambiente y no de un rubro.
+        ...((paquete > 0 ? [["Paquete de piso", cm(paquete)]] : []) as Renglon[]),
         [
           "Cielorraso",
           ambiente.alturaCielorraso === null
             ? `Aplicado · ${capas(ambiente.cielorraso)}`
             : `Suspendido a ${formatMetros(ambiente.alturaCielorraso)} · ${capas(ambiente.cielorraso)}`,
+          partesDe(ambiente.cielorraso),
         ],
-        ["Paredes", capas(ambiente.capas)],
+        ["Paredes", capas(ambiente.capas), partesDe(ambiente.capas)],
       ],
       campos: [
         {
@@ -620,6 +652,8 @@ export function modeloDePlanta(
           nombre: "Altura del cielorraso (m)",
           valor: ambiente.alturaCielorraso,
           vacio: "aplicado, contra la losa",
+          // Es del cielorraso: mirando otro rubro no viene al caso.
+          tareas: tareasDe(ambiente.cielorraso),
         },
       ],
     };

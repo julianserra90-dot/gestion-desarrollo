@@ -156,6 +156,15 @@ export default function Edificio3D({
   const [tareaVista, setTareaVista] = useState<string | null>(() =>
     inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea) ? inicial.tarea : null
   );
+  /**
+   * El rubro que se mira, en los dos modos: en Ver deja sólido lo que lo lleva
+   * y el resto apenas insinuado; en Avance es de qué rubro son las tareas que
+   * se ofrecen. Se queda al cambiar de modo —mirando la mampostería se pasa a
+   * Ver y se la sigue viendo—. null son todos.
+   */
+  const [rubroVisto, setRubroVisto] = useState<string | null>(
+    () => tareasDeAvance.find((t) => t.id === inicial?.tarea)?.rubro ?? null
+  );
   /** El día con que se marca lo hecho. */
   const [dia, setDia] = useState(hoy);
   const [marcando, iniciarMarcado] = useTransition();
@@ -167,6 +176,20 @@ export default function Edificio3D({
     .map((m) => `${m.planta}|${m.piso}|${m.objeto}`)
     .sort()
     .join(",");
+  /**
+   * Las tareas del rubro mirado, en una cadena: el edificio se rehace sólo
+   * cuando cambia el rubro, y no en cada render por venir la lista de afuera.
+   * Vacía con una tarea en Avance, que ya se pinta por ella; mientras no haya
+   * una elegida, el rubro se ve igual que en Ver.
+   */
+  const tareasDelRubro =
+    rubroVisto !== null && tareaEnAvance === null
+      ? tareasDeAvance
+          .filter((t) => t.rubro === rubroVisto)
+          .map((t) => t.id)
+          .sort()
+          .join(",")
+      : "";
 
   /** Guarda una medida de lo elegido y vuelve a pedir el edificio: el modelo
    *  se rehace en el servidor, con las mismas cuentas de siempre. */
@@ -370,22 +393,65 @@ export default function Edificio3D({
     const filo = new THREE.LineBasicMaterial({ color: "#4b4b4b", transparent: true, opacity: 0.55 });
     descartables.push(filo);
 
-    // Cada planta se arma una vez: una malla por clase, con todos sus
-    // sólidos fundidos en una sola geometría, y sus aristas.
-    type Pieza = { malla: THREE.Mesh; clase: ClaseDeSolido; objetos: string[]; hasta: number[] };
+    // Mirando un rubro, lo que no lo lleva no se va: queda apenas insinuado,
+    // igual que en Avance, para no perder de vista dónde está parado lo que
+    // se mira. No se puede tocar.
+    const delRubro = new Set(tareasDelRubro ? tareasDelRubro.split(",") : []);
+    const hayRubro = delRubro.size > 0;
+    const insinuado = new THREE.MeshBasicMaterial({
+      color: "#b8bcc2",
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+    });
+    descartables.push(insinuado);
+    /** Si una pieza lleva alguna tarea del rubro mirado. La pieza que dice qué
+     *  lleva manda: el cielorraso de un baño no lleva su contrapiso. */
+    const esDelRubro = (modelo: Modelo, solido: Solido) =>
+      (solido.tareas ?? modelo.objetos[solido.objeto]?.tareas?.map((t) => t.tarea) ?? []).some(
+        (id) => delRubro.has(id)
+      );
+
+    // Cada planta se arma una vez: una malla por clase —y, con un rubro
+    // mirado, una por clase y lado—, con todos sus sólidos fundidos en una
+    // sola geometría, y sus aristas.
+    type Pieza = {
+      malla: THREE.Mesh;
+      clase: ClaseDeSolido;
+      objetos: string[];
+      hasta: number[];
+      /** No es del rubro mirado: se ve de refilón y no se toca. */
+      insinuada: boolean;
+    };
     const plantas = new Map<string, { piezas: Pieza[]; aristas: THREE.LineSegments[] }>();
     for (const [id, modelo] of Object.entries(modelos)) {
-      const porClase = new Map<ClaseDeSolido, { geometrias: THREE.BufferGeometry[]; objetos: string[] }>();
+      const porGrupo = new Map<
+        string,
+        {
+          clase: ClaseDeSolido;
+          insinuada: boolean;
+          geometrias: THREE.BufferGeometry[];
+          objetos: string[];
+        }
+      >();
       for (const solido of modelo.solidos) {
         if (!visibles(solido.clase)) continue;
-        const grupo = porClase.get(solido.clase) ?? { geometrias: [], objetos: [] };
+        const insinuada = hayRubro && !esDelRubro(modelo, solido);
+        const clave = `${solido.clase}|${insinuada}`;
+        const grupo = porGrupo.get(clave) ?? {
+          clase: solido.clase,
+          insinuada,
+          geometrias: [],
+          objetos: [],
+        };
         grupo.geometrias.push(geometriaDe(solido));
         grupo.objetos.push(solido.objeto);
-        porClase.set(solido.clase, grupo);
+        porGrupo.set(clave, grupo);
       }
 
       const piezas: Pieza[] = [];
-      for (const [clase, { geometrias, objetos }] of porClase) {
+      const aristas: THREE.LineSegments[] = [];
+      for (const { clase, insinuada, geometrias, objetos } of porGrupo.values()) {
         // Dónde termina cada sólido en la lista de triángulos de la fundida.
         const hasta: number[] = [];
         let triangulos = 0;
@@ -397,13 +463,26 @@ export default function Edificio3D({
         for (const g of geometrias) g.dispose();
         if (!fundida) continue;
         descartables.push(fundida);
-        piezas.push({ malla: new THREE.Mesh(fundida, materialDe(clase)), clase, objetos, hasta });
+        piezas.push({
+          malla: new THREE.Mesh(fundida, insinuada ? insinuado : materialDe(clase)),
+          clase,
+          objetos,
+          hasta,
+          insinuada,
+        });
+        // Con un rubro mirado, las aristas salen de lo que quedó sólido: las
+        // guardadas son de todos los sólidos de la clase y dibujarían también
+        // el contorno de lo insinuado.
+        if (hayRubro && !insinuada) {
+          const bordes = new THREE.EdgesGeometry(fundida, 25);
+          descartables.push(bordes);
+          aristas.push(new THREE.LineSegments(bordes, filo));
+        }
       }
 
       // Las aristas vienen resueltas: sólo las que son un quiebre de verdad,
       // con lo del mismo material unificado.
-      const aristas: THREE.LineSegments[] = [];
-      for (const { clase, lineas } of modelo.aristas) {
+      for (const { clase, lineas } of hayRubro ? [] : modelo.aristas) {
         if (!visibles(clase) || lineas.length === 0) continue;
         const posiciones = new Float32Array(lineas.length);
         for (let i = 0; i < lineas.length; i += 3) {
@@ -496,8 +575,11 @@ export default function Edificio3D({
       if (!piso.planta || !planta) continue;
       const nivel = new THREE.Group();
       nivel.position.y = piso.cota;
-      for (const { malla, clase, objetos, hasta } of planta.piezas) {
+      for (const { malla, clase, objetos, hasta, insinuada } of planta.piezas) {
         const copia = malla.clone();
+        nivel.add(copia);
+        // Lo que no es del rubro mirado está para ubicarse, no para tocarlo.
+        if (insinuada) continue;
         const datos: DatosDeMalla = {
           planta: piso.planta,
           piso: piso.numero,
@@ -506,7 +588,6 @@ export default function Edificio3D({
           hasta,
         };
         copia.userData = datos;
-        nivel.add(copia);
         mallas.push(copia);
       }
       for (const lineas of planta.aristas) nivel.add(lineas.clone());
@@ -543,7 +624,7 @@ export default function Edificio3D({
       tocables.current = [];
       for (const cosa of descartables) cosa.dispose();
     };
-  }, [modelos, pisos, prendidas, soloElPiso, tareaEnAvance, hechasDeLaTarea]);
+  }, [modelos, pisos, prendidas, soloElPiso, tareaEnAvance, hechasDeLaTarea, tareasDelRubro]);
 
   // ---- Lo elegido, resaltado ----------------------------------------------
   useEffect(() => {
@@ -551,19 +632,32 @@ export default function Edificio3D({
     if (!armado) return;
     const piso = elegido ? pisos.find((p) => p.numero === elegido.piso) : undefined;
     const modelo = elegido ? modelos[elegido.planta] : undefined;
-    if (!elegido || !piso || !modelo) {
+    // Mirando un piso solo, lo elegido en otro no se resalta: quedaba flotando
+    // a su cota, sin el edificio alrededor.
+    if (!elegido || !piso || !modelo || (soloElPiso !== null && elegido.piso !== soloElPiso)) {
       armado.dibujar();
       return;
     }
 
-    // Todos los sólidos de la cosa —un muro con una puerta son varios—, del
-    // color de lo seleccionado y un pelo por delante de lo que tapan.
-    // Mirando el avance de una tarea, sólo las piezas que la llevan.
+    // Los sólidos de la cosa —un muro con una puerta son varios—, del color de
+    // lo seleccionado y un pelo por delante de lo que tapan.
+    //
+    // Sólo los que están a la vista. Resaltar uno apagado o insinuado lo hace
+    // aparecer de la nada y miente sobre qué es del rubro: tocando el piso del
+    // baño mirando Aislaciones se encendía también su cielorraso de durlock,
+    // que es de Cielorrasos y estaba insinuado. Lo mismo con una capa apagada.
+    const seVen = new Set(prendidas.split(","));
+    const delRubro = new Set(tareasDelRubro ? tareasDelRubro.split(",") : []);
     const geometrias = modelo.solidos
-      .filter(
-        (s) =>
-          s.objeto === elegido.objeto && (!tareaEnAvance || !s.tareas || s.tareas.includes(tareaEnAvance))
-      )
+      .filter((s) => {
+        if (s.objeto !== elegido.objeto) return false;
+        // En Avance no juegan las capas de vista: se pinta por la tarea.
+        if (tareaEnAvance) return !s.tareas || s.tareas.includes(tareaEnAvance);
+        if (!seVen.has(CAPA_DE[s.clase])) return false;
+        if (delRubro.size === 0) return true;
+        const suyas = s.tareas ?? modelo.objetos[s.objeto]?.tareas?.map((t) => t.tarea) ?? [];
+        return suyas.some((id) => delRubro.has(id));
+      })
       .map(geometriaDe);
     const fundida = geometrias.length > 0 ? mergeGeometries(geometrias) : null;
     for (const g of geometrias) g.dispose();
@@ -591,16 +685,37 @@ export default function Edificio3D({
       material.dispose();
       armado.dibujar();
     };
-  }, [elegido, modelos, pisos, tareaEnAvance]);
+  }, [elegido, modelos, pisos, tareaEnAvance, prendidas, tareasDelRubro, soloElPiso]);
 
   const conPlanta = pisos.filter((p) => p.planta !== null && modelos[p.planta] !== undefined);
   const ficha = elegido ? modelos[elegido.planta]?.objetos[elegido.objeto] ?? null : null;
+
+  /**
+   * La ficha, acotada al rubro que se mira: una cosa es de varios rubros a la
+   * vez —el ambiente tiene su piso, su cielorraso y sus paredes— y contarlos
+   * todos mientras se mira uno desmiente el filtro. El baño mirando
+   * Aislaciones muestra su cementicia y no el durlock ni el porcelanato.
+   *
+   * Lo que no sale de ninguna tarea —la superficie, un espesor, un nivel— es
+   * lo que la cosa **es** y se muestra siempre.
+   */
+  const delRubroMirado = new Set(tareasDelRubro ? tareasDelRubro.split(",") : []);
+  const renglonesDeLaFicha = (ficha?.renglones ?? []).flatMap(
+    ([que, cuanto, partes]): [string, string][] => {
+      if (delRubroMirado.size === 0 || !partes) return [[que, cuanto]];
+      const suyas = partes.filter((p) => p.tarea !== null && delRubroMirado.has(p.tarea));
+      return suyas.length > 0 ? [[que, suyas.map((p) => p.texto).join(" + ")]] : [];
+    }
+  );
+  const camposDeLaFicha = (ficha?.campos ?? []).filter(
+    (c) =>
+      delRubroMirado.size === 0 || !c.tareas || c.tareas.some((id) => delRubroMirado.has(id))
+  );
   const pisoElegido = elegido ? pisos.find((p) => p.numero === elegido.piso) ?? null : null;
 
   // ---- El avance de la tarea que se mira ----------------------------------
   const rubros = Array.from(new Set(tareasDeAvance.map((t) => t.rubro)));
   const tareaElegida = tareasDeAvance.find((t) => t.id === tareaVista) ?? null;
-  const rubroElegido = tareaElegida?.rubro ?? null;
   /** Lo que mide una cosa de la tarea elegida, en su unidad. */
   const cuantoDe = (planta: string, objeto: string) => {
     const t = modelos[planta]?.objetos[objeto]?.tareas?.find((x) => x.tarea === tareaElegida?.id);
@@ -627,7 +742,7 @@ export default function Edificio3D({
   // un rubro elegido arriba, sólo las de ese rubro: mirando Cielorrasos, el
   // porcelanato del mismo baño no va.
   const tareasDelElegido = tareasDeAvance.flatMap((tarea) => {
-    if (rubroElegido !== null && tarea.rubro !== rubroElegido) return [];
+    if (rubroVisto !== null && tarea.rubro !== rubroVisto) return [];
     const medida = ficha?.tareas?.find((x) => x.tarea === tarea.id);
     return medida ? [{ tarea, cantidad: cantidadEnUnidad(medida, tarea.unidad) }] : [];
   });
@@ -660,8 +775,45 @@ export default function Edificio3D({
 
   return (
     <div style={marco}>
+      {/* Arriba, cómo se mira el edificio; abajo, qué se ve de él. Separados,
+          porque antes todo iba en un renglón —píldoras, casillas y un
+          desplegable suelto— y nada decía qué mandaba sobre qué. */}
       <div style={barra}>
+        {/* Para qué se mira: el edificio, o el avance de una tarea. */}
+        <div style={selectorDeModo} role="group" aria-label="Para qué se mira">
+          {VISTAS.map((v) => (
+            <button
+              key={v.valor}
+              type="button"
+              aria-pressed={vista === v.valor}
+              onClick={() => {
+                setVista(v.valor);
+                setElegido(null);
+              }}
+              style={vista === v.valor ? botonDeModoActivo : botonDeModo}
+            >
+              {v.nombre}
+            </button>
+          ))}
+        </div>
+
         <div style={grupo}>
+          <label style={casilla}>
+            Piso
+            <select
+              value={soloElPiso ?? ""}
+              onChange={(e) => setSoloElPiso(e.target.value === "" ? null : Number(e.target.value))}
+              style={selector}
+            >
+              <option value="">Todos</option>
+              {/* De arriba hacia abajo, como en la definición de pisos. */}
+              {[...conPlanta].reverse().map((p) => (
+                <option key={p.numero} value={p.numero}>
+                  {nombreDe(p)} · {formatNivel(p.cota)}
+                </option>
+              ))}
+            </select>
+          </label>
           {/* Qué hace arrastrar: girar el modelo o correrlo. */}
           <div style={selectorDeModo} role="group" aria-label="Qué hace arrastrar">
             {MODOS.map((m) => (
@@ -676,55 +828,55 @@ export default function Edificio3D({
               </button>
             ))}
           </div>
-          {/* Para qué se mira: el edificio, o el avance de una tarea. */}
-          <div style={selectorDeModo} role="group" aria-label="Para qué se mira">
-            {VISTAS.map((v) => (
+        </div>
+      </div>
+
+      <div style={barraDeFiltros}>
+        {vista === "ver" && (
+          <div style={grupoDeFiltros}>
+            <span style={rotuloDeFiltro}>Qué se ve</span>
+            {OPCIONES.map((o) => (
               <button
-                key={v.valor}
+                key={o.clave}
                 type="button"
-                aria-pressed={vista === v.valor}
-                onClick={() => {
-                  setVista(v.valor);
-                  setElegido(null);
-                }}
-                style={vista === v.valor ? botonDeModoActivo : botonDeModo}
+                aria-pressed={ve(o.clave)}
+                onClick={() => poner(o.clave, !ve(o.clave))}
+                style={ve(o.clave) ? fichaDeFiltroPuesta : fichaDeFiltro}
               >
-                {v.nombre}
+                {o.nombre}
               </button>
             ))}
           </div>
-          {vista === "ver" &&
-            OPCIONES.map((o) => (
-              <label key={o.clave} style={casilla}>
-                <input
-                  type="checkbox"
-                  checked={ve(o.clave)}
-                  onChange={(e) => poner(o.clave, e.target.checked)}
-                />
-                {o.nombre}
-              </label>
-            ))}
-          {vista === "avance" && (
-            <>
-              <select
-                value={rubroElegido ?? ""}
-                onChange={(e) => {
-                  // Al cambiar de rubro, su primera tarea.
-                  setTareaVista(tareasDeAvance.find((t) => t.rubro === e.target.value)?.id ?? null);
-                  setElegido(null);
-                }}
-                style={selector}
-                aria-label="Rubro"
-              >
-                <option value="" disabled>
-                  Rubro
+        )}
+
+        {/* El rubro vive acá en los dos modos, y se queda al cambiar de uno al
+            otro: en Ver deja sólido lo suyo, en Avance elige de qué son las
+            tareas. Sin tareas en el dibujo no hay nada que filtrar. */}
+        {rubros.length > 0 && (
+          <div style={grupoDeFiltros}>
+            <span style={rotuloDeFiltro}>Rubro</span>
+            <select
+              value={rubroVisto ?? ""}
+              onChange={(e) => {
+                const cual = e.target.value || null;
+                setRubroVisto(cual);
+                // Para ver un avance hace falta una tarea: la primera del rubro.
+                if (vista === "avance") {
+                  setTareaVista(tareasDeAvance.find((t) => t.rubro === cual)?.id ?? null);
+                }
+                setElegido(null);
+              }}
+              style={selector}
+              aria-label="Rubro"
+            >
+              <option value="">Todos</option>
+              {rubros.map((r) => (
+                <option key={r} value={r}>
+                  {r}
                 </option>
-                {rubros.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+              ))}
+            </select>
+            {vista === "avance" && (
               <select
                 value={tareaVista ?? ""}
                 onChange={(e) => {
@@ -733,39 +885,25 @@ export default function Edificio3D({
                 }}
                 style={{ ...selector, maxWidth: "340px" }}
                 aria-label="Tarea"
-                disabled={!rubroElegido}
+                disabled={!rubroVisto}
               >
                 <option value="" disabled>
                   Tarea
                 </option>
                 {tareasDeAvance
-                  .filter((t) => t.rubro === rubroElegido)
+                  .filter((t) => t.rubro === rubroVisto)
                   .map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.madre ? `↳ ${t.nombre}` : t.nombre}
                     </option>
                   ))}
               </select>
-            </>
-          )}
-        </div>
-
-        <label style={casilla}>
-          Piso
-          <select
-            value={soloElPiso ?? ""}
-            onChange={(e) => setSoloElPiso(e.target.value === "" ? null : Number(e.target.value))}
-            style={selector}
-          >
-            <option value="">Todos</option>
-            {/* De arriba hacia abajo, como en la definición de pisos. */}
-            {[...conPlanta].reverse().map((p) => (
-              <option key={p.numero} value={p.numero}>
-                {nombreDe(p)} · {formatNivel(p.cota)}
-              </option>
-            ))}
-          </select>
-        </label>
+            )}
+            {vista === "ver" && rubroVisto !== null && (
+              <span style={notaDeFiltro}>el resto del edificio queda insinuado</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={cuerpo}>
@@ -877,17 +1015,17 @@ export default function Edificio3D({
                 )}
               </div>
               <dl style={lista}>
-                {ficha.renglones.map(([que, cuanto]) => (
+                {renglonesDeLaFicha.map(([que, cuanto]) => (
                   <div key={que} style={renglon}>
                     <dt style={queEs}>{que}</dt>
                     <dd style={cuantoEs}>{cuanto}</dd>
                   </div>
                 ))}
               </dl>
-              {ficha.campos.length > 0 && (
+              {camposDeLaFicha.length > 0 && (
                 <div style={modificar}>
                   <p style={sobretitulo}>Modificar{guardando ? " · guardando…" : ""}</p>
-                  {ficha.campos.map((campo) => (
+                  {camposDeLaFicha.map((campo) => (
                     <CampoEditable
                       key={`${elegido.planta}|${elegido.objeto}|${campo.clave}`}
                       campo={campo}
@@ -1125,6 +1263,65 @@ const grupo = {
   alignItems: "center",
   flexWrap: "wrap" as const,
   gap: "16px",
+};
+
+/**
+ * El renglón de los filtros, debajo del de cómo se mira. Va en su propia
+ * línea y no apretado contra las píldoras: son dos cosas distintas, y así
+ * cada grupo se lee por su rótulo.
+ */
+const barraDeFiltros = {
+  flex: "0 0 auto",
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap" as const,
+  gap: "8px 22px",
+  paddingBottom: "2px",
+  borderBottom: "1px solid #ededed",
+};
+const grupoDeFiltros = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap" as const,
+  gap: "6px",
+};
+const rotuloDeFiltro = {
+  marginRight: "4px",
+  fontSize: "11px",
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase" as const,
+  color: "#9a9a9a",
+};
+const notaDeFiltro = {
+  marginLeft: "4px",
+  fontSize: "12px",
+  color: "#8a8a8a",
+};
+
+/**
+ * Cada parte del dibujo, como una ficha que se prende y se apaga. Antes eran
+ * casillas: se leían como un formulario y había que apuntarle al cuadradito.
+ *
+ * Casi todas arrancan puestas, así que la puesta es la callada —blanca, con
+ * su borde— y la apagada es la que se nota apagada. Al revés, el renglón
+ * entero sería una pared negra.
+ */
+const fichaDeFiltro = {
+  background: "#f4f4f4",
+  color: "#9a9a9a",
+  border: "1px solid transparent",
+  borderRadius: "999px",
+  padding: "5px 13px",
+  fontSize: "13px",
+  lineHeight: 1.25,
+  cursor: "pointer",
+};
+const fichaDeFiltroPuesta = {
+  ...fichaDeFiltro,
+  background: "#ffffff",
+  color: "#111111",
+  border: "1px solid #111111",
 };
 
 const selectorDeModo = {

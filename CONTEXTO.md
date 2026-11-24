@@ -1454,6 +1454,65 @@ fondo y lo que se va dibujando.
   terminada a cara terminada, capas dibujadas incluidas (`formaDeAbertura`).
   Antes tapaba sólo el cuerpo y los bordes de las capas asomaban en las jambas
   como un escalón al lado del marco.
+#### La barra del 3D: cómo se mira arriba, qué se ve abajo (24/11/2026)
+
+Pedido del usuario: "a esta sección quizás hay que darle un diseño más
+dinámico, los filtros para el 3D lo veo medio incómodo, se deberían también
+poder ver filtros por rubros".
+
+Todo iba en un renglón —dos pares de píldoras, seis casillas y un desplegable
+suelto a la derecha—, y encima cambiaba de forma al pasar a Avance. Nada decía
+qué grupo mandaba sobre qué. Ahora son dos renglones, partidos por para qué
+sirve cada cosa:
+
+- **Arriba, cómo se mira**: Ver / Avance, el piso y Girar / Mover.
+- **Abajo, qué se ve**: las partes del dibujo y el rubro, cada grupo con su
+  rótulo.
+
+Las partes (Muros, Capas, Aberturas, Pisos, Cielorrasos, Estructura) pasaron
+de casillas a fichas que se prenden y se apagan. Casi todas arrancan puestas,
+así que **la puesta es la callada** —blanca, con su borde— y la apagada es la
+que se nota: al revés, el renglón entero sería una pared negra. Siguen siendo
+las capas de vista compartidas con la planta.
+
+**El rubro vive en los dos modos y se queda al cambiar de uno al otro**: se
+mira el avance de la mampostería, se pasa a Ver y se la sigue viendo. En Ver,
+lo que lleva alguna tarea del rubro queda sólido y **el resto del edificio
+apenas insinuado**, con el mismo gris de Avance, para no perder de vista dónde
+está parado lo que se mira; lo insinuado no se puede tocar. En Avance el mismo
+desplegable elige de qué rubro son las tareas que se ofrecen, como antes.
+
+Dos cosas del dibujo que esto obligó:
+
+- Las piezas se agrupan **por clase y por lado** (del rubro o no), no sólo por
+  clase: son dos mallas fundidas con materiales distintos.
+- Con un rubro mirado, **las aristas guardadas no sirven**: `modelo.aristas`
+  trae las de todos los sólidos de la clase y dibujarían también el contorno
+  de lo insinuado. Salen de la malla sólida con `EdgesGeometry`, como en
+  Avance.
+- **La ficha también habla sólo del rubro mirado** (pedido del usuario: "¿eso
+  por qué se ve? si sólo la aislación está en el piso"). Una cosa es de varios
+  rubros a la vez —el ambiente tiene su piso, su cielorraso y sus paredes— y
+  contarlos todos mientras se mira uno desmiente el filtro. El baño mirando
+  Aislaciones muestra `Superficie` y `Piso: Cementicia doble horizontal`, sin
+  el renglón del cielorraso, sin el porcelanato (que es de Pisos) y sin el
+  campo de la altura del cielorraso.
+  - Para eso cada renglón puede decir **de qué tarea sale cada pedazo de su
+    valor** (`Renglon = [que, cuanto, partes?]`, `partes: {texto, tarea}[]`):
+    con un rubro mirado el valor se arma con las suyas, y si no queda ninguna
+    el renglón no va. Lo mismo `Campo.tareas`, para la altura del cielorraso.
+  - **Lo que no sale de ninguna tarea se muestra siempre**: es lo que la cosa
+    *es* y no de qué está hecha. La superficie, un espesor, un nivel. Por eso
+    `Paquete de piso` —cuánto mide, no de qué está hecho— va sin partes.
+- **El resaltado pinta sólo lo que está a la vista.** Pintaba todos los
+  sólidos de la cosa elegida, y una cosa tiene varios: tocando el piso del
+  baño mirando Aislaciones se encendía también su cielorraso de durlock —que
+  es de Cielorrasos y estaba insinuado—, y parecía del rubro. Pasaba igual
+  con una ficha apagada (el cielorraso aparecía de la nada) y con un piso
+  elegido en otro nivel (quedaba flotando solo). Ahora el resaltado filtra
+  por lo mismo que el edificio: capa de vista, rubro, nivel, y la tarea en
+  Avance.
+
 - **El avance se marca en el 3D** (pedido del usuario: "un selector de tareas
   por rubro para ver y en base a eso ir marcando qué está realizado").
   Migración `20261125100000_el_avance_se_marca_en_el_3d` (la aplica el
