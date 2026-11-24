@@ -3253,6 +3253,15 @@ documento lo dijera antes.
   dejando la vieja tal cual se aplicó y escribiendo **una migración nueva** que
   deshaga. Antes de tocar un `.sql` ya escrito, `npx supabase migration list`
   dice si está aplicado.
+- **`window.confirm` no sirve y no avisa.** El navegador de adentro de una app
+  —el que se usa para mirar la obra mientras se trabaja— no abre las ventanas
+  del sistema: devuelve `false` al instante, sin mostrar nada. Todo lo que
+  preguntaba antes de borrar se cortaba solo, en silencio, y parecía que el
+  botón no andaba (se cazó con "Borrar del catálogo", 24/11/2026). Se pregunta
+  con `useConfirmacion` (`components/Confirmacion.tsx`), que es un cartel de la
+  app; como la respuesta llega después, el que pregunta tiene que poder
+  esperarla (`async` y `await`, y el `onClick` lo llama con `void`). Lo mismo
+  vale para `alert` y `prompt`: no usarlos.
 - **PowerShell** mastica mal `git add -A` junto a un heredoc largo, y
   `HEAD@{1}`. Usar archivos explícitos y hashes de commit.
 - La MCP de Supabase de esta sesión **no tiene permiso** para consultar/escribir

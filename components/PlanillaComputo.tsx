@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Fragment, useState, useTransition } from "react";
+import { useConfirmacion } from "@/components/Confirmacion";
 import DesgloseTarea, {
   type GuardarDesglose,
   type RenglonInicial,
@@ -115,6 +116,7 @@ export default function PlanillaComputo({
   quitarItem: (id: string) => Promise<{ error?: string }>;
 }) {
   const router = useRouter();
+  const { preguntar, dialogo } = useConfirmacion();
   const todas = rubros.flatMap((r) => r.filas);
   // Las unidades que ya se usan en la obra, para que una agregada a mano se
   // pueda volver a elegir sin escribirla de nuevo.
@@ -200,8 +202,12 @@ export default function PlanillaComputo({
     });
   };
 
-  const quitar = (f: FilaPlanilla) => {
-    if (!window.confirm(`¿Sacar "${valores[f.id]?.nombre ?? f.nombre}" del cómputo?`)) return;
+  const quitar = async (f: FilaPlanilla) => {
+    const si = await preguntar(
+      `¿Sacar "${valores[f.id]?.nombre ?? f.nombre}" del cómputo?`,
+      "Sacar del cómputo"
+    );
+    if (!si) return;
     iniciar(async () => {
       const r = await quitarItem(f.id);
       if (r.error) {
@@ -232,6 +238,7 @@ export default function PlanillaComputo({
 
   return (
     <form action={guardar}>
+      {dialogo}
       <input type="hidden" name="slug" value={slug} />
       <input type="hidden" name="obra_id" value={obraId} />
 
@@ -516,7 +523,7 @@ export default function PlanillaComputo({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => quitar(f)}
+                                onClick={() => void quitar(f)}
                                 disabled={ocupado}
                                 style={botonTacho}
                                 title="Sacar del cómputo"

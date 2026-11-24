@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useConfirmacion } from "@/components/Confirmacion";
 import DesgloseTarea, { type RenglonInicial } from "@/components/DesgloseTarea";
 import { type MaterialOpcion } from "@/components/SelectorMaterial";
 import * as ui from "@/components/ui";
@@ -72,6 +73,7 @@ export default function TareasDelRubro({
   ) => Promise<{ error?: string; aviso?: string }>;
 }) {
   const router = useRouter();
+  const { preguntar, dialogo } = useConfirmacion();
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
   const [ocupado, iniciar] = useTransition();
@@ -137,14 +139,12 @@ export default function TareasDelRubro({
     });
   };
 
-  const borrar = (t: TareaDelRubro) => {
-    if (
-      !window.confirm(
-        `¿Borrar "${t.nombre}" del catálogo? Deja de aparecer en todas las obras, con su composición. No se puede deshacer.`
-      )
-    ) {
-      return;
-    }
+  const borrar = async (t: TareaDelRubro) => {
+    const si = await preguntar(
+      `¿Borrar "${t.nombre}" del catálogo? Deja de aparecer en todas las obras, con su composición. No se puede deshacer.`,
+      "Borrar del catálogo"
+    );
+    if (!si) return;
     iniciar(async () => {
       const r = await eliminar(t.id);
       if (r.error) {
@@ -209,7 +209,7 @@ export default function TareasDelRubro({
         </button>
         <button
           type="button"
-          onClick={() => borrar(t)}
+          onClick={() => void borrar(t)}
           disabled={ocupado}
           style={enlaceBorrar}
         >
@@ -300,6 +300,8 @@ export default function TareasDelRubro({
           }}
         />
       )}
+
+      {dialogo}
 
       {error && <p style={textoError}>{error}</p>}
       {aviso && <p style={textoAviso}>{aviso}</p>}

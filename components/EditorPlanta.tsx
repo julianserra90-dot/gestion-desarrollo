@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from "react";
 import BotonConfirmar from "@/components/BotonConfirmar";
+import { useConfirmacion } from "@/components/Confirmacion";
 import DefinicionDePisos from "@/components/DefinicionDePisos";
 import IconoHerramienta from "@/components/IconoHerramienta";
 import TipoDeMuroEditor, { ListaDeCapas } from "@/components/TipoDeMuroEditor";
@@ -464,6 +465,7 @@ export default function EditorPlanta({
   guardarPisos: (pisos: Piso[]) => Promise<{ error?: string }>;
 }) {
   const router = useRouter();
+  const { preguntar, dialogo: dialogoDeConfirmacion } = useConfirmacion();
   const { imagen } = planta;
 
   // Los muros, con lo de su tipo al día: el tipo pudo cambiar en otra planta.
@@ -3283,14 +3285,12 @@ export default function EditorPlanta({
   /** Si la obra tiene capas de las de antes: de los tipos, de los ambientes o de las caras. */
   const hayCapasDeAntes = useMemo(() => tieneCapasDeAntes(dibujo, mapaDeTipos), [dibujo, mapaDeTipos]);
 
-  const pasarCapasDeLaObra = () => {
-    if (
-      !window.confirm(
-        "Las capas de los tipos de muro y de los ambientes pasan a dibujarse sobre las caras, en todas las plantas de la obra. Los tipos quedan sólo con el ladrillo."
-      )
-    ) {
-      return;
-    }
+  const pasarCapasDeLaObra = async () => {
+    const si = await preguntar(
+      "Las capas de los tipos de muro y de los ambientes pasan a dibujarse sobre las caras, en todas las plantas de la obra. Los tipos quedan sólo con el ladrillo.",
+      "Pasar las capas"
+    );
+    if (!si) return;
     iniciarPaseDeCapas(async () => {
       const r = await pasarCapas();
       if (r.error) setError(r.error);
@@ -3888,6 +3888,8 @@ export default function EditorPlanta({
 
   return (
     <div style={marco}>
+      {dialogoDeConfirmacion}
+
       {/* Arriba, lo que es de la planta entera: adónde se vuelve, qué se
           dibuja —arquitectura o estructura— y guardar. */}
       <div style={barra}>
@@ -3945,7 +3947,7 @@ export default function EditorPlanta({
           {hayCapasDeAntes && (
             <button
               type="button"
-              onClick={pasarCapasDeLaObra}
+              onClick={() => void pasarCapasDeLaObra()}
               disabled={sucio || pasandoCapas}
               title={sucio ? "Guardá antes de pasarlas" : undefined}
               style={botonDeNiveles}

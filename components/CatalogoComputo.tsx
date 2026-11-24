@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { useConfirmacion } from "@/components/Confirmacion";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
 
@@ -66,6 +67,7 @@ export default function CatalogoComputo({
   ) => Promise<{ error?: string }>;
 }) {
   const router = useRouter();
+  const { preguntar, dialogo } = useConfirmacion();
   const [tildadas, setTildadas] = useState(() => new Set(elegidas));
   const [buscar, setBuscar] = useState("");
   const [error, setError] = useState("");
@@ -94,24 +96,28 @@ export default function CatalogoComputo({
   /** Falso si hay datos cargados y el usuario no quiere perderlos. */
   const sePuedeSacar = (ids: string[]) => {
     const conDatos = ids.filter((id) => cargadas[id]);
-    if (conDatos.length === 0) return true;
+    if (conDatos.length === 0) return Promise.resolve(true);
 
     if (conDatos.length === 1) {
       const id = conDatos[0];
       const nombre = nombreDeTarea.get(id) ?? "esta tarea";
-      return window.confirm(`¿Sacar "${nombre}" del cómputo? Se borra ${cargadas[id]}.`);
+      return preguntar(
+        `¿Sacar "${nombre}" del cómputo? Se borra ${cargadas[id]}.`,
+        "Sacar del cómputo"
+      );
     }
 
     // "Quitar todas" puede llevarse un rubro entero: se nombra lo que tiene
     // algo cargado, que es lo único que no se recupera volviendo a tildar.
     const nombres = conDatos.map((id) => nombreDeTarea.get(id) ?? "—").join("; ");
-    return window.confirm(
-      `¿Sacar ${ids.length} tareas del cómputo? Se borra lo cargado en ${conDatos.length}: ${nombres}.`
+    return preguntar(
+      `¿Sacar ${ids.length} tareas del cómputo? Se borra lo cargado en ${conDatos.length}: ${nombres}.`,
+      `Sacar las ${ids.length}`
     );
   };
 
-  const marcar = (ids: string[], incluir: boolean) => {
-    if (!incluir && !sePuedeSacar(ids)) return;
+  const marcar = async (ids: string[], incluir: boolean) => {
+    if (!incluir && !(await sePuedeSacar(ids))) return;
 
     setTildadas((antes) => {
       const nuevo = new Set(antes);
@@ -169,6 +175,8 @@ export default function CatalogoComputo({
           {tildadas.size === 1 ? "1 tarea elegida" : `${tildadas.size} tareas elegidas`}
         </span>
       </summary>
+
+      {dialogo}
 
       <div style={barraCatalogo}>
         <input
@@ -246,7 +254,7 @@ export default function CatalogoComputo({
                 <button
                   type="button"
                   onClick={() =>
-                    marcar(
+                    void marcar(
                       visibles.filter((t) => tildadas.has(t.id) === todas).map((t) => t.id),
                       !todas
                     )
@@ -268,7 +276,7 @@ export default function CatalogoComputo({
                         type="checkbox"
                         checked={elegida}
                         disabled={pendientes.has(t.id)}
-                        onChange={() => marcar([t.id], !elegida)}
+                        onChange={() => void marcar([t.id], !elegida)}
                       />
                       <span style={{ flex: 1 }}>{t.nombre}</span>
                       <span style={unidad}>{t.unidad}</span>
