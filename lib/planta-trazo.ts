@@ -10,6 +10,7 @@
  * Todo en píxeles de la imagen, con la y hacia abajo como en la pantalla.
  */
 
+import { anilloDeBuna, contornoDeCielorraso, largoDeBuna } from "@/lib/planta-bunas";
 import { type PiezaDeCapa, piezasDeCapas, proporcionAlLargo } from "@/lib/planta-capas";
 import {
   type Abertura,
@@ -1317,19 +1318,25 @@ const CASI_PARALELO = 0.14;
  *
  * Devuelve el polígono y las dos puntas del lado ya corrido. Con `cuanto` en
  * cero devuelve el mismo polígono: un escalón de cero deja puntos repetidos.
+ *
+ * Y `origen`: de qué punto del polígono viejo sale cada uno de los nuevos. Lo
+ * necesita la buña, donde cada lado lleva lo suyo y hay que saber cuál es cuál
+ * después de que el escalón agregó puntos.
  */
 export function moverLado(
   puntos: Punto[],
   indice: number,
   cuanto: number
-): { puntos: Punto[]; a: Punto; b: Punto } {
+): { puntos: Punto[]; a: Punto; b: Punto; origen: number[] } {
   const n = puntos.length;
   const i = (((indice % n) + n) % n) || 0;
   const j = (i + 1) % n;
   const a = puntos[i];
   const b = puntos[j];
   const largo = n >= 3 ? distancia(a, b) : 0;
-  if (!(largo > 0) || Math.abs(cuanto) < 1e-9) return { puntos, a, b };
+  if (!(largo > 0) || Math.abs(cuanto) < 1e-9) {
+    return { puntos, a, b, origen: puntos.map((_, k) => k) };
+  }
 
   const d = { x: (b.x - a.x) / largo, y: (b.y - a.y) / largo };
   const corridoA = { x: a.x - d.y * cuanto, y: a.y + d.x * cuanto };
@@ -1348,15 +1355,17 @@ export function moverLado(
   const nuevoB = corte(b, puntos[(j + 1) % n]);
 
   const resultado: Punto[] = [];
+  const origen: number[] = [];
   puntos.forEach((p, k) => {
     // Sin corte, la punta vieja se queda y la corrida se suma del lado del
     // tramo: antes de ella en `a`, después en `b`.
-    if (k === i) resultado.push(...(nuevoA ? [nuevoA] : [a, corridoA]));
-    else if (k === j) resultado.push(...(nuevoB ? [nuevoB] : [corridoB, b]));
-    else resultado.push(p);
+    const nuevos =
+      k === i ? (nuevoA ? [nuevoA] : [a, corridoA]) : k === j ? (nuevoB ? [nuevoB] : [corridoB, b]) : [p];
+    resultado.push(...nuevos);
+    origen.push(...nuevos.map(() => k));
   });
 
-  return { puntos: resultado, a: nuevoA ?? corridoA, b: nuevoB ?? corridoB };
+  return { puntos: resultado, a: nuevoA ?? corridoA, b: nuevoB ?? corridoB, origen };
 }
 
 /**
@@ -2086,6 +2095,9 @@ export type MedidaDeCaras = {
   /** Los metros de zócalo de cada tarea: el largo de las caras que lo
    *  llevan, sin las puertas. */
   zocalos: { capa: string; largo: number }[];
+  /** Los metros de buña de cada tarea: los lados prendidos del anillo de cada
+   *  ambiente que lleva. */
+  bunas: { capa: string; largo: number }[];
   /** Las capas dibujadas, pieza por pieza: lo que se dibuja en la planta y
    *  se levanta en el 3D. */
   piezas: PiezaDeCapa[];
@@ -2458,10 +2470,24 @@ export function medirCaras(
     if (ambiente) bajoCajones.set(ambiente.id, (bajoCajones.get(ambiente.id) ?? 0) + area);
   }
 
+  // Las buñas, en metros lineales: el anillo de cada ambiente que lleva, sin
+  // los lados apagados.
+  const bunas = new Map<string, number>();
+  for (const ambiente of dibujo.ambientes) {
+    const tarea = ambiente.buna?.tarea;
+    if (!tarea) continue;
+    const largo = largoDeBuna(anilloDeBuna(ambiente), mpp);
+    if (largo > 0) bunas.set(tarea, (bunas.get(tarea) ?? 0) + largo);
+  }
+
   for (const ambiente of dibujo.ambientes) {
     const superficie = areaDe(ambiente.puntos) * mpp * mpp;
     if (ambiente.piso.length === 0) sinPiso += superficie;
-    const delCielorraso = Math.max(0, superficie - (bajoCajones.get(ambiente.id) ?? 0));
+    // El cielorraso mide su contorno, que es el del ambiente salvo que se le
+    // haya dibujado uno propio: el durlock que muere contra un placard no
+    // cubre el ambiente entero.
+    const bajoTecho = areaDe(contornoDeCielorraso(ambiente)) * mpp * mpp;
+    const delCielorraso = Math.max(0, bajoTecho - (bajoCajones.get(ambiente.id) ?? 0));
     if (ambiente.cielorraso.length === 0) sinCielorraso += delCielorraso;
     for (const capa of sinRepetir(ambiente.piso)) pisos.sumar(capa, superficie);
     for (const capa of sinRepetir(ambiente.cielorraso)) cielorrasos.sumar(capa, delCielorraso);
@@ -2504,6 +2530,7 @@ export function medirCaras(
     murosSinTipo,
     hormigonEnMuros,
     zocalos: Array.from(zocalos, ([capa, largo]) => ({ capa, largo })),
+    bunas: Array.from(bunas, ([capa, largo]) => ({ capa, largo })),
     piezas,
     cajones,
   };

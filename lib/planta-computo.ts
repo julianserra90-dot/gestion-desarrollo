@@ -91,6 +91,7 @@ export type LoDelPlano = {
 
 const ETIQUETAS = {
   zocalos: "Zócalos",
+  bunas: "Buñas",
   muros: "Muros",
   paredes: "Paredes",
   pisos: "Pisos",
@@ -335,17 +336,24 @@ export function delPlano(
       for (const c of medida.pisos) agregar(ETIQUETAS.pisos, c);
       for (const c of medida.cielorrasos) agregar(ETIQUETAS.cielorrasos, c);
 
-      // Los zócalos, en metros lineales: lo único del plano que va por largo.
-      for (const z of medida.zocalos) {
-        const unidad = unidadDe(z.capa);
-        if (unidad === null || !esLargo(unidad)) {
-          noSeMiden.set(z.capa, unidad);
-          continue;
+      // Lo que el plano da por largo y no por superficie: los zócalos, al pie
+      // de las caras que los llevan, y las buñas, por el anillo del
+      // cielorraso de cada ambiente.
+      for (const [lista, etiqueta] of [
+        [medida.zocalos, ETIQUETAS.zocalos],
+        [medida.bunas, ETIQUETAS.bunas],
+      ] as const) {
+        for (const l of lista) {
+          const unidad = unidadDe(l.capa);
+          if (unidad === null || !esLargo(unidad)) {
+            noSeMiden.set(l.capa, unidad);
+            continue;
+          }
+          const elemento = { forma: "directo" as const, a: null, b: null, c: alCentimetro(l.largo), unidades };
+          const cantidad = cantidadDeElemento(elemento);
+          if (cantidad <= 0) continue;
+          renglones.push({ tareaId: l.capa, nivel, etiqueta, ...elemento, cantidad, orden });
         }
-        const elemento = { forma: "directo" as const, a: null, b: null, c: alCentimetro(z.largo), unidades };
-        const cantidad = cantidadDeElemento(elemento);
-        if (cantidad <= 0) continue;
-        renglones.push({ tareaId: z.capa, nivel, etiqueta: ETIQUETAS.zocalos, ...elemento, cantidad, orden });
       }
 
       // Las aberturas, por tipo: todas las V01 del piso en un renglón.

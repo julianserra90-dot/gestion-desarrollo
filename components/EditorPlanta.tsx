@@ -50,6 +50,16 @@ import {
   type TipoMuro,
 } from "@/lib/tipos-de-muro";
 import * as ui from "@/components/ui";
+import {
+  type VerticeDeBuna,
+  anilloCorrido,
+  anilloDeBuna,
+  conLadoCambiado,
+  contornoDeCielorraso,
+  conPuntoMovido,
+  ladosDeBuna,
+  largoDeBuna,
+} from "@/lib/planta-bunas";
 import { formatM2, formatM3, formatMetros, formatNivel, formatNiveles } from "@/lib/format";
 import { type Piso, nombreDePiso } from "@/lib/pisos";
 import {
@@ -170,6 +180,7 @@ const CAPAS_DE_VISTA: { valor: CapaDeVista; nombre: string }[] = [
   { valor: "capas", nombre: "Capas" },
   { valor: "aberturas", nombre: "Aberturas" },
   { valor: "cajones", nombre: "Cajones" },
+  { valor: "bunas", nombre: "Buñas" },
   { valor: "estructura", nombre: "Estructura" },
   { valor: "cotas", nombre: "Cotas" },
 ];
@@ -198,7 +209,10 @@ type Eje = { a: Punto; b: Punto };
 type ClaseDePieza = "columnas" | "vigas" | "losas";
 
 type Seleccion = {
-  tipo: "muro" | "ambiente" | "abertura" | "columna" | "viga" | "losa" | "capa" | "cajon";
+  // La buña se elige aparte del ambiente —su id es el del ambiente— porque su
+  // anillo se edita encima del contorno: elegirla es decir cuál de los dos se
+  // agarra.
+  tipo: "muro" | "ambiente" | "abertura" | "columna" | "viga" | "losa" | "capa" | "cajon" | "buna";
   id: string;
   /** De una capa, el tramo que se tocó: es el que se puede quitar. */
   tramo?: number;
@@ -224,14 +238,21 @@ type Agarre =
   // se corrió.
   | {
       tipo: "lado";
-      de: "ambiente" | "losa" | "cajon";
+      de: "ambiente" | "losa" | "cajon" | "cielorraso" | "buna";
       id: string;
       indice: number;
       inicio: Punto;
       puntos: Punto[];
+      /** De una buña, lo que llevaba cada lado al agarrarla: el anillo se
+       *  rehace desde el de entonces en cada movida. */
+      lleva?: boolean[];
     }
   | { tipo: "losa"; id: string; indice: number }
   | { tipo: "cajon"; id: string; indice: number }
+  // Una esquina del borde del cielorraso de un ambiente, o del anillo de su
+  // buña. `id` es el del ambiente en los dos casos.
+  | { tipo: "cielorraso"; id: string; indice: number }
+  | { tipo: "buna"; id: string; indice: number }
   | { tipo: "viga"; id: string; punta: "a" | "b"; eje: Eje | null }
   // Una columna entera. `corrida` es cuánto hay de su punto marcado a donde se
   // la agarró: lo que se pega a las esquinas es ese punto, no el puntero.
@@ -600,6 +621,13 @@ export default function EditorPlanta({
   });
   /** Los puntos de la capa que se marca a mano, cada uno sobre una cara. */
   const [puntosDeCapa, setPuntosDeCapa] = useState<PuntoEnCara[]>([]);
+  /**
+   * El modo cielorraso: todo lo demás del plano se transparenta y se deja de
+   * poder tocar, así lo único que se mueve es el cielorraso del ambiente
+   * elegido y su buña. Sin eso, el borde del cielorraso nace encima del
+   * contorno del ambiente y no hay forma de saber cuál de los dos se agarra.
+   */
+  const [verCielorraso, setVerCielorraso] = useState(false);
   /** El muro desde cuyo corte se llegó a la capa elegida: para volver a él. */
   const [muroDeOrigen, setMuroDeOrigen] = useState<string | null>(null);
   /** Dónde está el puntero con la herramienta Capa: lo que saldría con un clic. */
@@ -1150,10 +1178,24 @@ export default function EditorPlanta({
   };
 
   /** El trazo con el contorno de un ambiente o de una losa cambiado. */
-  const conPuntos = (de: "ambiente" | "losa" | "cajon", id: string, puntos: Punto[]): Trazo =>
+  const conPuntos = (
+    de: "ambiente" | "losa" | "cajon" | "cielorraso",
+    id: string,
+    puntos: Punto[]
+  ): Trazo =>
     de === "losa"
       ? conPieza("losas", id, { puntos })
-      : de === "cajon"
+      : de === "cielorraso"
+        ? {
+            escala,
+            dibujo: {
+              ...dibujo,
+              ambientes: dibujo.ambientes.map((a) =>
+                a.id === id ? { ...a, contornoCielorraso: puntos } : a
+              ),
+            },
+          }
+        : de === "cajon"
         ? {
             escala,
             dibujo: {
@@ -1585,6 +1627,34 @@ export default function EditorPlanta({
     });
   };
 
+  /** Hasta dónde llega el cielorraso de un ambiente: su contorno propio, o el
+   *  del ambiente mientras no se le haya dibujado uno. */
+  const contornoDelAmbiente = (id: string): Punto[] => {
+    const ambiente = dibujo.ambientes.find((a) => a.id === id);
+    return ambiente ? contornoDeCielorraso(ambiente) : [];
+  };
+
+  /** El anillo de la buña de un ambiente: el suyo, o el borde del cielorraso
+   *  mientras no lo hayan tocado. */
+  const anilloDelAmbiente = (id: string): VerticeDeBuna[] => {
+    const ambiente = dibujo.ambientes.find((a) => a.id === id);
+    return ambiente ? anilloDeBuna(ambiente) : [];
+  };
+
+  /**
+   * El trazo con el anillo de una buña cambiado. Guardarlo es lo que la
+   * despega del contorno del ambiente: desde acá en más es suyo.
+   */
+  const conBuna = (id: string, anillo: VerticeDeBuna[]): Trazo => ({
+    escala,
+    dibujo: {
+      ...dibujo,
+      ambientes: dibujo.ambientes.map((a) =>
+        a.id === id && a.buna ? { ...a, buna: { ...a.buna, anillo } } : a
+      ),
+    },
+  });
+
   const cerrarAmbiente = (puntos: Punto[]) => {
     if (puntos.length < 3) return;
     const id = crypto.randomUUID();
@@ -1602,6 +1672,8 @@ export default function EditorPlanta({
             alturaCielorraso: null,
             cielorraso: [],
             piso: [],
+            contornoCielorraso: null,
+            buna: null,
           },
         ],
       },
@@ -2165,8 +2237,9 @@ export default function EditorPlanta({
     if (e.button !== 0) return;
 
     if (herramienta === "seleccionar") {
-      // Llegó hasta acá: no se tocó ninguna figura.
-      setSeleccion(null);
+      // Llegó hasta acá: no se tocó ninguna figura. En el modo cielorraso lo
+      // elegido se queda: soltarlo apagaría el modo de rebote.
+      if (!enCielorraso) setSeleccion(null);
       return;
     }
 
@@ -2504,7 +2577,11 @@ export default function EditorPlanta({
           const otros = [
             ...dibujo.muros.flatMap((m) => [m.a, m.b, ...(bordes.get(m.id)?.esquinas ?? [])]),
             ...rincones.map((r) => r.punto),
-            ...dibujo.ambientes.flatMap((amb) => (amb.id === agarrado.id ? [] : amb.puntos)),
+            // Corriendo una buña, las esquinas de su propio ambiente sí
+            // atraen: es contra ellas que se la deja a la altura del muro.
+            ...dibujo.ambientes.flatMap((amb) =>
+              amb.id === agarrado.id && agarrado.de !== "buna" ? [] : amb.puntos
+            ),
             ...puntosDeEstructura(new Set([agarrado.id])),
             ...puntos.filter((_, k) => k !== indice && k !== (indice + 1) % puntos.length),
           ];
@@ -2519,6 +2596,12 @@ export default function EditorPlanta({
         }
 
         const corrido = moverLado(puntos, indice, cuanto);
+        if (agarrado.de === "buna") {
+          setTrazo(conBuna(agarrado.id, anilloCorrido(agarrado.lleva ?? [], indice, corrido)));
+          setGuias(alineadoCon ? [{ desde: alineadoCon, hasta: corrido.a }] : []);
+          setSucio(true);
+          return;
+        }
         setTrazo(conPuntos(agarrado.de, agarrado.id, corrido.puntos));
         setGuias(alineadoCon ? [{ desde: alineadoCon, hasta: corrido.a }] : []);
         setSucio(true);
@@ -2580,7 +2663,11 @@ export default function EditorPlanta({
             ? losaAgarrada?.puntos[agarrado.indice]
             : agarrado.tipo === "cajon"
               ? dibujo.cajones.find((c) => c.id === agarrado.id)?.puntos[agarrado.indice]
-              : dibujo.ambientes.find((a) => a.id === agarrado.id)?.puntos[agarrado.indice];
+              : agarrado.tipo === "buna"
+                ? anilloDelAmbiente(agarrado.id)[agarrado.indice]
+                : agarrado.tipo === "cielorraso"
+                  ? contornoDelAmbiente(agarrado.id)[agarrado.indice]
+                  : dibujo.ambientes.find((a) => a.id === agarrado.id)?.puntos[agarrado.indice];
 
       // Los muros que se mueven con esta punta: el elegido, y con las puntas
       // unidas todos los que llegan a ella.
@@ -2661,12 +2748,21 @@ export default function EditorPlanta({
         });
         agarrado.desde = destino;
       } else {
+        if (agarrado.tipo === "buna") {
+          const anillo = anilloDelAmbiente(agarrado.id);
+          if (anillo.length === 0) return;
+          setTrazo(conBuna(agarrado.id, conPuntoMovido(anillo, agarrado.indice, destino)));
+          setSucio(true);
+          return;
+        }
         const contorno =
           agarrado.tipo === "losa"
             ? losaAgarrada?.puntos
             : agarrado.tipo === "cajon"
               ? dibujo.cajones.find((c) => c.id === agarrado.id)?.puntos
-              : dibujo.ambientes.find((a) => a.id === agarrado.id)?.puntos;
+              : agarrado.tipo === "cielorraso"
+                ? contornoDelAmbiente(agarrado.id)
+                : dibujo.ambientes.find((a) => a.id === agarrado.id)?.puntos;
         if (!contorno) return;
         setTrazo(
           conPuntos(
@@ -2861,7 +2957,7 @@ export default function EditorPlanta({
     amb: { id: string; puntos: Punto[] },
     indice: number,
     crudo: Punto,
-    de: "ambiente" | "losa" | "cajon" = "ambiente"
+    de: "ambiente" | "losa" | "cajon" | "cielorraso" | "buna" = "ambiente"
   ) => {
     const a = amb.puntos[indice];
     const b = amb.puntos[(indice + 1) % amb.puntos.length];
@@ -2877,6 +2973,20 @@ export default function EditorPlanta({
     // Sobre una esquina no hay nada que agregar.
     if (mismoPunto(nuevo, a) || mismoPunto(nuevo, b)) return;
 
+    if (de === "buna") {
+      // Partir un lado deja dos, y los dos llevan lo que llevaba el entero.
+      const anillo = anilloDelAmbiente(amb.id);
+      if (anillo.length === 0) return;
+      cambiar(
+        conBuna(amb.id, [
+          ...anillo.slice(0, indice + 1),
+          { x: nuevo.x, y: nuevo.y, lleva: anillo[indice].lleva },
+          ...anillo.slice(indice + 1),
+        ])
+      );
+      return;
+    }
+
     cambiar(
       conPuntos(de, amb.id, [
         ...amb.puntos.slice(0, indice + 1),
@@ -2891,9 +3001,15 @@ export default function EditorPlanta({
   const quitarPunto = (
     amb: { id: string; puntos: Punto[] },
     indice: number,
-    de: "ambiente" | "losa" | "cajon" = "ambiente"
+    de: "ambiente" | "losa" | "cajon" | "cielorraso" | "buna" = "ambiente"
   ) => {
     if (amb.puntos.length <= 3) return;
+    if (de === "buna") {
+      const anillo = anilloDelAmbiente(amb.id);
+      if (anillo.length <= 3) return;
+      cambiar(conBuna(amb.id, anillo.filter((_, k) => k !== indice)));
+      return;
+    }
     cambiar(
       conPuntos(
         de,
@@ -2954,6 +3070,9 @@ export default function EditorPlanta({
       else if (medicion) setMedicion(null);
       else if (copiado) setCopiado(null);
       else if (primeroDeEsquina) setPrimeroDeEsquina(null);
+      // Primero se sale del modo cielorraso y recién después se suelta lo
+      // elegido: salir es lo que se busca con Escape estando adentro.
+      else if (verCielorraso) setVerCielorraso(false);
       else setSeleccion(null);
     } else if (e.key === "Enter") {
       if (herramienta === "ambiente") cerrarAmbiente(enCurso);
@@ -3201,10 +3320,21 @@ export default function EditorPlanta({
       alturaDePlanta
     ).filter((p) => p.capa.id === "previa");
   }, [herramienta, terminaciones, capaAMano, punteroDeCapa, puntosDeCapa, dibujo, moldeDeCapa, mpp, alturaDePlanta, u]);
+  // Elegir la buña es elegir su ambiente: el panel es el mismo —la buña se
+  // pone en la caja del cielorraso— y lo único que cambia es cuál de los dos
+  // anillos se agarra en el plano.
   const ambienteElegido =
-    seleccion?.tipo === "ambiente"
+    seleccion?.tipo === "ambiente" || seleccion?.tipo === "buna"
       ? dibujo.ambientes.find((a) => a.id === seleccion.id) ?? null
       : null;
+  const bunaElegida = seleccion?.tipo === "buna" ? ambienteElegido : null;
+  /** La buña del ambiente elegido, aparte para no perderla de vista adentro
+   *  de los `onChange` del panel. */
+  const bunaDelAmbiente = ambienteElegido?.buna ?? null;
+  /** El modo cielorraso vale mientras haya un ambiente elegido: sin él no hay
+   *  cielorraso que dibujar. */
+  const enCielorraso = verCielorraso && ambienteElegido !== null;
+  const contornoDelCielorraso = ambienteElegido ? contornoDeCielorraso(ambienteElegido) : [];
 
   const aberturaElegida =
     seleccion?.tipo === "abertura"
@@ -3258,7 +3388,11 @@ export default function EditorPlanta({
   // Las figuras sólo se dejan tocar con Seleccionar: dibujando, un clic sobre
   // un muro es un punto nuevo que se le pega, no una selección. Y sólo las del
   // modo en que se está: las del otro se ven, pero no se tocan.
-  const tocable = herramienta === "seleccionar" && modo === "arquitectura" ? "auto" : "none";
+  const enElPlano = herramienta === "seleccionar" && modo === "arquitectura";
+  /** En el modo cielorraso el resto del plano no se toca: el clic es siempre
+   *  para el cielorraso o su buña. */
+  const tocable = enElPlano && !enCielorraso ? "auto" : "none";
+  const tocableDelCielorraso = enElPlano ? "auto" : "none";
   const tocableDeEstructura =
     herramienta === "seleccionar" && modo === "estructura" ? "auto" : "none";
 
@@ -3295,13 +3429,29 @@ export default function EditorPlanta({
   const sinPropiedades =
     seleccion === null &&
     (herramienta === "seleccionar" || herramienta === "mover" || herramienta === "ambiente");
-  const contorno = ambienteElegido
+  const anilloElegido = bunaElegida ? anilloDeBuna(bunaElegida) : [];
+  const contorno = bunaElegida && anilloElegido.length >= 3
+    ? {
+        de: "buna" as const,
+        id: bunaElegida.id,
+        puntos: anilloElegido.map((p) => ({ x: p.x, y: p.y })),
+      }
+    : // En el modo cielorraso lo que se agarra es su borde, no el del
+      // ambiente, que ahí ni siquiera se deja tocar.
+      enCielorraso && ambienteElegido
+    ? { de: "cielorraso" as const, id: ambienteElegido.id, puntos: contornoDelCielorraso }
+    : ambienteElegido
     ? { de: "ambiente" as const, id: ambienteElegido.id, puntos: ambienteElegido.puntos }
     : losaElegida
       ? { de: "losa" as const, id: losaElegida.id, puntos: losaElegida.puntos }
       : cajonElegido
         ? { de: "cajon" as const, id: cajonElegido.id, puntos: cajonElegido.puntos }
         : null;
+
+  /** De qué color van las agarraderas de lo que se está editando: la buña en
+   *  el suyo, porque su anillo nace encima de otro contorno y hay que poder
+   *  saber cuál de los dos se agarra. */
+  const colorDelContorno = contorno?.de === "buna" ? BUNA : ACENTO;
 
   // Lo que saldría si se hiciera clic ahora: la columna en el punto marcado, o
   // la viga con su ancho hacia el lado que le toca.
@@ -4747,6 +4897,89 @@ export default function EditorPlanta({
               );
             })}
 
+            {/* El velo del modo cielorraso: todo lo dibujado hasta acá queda
+                atrás, lavado, y lo que sigue —el cielorraso, su buña y las
+                agarraderas— se lee limpio encima. Más barato y más parejo que
+                atenuar cada cosa por su lado. */}
+            {enCielorraso && tamano && (
+              <rect
+                x={v.x}
+                y={v.y}
+                width={tamano.w / v.k}
+                height={tamano.h / v.k}
+                fill="#ffffff"
+                opacity={0.72}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+
+            {/* El cielorraso del ambiente elegido, como figura llena: en el
+                modo cielorraso es lo que se está dibujando. */}
+            {enCielorraso && ambienteElegido && contornoDelCielorraso.length >= 3 && (
+              <polygon
+                points={contornoDelCielorraso.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill={BUNA}
+                fillOpacity={0.12}
+                stroke={BUNA}
+                strokeWidth={1.5 * u}
+                strokeDasharray={`${7 * u} ${4 * u}`}
+                style={{ pointerEvents: tocableDelCielorraso }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  // Tocar el cielorraso vuelve a ponerlo a él al alcance de
+                  // la mano: es la forma de salir de la buña sin salir del
+                  // modo.
+                  elegir({ tipo: "ambiente", id: ambienteElegido.id });
+                }}
+              />
+            )}
+
+            {/* Las buñas: la línea por donde termina el cielorraso. Van
+                después de todo el plano —los muros se dibujan llenos de
+                blanco y la taparían, porque corre justo sobre la cara—, lado
+                por lado: los apagados no se dibujan. Se elige aparte del
+                ambiente, que es lo que deja correrle los bordes. */}
+            {(ve("bunas") || enCielorraso) && dibujo.ambientes.map((a) =>
+              ladosDeBuna(anilloDeBuna(a))
+                .filter((lado) => lado.lleva)
+                .map((lado) => (
+                  <g key={`buna-${a.id}-${lado.indice}`}>
+                    {/* Una línea de 2 px no se puede agarrar: el clic va a
+                        esta, ancha y transparente, como en los lados de un
+                        ambiente. */}
+                    <line
+                      x1={lado.a.x}
+                      y1={lado.a.y}
+                      x2={lado.b.x}
+                      y2={lado.b.y}
+                      stroke="transparent"
+                      strokeWidth={10 * u}
+                      style={{
+                        pointerEvents: tocableDelCielorraso === "auto" ? "stroke" : "none",
+                        cursor: "pointer",
+                      }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        lienzo.current?.focus({ preventScroll: true });
+                        elegir({ tipo: "buna", id: a.id });
+                      }}
+                    />
+                    <line
+                      x1={lado.a.x}
+                      y1={lado.a.y}
+                      x2={lado.b.x}
+                      y2={lado.b.y}
+                      stroke={BUNA}
+                      strokeWidth={(bunaElegida?.id === a.id ? 3.5 : 2) * u}
+                      strokeLinecap="round"
+                      style={{ pointerEvents: "none" }}
+                    />
+                  </g>
+                ))
+            )}
+
             {/* Los vértices de lo seleccionado, para arrastrarlos. */}
             {herramienta === "seleccionar" && muroElegido && (
               <>
@@ -4853,6 +5086,10 @@ export default function EditorPlanta({
                         indice: i,
                         inicio: aPlano(e),
                         puntos: contorno.puntos,
+                        lleva:
+                          contorno.de === "buna"
+                            ? anilloElegido.map((v) => v.lleva)
+                            : undefined,
                       });
                     }}
                   />
@@ -4866,7 +5103,7 @@ export default function EditorPlanta({
                   cy={p.y}
                   r={6 * u}
                   fill="#ffffff"
-                  stroke={ACENTO}
+                  stroke={colorDelContorno}
                   strokeWidth={2 * u}
                   style={{ cursor: "move" }}
                   onPointerDown={(e) => {
@@ -4881,6 +5118,45 @@ export default function EditorPlanta({
                   }}
                 />
               ))}
+
+            {/* Con la buña elegida, el punto del medio de cada lado dice si
+                ese borde lleva: relleno sí, hueco no. Un clic lo cambia. */}
+            {herramienta === "seleccionar" &&
+              contorno?.de === "buna" &&
+              ladosDeBuna(anilloElegido).map((lado) => {
+                // El punto va corrido hacia adentro del anillo y no sobre la
+                // línea: el medio del lado es de donde se lo agarra para
+                // correrlo, y un punto ahí se queda con ese clic.
+                const centro = centroDe(anilloElegido.map((p) => ({ x: p.x, y: p.y })));
+                const mitad = {
+                  x: (lado.a.x + lado.b.x) / 2,
+                  y: (lado.a.y + lado.b.y) / 2,
+                };
+                const hacia = { x: centro.x - mitad.x, y: centro.y - mitad.y };
+                const lejos = Math.hypot(hacia.x, hacia.y) || 1;
+                const corrida = Math.min(11 * u, lejos / 2);
+                const medio = {
+                  x: mitad.x + (hacia.x / lejos) * corrida,
+                  y: mitad.y + (hacia.y / lejos) * corrida,
+                };
+                return (
+                  <circle
+                    key={`llevaBuna-${lado.indice}`}
+                    cx={medio.x}
+                    cy={medio.y}
+                    r={5 * u}
+                    fill={lado.lleva ? BUNA : "#ffffff"}
+                    stroke={BUNA}
+                    strokeWidth={2 * u}
+                    style={{ cursor: "pointer" }}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      e.stopPropagation();
+                      cambiar(conBuna(contorno.id, conLadoCambiado(anilloElegido, lado.indice)));
+                    }}
+                  />
+                );
+              })}
 
             {/* Las dos puntas de la viga elegida, y de dónde se agarra la
                 columna elegida: es el punto que se pega al moverla. */}
@@ -6273,6 +6549,37 @@ export default function EditorPlanta({
                       }
                     />
                   </label>
+                  {/* El modo cielorraso: el plano se transparenta y lo único
+                      que se puede mover es este borde y su buña. */}
+                  <button
+                    type="button"
+                    style={enCielorraso ? botonChicoPuesto : botonChico}
+                    onClick={() => setVerCielorraso(!verCielorraso)}
+                  >
+                    {enCielorraso ? "Listo, volver al plano" : "Dibujar el cielorraso"}
+                  </button>
+                  {enCielorraso && (
+                    <p style={ayuda}>
+                      {mpp === null
+                        ? "Sin escala no se puede medir."
+                        : `${formatM2(areaDe(contornoDelCielorraso) * mpp * mpp)} de cielorraso`}
+                      {ambienteElegido.contornoCielorraso === null
+                        ? " — llega hasta los muros del ambiente."
+                        : " — con su propio borde."}
+                    </p>
+                  )}
+                  {ambienteElegido.contornoCielorraso !== null && (
+                    <button
+                      type="button"
+                      style={botonChico}
+                      onClick={() =>
+                        cambiarAmbiente(ambienteElegido.id, { contornoCielorraso: null })
+                      }
+                    >
+                      Que llegue hasta los muros
+                    </button>
+                  )}
+
                   <EditorDeCapas
                     capas={ambienteElegido.cielorraso}
                     disponibles={capasDisponibles}
@@ -6282,6 +6589,57 @@ export default function EditorPlanta({
                       cambiarAmbiente(ambienteElegido.id, { cielorraso: nuevas })
                     }
                   />
+
+                  {/* La buña: arranca siendo el perímetro y no guarda forma.
+                      Se le corren los bordes en el plano, y ahí se queda con
+                      los suyos. */}
+                  <label style={casilla}>
+                    <input
+                      type="checkbox"
+                      checked={ambienteElegido.buna !== null}
+                      onChange={(e) =>
+                        cambiarAmbiente(ambienteElegido.id, {
+                          buna: e.target.checked ? { tarea: "", anillo: null } : null,
+                        })
+                      }
+                    />
+                    Lleva buña
+                  </label>
+                  {ambienteElegido.buna && (
+                    <>
+                      <SelectorDeTarea
+                        valor={ambienteElegido.buna.tarea || null}
+                        tareas={tareasPorMetro}
+                        vacio="—"
+                        alCambiar={(tarea) =>
+                          cambiarAmbiente(ambienteElegido.id, {
+                            buna: { tarea: tarea ?? "", anillo: bunaDelAmbiente?.anillo ?? null },
+                          })
+                        }
+                      />
+                      <p style={ayuda}>
+                        {mpp === null
+                          ? "Sin escala no se puede medir."
+                          : `${formatMetros(largoDeBuna(anilloDeBuna(ambienteElegido), mpp))} de buña`}
+                        {ambienteElegido.buna.anillo === null
+                          ? " — sigue el borde del cielorraso."
+                          : " — con su propio contorno."}
+                      </p>
+                      {ambienteElegido.buna.anillo !== null && (
+                        <button
+                          type="button"
+                          style={botonChico}
+                          onClick={() =>
+                            cambiarAmbiente(ambienteElegido.id, {
+                              buna: { tarea: bunaDelAmbiente?.tarea ?? "", anillo: null },
+                            })
+                          }
+                        >
+                          Volver al borde del cielorraso
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 {/* Las paredes: las capas de los muros, o una terminación
@@ -9097,6 +9455,8 @@ function pistaDe(
 
 const ACENTO = "#e8590c";
 const AZUL = "#1d4ed8";
+/** El de la buña: una línea del cielorraso, que no es ni muro ni ambiente. */
+const BUNA = "#a16207";
 /** El color de lo que se mide y no queda: distinto de todo lo que se guarda. */
 const VIOLETA = "#7c3aed";
 /** El de las guías: finito y frío, para que no se confunda con el trazo. */
@@ -10111,6 +10471,14 @@ const tituloDeCara = {
 const botonChico = {
   ...botonHerramienta,
   justifySelf: "start" as const,
+};
+
+/** El mismo botón, mientras lo que prende está prendido. */
+const botonChicoPuesto = {
+  ...botonChico,
+  background: BUNA,
+  borderColor: BUNA,
+  color: "#ffffff",
 };
 
 const botonBorrar = {

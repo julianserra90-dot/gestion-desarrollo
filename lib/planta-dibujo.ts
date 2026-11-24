@@ -137,6 +137,23 @@ export type Capa = {
   desde?: number;
 };
 
+/**
+ * La buña del cielorraso: la línea que se marca donde el cielorraso termina,
+ * para darle terminación. Se cotiza por metro lineal, así que lo único que
+ * necesita es la tarea y por dónde pasa.
+ *
+ * `anillo` en null es la buña perimetral: no guarda forma, es el contorno del
+ * ambiente y lo sigue si después se corre un muro. Guarda sus puntos recién
+ * cuando se corre uno de sus lados —el que pasa por delante de un placard— o
+ * se apaga alguno. Cada punto dice si el lado que **arranca** en él lleva
+ * buña: así lo apagado no se despega de su lado cuando el anillo cambia.
+ */
+export type Buna = {
+  /** La tarea del catálogo, de las que se cotizan por metro. "" sin elegir. */
+  tarea: string;
+  anillo: { x: number; y: number; lleva: boolean }[] | null;
+};
+
 export type Ambiente = {
   id: string;
   nombre: string;
@@ -155,8 +172,17 @@ export type Ambiente = {
    */
   alturaCielorraso: number | null;
   /** De qué es el cielorraso, por capas: placa de yeso, y encima pintura. Se
-   *  miden por la superficie del ambiente. */
+   *  miden por la superficie del cielorraso. */
   cielorraso: Capa[];
+  /**
+   * Hasta dónde llega el cielorraso, cuando no es todo el ambiente: el durlock
+   * que muere contra el frente de un placard, por ejemplo. Null —lo normal— es
+   * el contorno del ambiente, y lo sigue si después se corre un muro. Se
+   * dibuja en el modo cielorraso.
+   */
+  contornoCielorraso: Punto[] | null;
+  /** Su buña, o null si el cielorraso no lleva. */
+  buna: Buna | null;
   /** El piso, por capas desde la losa: contrapiso, carpeta, porcelanato. Se
    *  miden por la superficie del ambiente. */
   piso: Capa[];
@@ -915,6 +941,8 @@ export function leerDibujo(valor: unknown): Dibujo {
         alturaCielorraso !== null && alturaCielorraso > 0 ? alturaCielorraso : null,
       cielorraso: leerCapas(r.cielorraso),
       piso: leerCapas(r.piso),
+      contornoCielorraso: leerContorno(r.contornoCielorraso),
+      buna: leerBuna(r.buna),
     });
   }
 
@@ -1146,6 +1174,36 @@ function leerZocalo(valor: unknown): Muro["zocalo"] {
   const r = (typeof valor === "object" && valor !== null ? valor : {}) as Record<string, unknown>;
   const tarea = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
   return { exterior: tarea(r.exterior), interior: tarea(r.interior) };
+}
+
+/** Un contorno propio guardado —el del cielorraso—: con menos de tres puntos
+ *  no encierra nada y vale como si no estuviera. */
+function leerContorno(valor: unknown): Punto[] | null {
+  const puntos = (Array.isArray(valor) ? valor : [])
+    .map(punto)
+    .filter((p): p is Punto => p !== null);
+  return puntos.length >= 3 ? puntos : null;
+}
+
+/**
+ * La buña de un ambiente. Un anillo de menos de tres puntos no encierra nada:
+ * vuelve a ser perimetral, que es lo que el ambiente ya sabe dibujar.
+ */
+function leerBuna(valor: unknown): Buna | null {
+  if (typeof valor !== "object" || valor === null) return null;
+  const r = valor as Record<string, unknown>;
+  const crudos = Array.isArray(r.anillo) ? r.anillo : [];
+  const anillo: Buna["anillo"] = [];
+  for (const v of crudos) {
+    const p = punto(v);
+    if (p === null) continue;
+    const lleva = (v as Record<string, unknown>).lleva;
+    anillo.push({ ...p, lleva: lleva !== false });
+  }
+  return {
+    tarea: typeof r.tarea === "string" ? r.tarea : "",
+    anillo: anillo.length >= 3 ? anillo : null,
+  };
 }
 
 /**

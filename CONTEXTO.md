@@ -1756,6 +1756,75 @@ que baja.
   clic). Su panel: fondo, frente que resulta, capas y las medidas (fondo, m de
   frente, total). En el 3D es un volumen del fondo a su techo.
 
+#### Buña del cielorraso (24/11/2026)
+
+Pedido del usuario: ver dónde hay cielorraso y poder marcarle la **buña** —la
+línea de terminación donde el cielorraso termina—, que en un baño va en todo
+el perímetro y en un dormitorio puede correrse hacia adentro, por delante de
+un placard. Se cotiza por metro lineal, así que se computa.
+
+- **Modelo** (`Ambiente.buna: Buna | null`): la tarea y un **anillo**. El
+  anillo en null es el caso común: no guarda forma, **es** el borde del
+  cielorraso, y lo sigue si después se corre un muro o se corre ese borde.
+  Recién cuando se le corre un lado o se apaga alguno se queda con sus puntos,
+  y desde ahí es suyo.
+  Cada punto dice si el lado que **arranca** en él lleva buña, así lo apagado
+  no se despega de su lado cuando el anillo cambia de forma.
+- **Por qué se congela entero y no por lado**: al tocarlo, los cuatro lados
+  dejan de seguir al ambiente, no sólo el que se movió. Guardar nada más los
+  lados movidos sería más fiel pero mucho más enredado, y "Volver al
+  perímetro" alcanza para arrepentirse. El congelado trae además que agregarle
+  un punto al contorno del ambiente **no** corre de lugar los lados apagados
+  de la buña: ya no salen de ahí. Con índices contra el contorno del ambiente,
+  esto fallaba en silencio.
+- **Cómputo** (`medirCaras` → `bunas`, `lib/planta-bunas.ts`): la suma de los
+  lados prendidos por la escala. Va al renglón **Buñas** del plano, por el
+  mismo camino que los zócalos —lo otro que el plano da por largo— y con el
+  mismo filtro: si la tarea no se cotiza por metro, cae en "no se miden". Hace
+  falta tener la tarea cargada en el catálogo con unidad `ml`.
+- **Editar**: tilde "Lleva buña" en la caja Cielorraso del ambiente, con el
+  selector de tareas por metro y los metros que va dando. En el plano se
+  dibuja ocre, **después de los muros** —que se dibujan llenos de blanco y la
+  taparían, porque corre justo sobre la cara—. Se elige aparte del ambiente
+  (`seleccion.tipo === "buna"`, con el id del ambiente): el panel sigue siendo
+  el del ambiente y lo único que cambia es cuál de los dos anillos se agarra.
+  Correr un lado es `moverLado`, el mismo de los ambientes, que recorta las
+  esquinas solo; por eso devuelve también `origen` —de qué punto viejo sale
+  cada nuevo—, que es lo que deja que cada lado se quede con lo suyo cuando el
+  escalón agrega puntos.
+- **Prender y apagar un lado**: un punto en el medio de cada lado, **corrido
+  hacia adentro** del anillo. Sobre la línea se comía el clic con el que se
+  agarra el lado para correrlo.
+
+#### El cielorraso tiene su borde, y se dibuja en su modo (24/11/2026)
+
+El usuario, probando la buña: "no sé qué estoy moviendo… es confuso si muevo
+el área o la buña". El anillo de la buña nace encima del contorno del ambiente
+y los dos juegos de agarraderas quedan uno sobre otro.
+
+- **Hasta dónde llega el cielorraso** (`Ambiente.contornoCielorraso: Punto[] |
+  null`): null —lo normal— es el contorno del ambiente. Con uno propio, el
+  durlock muere donde se lo dibujó: el que termina contra el frente de un
+  placard. De ahí sale el m² del cómputo (`medirCaras`, menos los cajones),
+  que antes era siempre el ambiente entero y computaba placa donde no había.
+  Se congela al tocarlo, igual que la buña, y "Que llegue hasta los muros" lo
+  devuelve a null.
+- **La buña sale de ese borde**, no del ambiente: la buña es el remate del
+  borde del cielorraso, así que corrido el cielorraso la buña lo sigue sola y
+  el caso del placard se arregla con un solo gesto.
+- **Modo cielorraso** (`verCielorraso`, botón "Dibujar el cielorraso" en su
+  caja): un velo blanco al 72 % tapa todo lo dibujado hasta ahí y el
+  cielorraso, su buña y las agarraderas se dibujan encima. Es más barato y
+  más parejo que atenuar cada cosa por su lado. Mientras está puesto, `tocable`
+  es "none" para todo el resto del plano —el contorno del ambiente incluido—,
+  así lo único que se puede mover es el cielorraso y su buña; tocar el
+  cielorraso vuelve a él desde la buña, un clic en el vacío no suelta lo
+  elegido (soltarlo apagaría el modo de rebote) y Escape sale del modo antes
+  que de la selección.
+- **Las agarraderas de la buña van en su color** (ocre, `colorDelContorno`) y
+  las del cielorraso y el ambiente en naranja: dos anillos encima no se pueden
+  distinguir por la forma.
+
 #### El panel de propiedades, más simple (23/11/2026)
 
 Pedido del usuario, con una referencia de otro programa: un panel con
