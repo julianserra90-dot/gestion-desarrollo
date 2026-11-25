@@ -76,6 +76,11 @@ export type ClaseDeSolido =
   | "puerta"
   | "piso"
   | "cielorraso"
+  /** Un cajón de cielorraso: con su capa de vista, como en la planta, para
+   *  poder apagar el cielorraso y seguir viéndolo. */
+  | "cajon"
+  /** La pintura de una cara de un cajón: va con los cajones, no con las capas. */
+  | "pinturaDeCajon"
   | "losa"
   | "viga"
   | "columna"
@@ -343,7 +348,8 @@ export function modeloDePlanta(
     arriba: number,
     objeto: string,
     grupo: string,
-    clase: ClaseDeSolido = "capa"
+    clase: ClaseDeSolido = "capa",
+    tareas?: string[]
   ) => {
     const muro = dibujo.muros.find((m) => m.id === cara.muroId);
     if (!muro) return;
@@ -375,7 +381,7 @@ export function modeloDePlanta(
       const p1 = pano.hasta >= largoDePieza - 1e-9 ? 1e4 : s0 + pano.hasta;
       const huella = recortar(puntos, [en(p0, -1e4), en(p1, -1e4), en(p1, 1e4), en(p0, 1e4)]);
       if (huella.length < 3) continue;
-      sumar(clase, objeto, grupo, huella, de, a);
+      sumar(clase, objeto, grupo, huella, de, a, tareas);
     }
     return en;
   };
@@ -586,7 +592,19 @@ export function modeloDePlanta(
       const n0 = pieza.n0;
       const n1 = n0 + PIEL_DE_PINTURA / mpp;
       const puntos = [en(pieza.s0, n0), en(pieza.s1, n0), en(pieza.s1, n1), en(pieza.s0, n1)];
-      levantarPiel(cara, puntos, pieza.s0, pieza.s1, pieza.abajo, pieza.arriba, objeto, `pintura|${pieza.capa.tarea ?? ""}`, "pintura");
+      // Con su tarea: el 3D la pinta del color de esa pintura.
+      levantarPiel(
+        cara,
+        puntos,
+        pieza.s0,
+        pieza.s1,
+        pieza.abajo,
+        pieza.arriba,
+        objeto,
+        `pintura|${pieza.capa.tarea ?? ""}`,
+        "pintura",
+        pieza.capa.tarea ? [pieza.capa.tarea] : undefined
+      );
       continue;
     }
     objetos[objeto] ??= {
@@ -642,7 +660,41 @@ export function modeloDePlanta(
         ? ambiente.alturaCielorraso
         : techo;
     const objeto = `cajon:${cajon.id}`;
-    sumar("cielorraso", objeto, objeto, cajon.puntos, cajon.fondo, tope);
+    // Con sus tareas: pintado, el 3D lo muestra del color de su pintura.
+    sumar("cajon", objeto, objeto, cajon.puntos, cajon.fondo, tope, tareasDe(cajon.capas));
+    // Sus caras pintadas: una piel finita en cada una, del color de su pintura.
+    // Los lados miran hacia afuera del contorno, recorrido en el sentido que
+    // tenga.
+    let doble = 0;
+    for (let i = 0; i < cajon.puntos.length; i++) {
+      const p = cajon.puntos[i];
+      const q = cajon.puntos[(i + 1) % cajon.puntos.length];
+      doble += p.x * q.y - q.x * p.y;
+    }
+    const sentido = doble >= 0 ? -1 : 1;
+    const piel = PIEL_DE_PINTURA / mpp;
+    for (const pintura of cajon.pinturas) {
+      for (const cara of pintura.caras) {
+        if (cara === "fondo") {
+          sumar("pinturaDeCajon", objeto, `pintura|${pintura.tarea}`, cajon.puntos, cajon.fondo - PIEL_DE_PINTURA, cajon.fondo, [pintura.tarea]);
+          continue;
+        }
+        const p = cajon.puntos[cara];
+        const q = cajon.puntos[(cara + 1) % cajon.puntos.length];
+        const largo = distancia(p, q);
+        if (!p || !q || !(largo > 0)) continue;
+        const n = { x: (-(q.y - p.y) / largo) * sentido * piel, y: ((q.x - p.x) / largo) * sentido * piel };
+        sumar(
+          "pinturaDeCajon",
+          objeto,
+          `pintura|${pintura.tarea}`,
+          [p, q, { x: q.x + n.x, y: q.y + n.y }, { x: p.x + n.x, y: p.y + n.y }],
+          cajon.fondo,
+          tope,
+          [pintura.tarea]
+        );
+      }
+    }
     objetos[objeto] = {
       titulo: "Cajón",
       nombre: ambiente?.nombre ?? "",

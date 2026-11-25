@@ -1886,6 +1886,47 @@ Rubros y Tareas.
   con tramo `"a"` o `"b"`. Para no confundir un canto con la cara larga que
   dobla en su punta, la cara elegida tiene que **mirar para el mismo lado que
   lo tocado** (su normal contra la del triángulo).
+- **Las subtareas también se ofrecen**, debajo de su pintura y corridas
+  (pedido del usuario: "hay paredes que sólo se hace enduido, por ejemplo en
+  los fondos de muebles"). Con el látex va su enduido solo; elegido solo, el
+  enduido pinta sólo el enduido. Una misma cara con el látex y con el enduido
+  solo lo contaría dos veces: es una u otra.
+- **Cada pintura, su color** (pedido del usuario: "cada tarea que se pinta es
+  un color diferente"). `coloresDePinturas` en `Edificio3D.tsx`: cada una
+  arranca en el color que le toca por su id —así no cambia al agregar otra al
+  catálogo— y, si ya lo tiene otra de la lista, pasa al siguiente libre: en
+  la lista no hay dos iguales (con la paleta de las capas de la planta, de
+  diez, el látex interior y el enduido salían del mismo verde). El color está
+  en la muestra de la lista, en la piel de pintura del 3D, en el resaltado
+  antes de tocar y en el cielorraso o el cajón pintados (el de su última
+  pintura; una subtarea sólo si va sola). La piel de pintura y el cajón
+  traen su tarea en `Solido.tareas` para eso.
+- **Los cajones, su capa y prioridad** (pedido del usuario: "hay un cajón de
+  durlock, ¿cómo lo pintaría? en el filtro no se puede seleccionar"). En el
+  3D eran de clase `cielorraso` y se apagaban con los cielorrasos, y mirado
+  desde arriba el clic le pegaba antes al cielorraso del ambiente, que lo
+  tapa. Ahora son clase `cajon`, con la capa de vista **Cajones** (la misma
+  de la planta), y al pintar, **si lo primero debajo del mouse es un
+  cielorraso y detrás hay un cajón, gana el cajón**: se lo ve a través.
+- **El cajón se pinta cara por cara** (pedido del usuario: "quizás sólo se
+  pinta el frente y la parte de abajo, los laterales y la parte superior
+  no"). `Cajon.pinturas`: cada pintura con sus caras —`"fondo"` o el lado
+  `i` del contorno, el que arranca en `puntos[i]`—. Se mide el fondo entero y
+  de cada lado lo que no va contra un muro por lo que baja (`bordesLibres`,
+  que ahora da cada lado por separado). En el 3D, cada cara pintada es una
+  piel de su color (clase `pinturaDeCajon`, con la capa Cajones); el bote
+  distingue el fondo (lo tocado mira para abajo) de cada frente (el lado
+  que mira para donde mira lo tocado); arriba no se pinta. Un cajón pintado
+  entero de antes —la pintura como una capa más— pasa a ir cara por cara, en
+  todas, la primera vez que se lo toca con esa pintura.
+- **Subcapas y "ver sólo esta"** (pedido del usuario: "si quiero ver sólo los
+  cajones, ¿cómo hago?"). En el menú Capas del 3D (`ListaDeCapas`) las
+  subcapas van corridas debajo de la suya —Capas debajo de Muros, Cajones
+  debajo de Cielorrasos—, y se prenden y apagan solas, aparte de su madre. A
+  la derecha de cada una, **ver sólo esa** apaga todas las demás; tocado de
+  nuevo vuelve a como estaban. Para eso `poner` (`lib/capas-de-vista.ts`)
+  escribe sobre lo guardado en ese momento y no sobre lo del render: varias
+  seguidas se pisaban y quedaba sólo la última.
 - **El resaltado va en todos los pisos de la planta**: lo que se pinta en una
   planta tipo se pinta en todos sus pisos —siempre fue así, es el mismo
   dibujo—, y ahora se ve antes de tocar.

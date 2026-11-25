@@ -1143,6 +1143,7 @@ export default function EditorPlanta({
             puntos,
             fondo: moldeDeCajon.fondo ?? Math.max(alturaDePlanta - 0.2, 0.1),
             capas: moldeDeCajon.capas,
+            pinturas: [],
           },
         ],
       },

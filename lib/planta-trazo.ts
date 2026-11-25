@@ -2120,11 +2120,12 @@ export type MedidaDeCajon = {
 };
 
 /**
- * Cuánto del contorno de un polígono no va contra un muro, en píxeles. Se mira
- * apenas afuera de cada lado, en varios puntos: donde hay cuerpo de un muro,
- * ese pedazo va contra él. Un lado a medias cuenta a medias.
+ * Cuánto de **cada lado** de un polígono no va contra un muro, en píxeles: el
+ * lado que arranca en `puntos[i]`, en el lugar i. Se mira apenas afuera de
+ * cada lado, en varios puntos: donde hay cuerpo de un muro, ese pedazo va
+ * contra él. Un lado a medias cuenta a medias.
  */
-function bordeLibre(puntos: Punto[], cuerpos: Cuerpo[], afuera: number): number {
+export function bordesLibres(puntos: Punto[], cuerpos: Cuerpo[], afuera: number): number[] {
   // De qué lado queda el afuera depende del sentido en que se lo recorrió.
   let doble = 0;
   for (let i = 0; i < puntos.length; i++) {
@@ -2147,11 +2148,12 @@ function bordeLibre(puntos: Punto[], cuerpos: Cuerpo[], afuera: number): number 
     ];
   });
   const MUESTRAS = 8;
-  let libre = 0;
+  const libres: number[] = [];
   for (let i = 0; i < puntos.length; i++) {
     const p = puntos[i];
     const q = puntos[(i + 1) % puntos.length];
     const largo = distancia(p, q);
+    libres.push(0);
     if (!(largo > 0)) continue;
     const n = { x: (-(q.y - p.y) / largo) * sentido, y: ((q.x - p.x) / largo) * sentido };
     let sueltas = 0;
@@ -2163,9 +2165,9 @@ function bordeLibre(puntos: Punto[], cuerpos: Cuerpo[], afuera: number): number 
       };
       if (!huellas.some((h) => adentro(sonda, h))) sueltas++;
     }
-    libre += (largo * sueltas) / MUESTRAS;
+    libres[i] = (largo * sueltas) / MUESTRAS;
   }
-  return libre;
+  return libres;
 }
 
 /**
@@ -2463,10 +2465,20 @@ export function medirCaras(
         : alturaDePlanta;
     const alto = Math.max(0, techo - cajon.fondo);
     const area = areaDe(cajon.puntos) * mpp * mpp;
-    const frentes = bordeLibre(cajon.puntos, cuerposEnteros, 0.06 / mpp) * mpp;
+    const libres = bordesLibres(cajon.puntos, cuerposEnteros, 0.06 / mpp).map((l) => l * mpp);
+    const frentes = libres.reduce((t, l) => t + l, 0);
     const superficie = area + frentes * alto;
     cajones.push({ id: cajon.id, ambienteId: ambiente?.id ?? null, area, frentes, alto, superficie });
     for (const capa of sinRepetir(cajon.capas)) cielorrasos.sumar(capa, superficie);
+    // Las pinturas, sólo en sus caras: el fondo entero, y de cada lado lo que
+    // no va contra un muro por lo que baja.
+    for (const pintura of cajon.pinturas) {
+      const pintado = pintura.caras.reduce<number>(
+        (t, cara) => t + (cara === "fondo" ? area : (libres[cara] ?? 0) * alto),
+        0
+      );
+      if (pintado > 0) cielorrasos.sumar({ tarea: pintura.tarea, espesor: null }, pintado);
+    }
     if (ambiente) bajoCajones.set(ambiente.id, (bajoCajones.get(ambiente.id) ?? 0) + area);
   }
 

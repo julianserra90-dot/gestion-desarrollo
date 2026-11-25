@@ -335,7 +335,10 @@ export async function pintarEnPlanta(
   } else if (pincelada?.donde === "cielorraso" && typeof pincelada.ambienteId === "string") {
     toque = { donde: "cielorraso", ambienteId: pincelada.ambienteId };
   } else if (pincelada?.donde === "cajon" && typeof pincelada.cajonId === "string") {
-    toque = { donde: "cajon", cajonId: pincelada.cajonId };
+    const cara = pincelada.cara;
+    if (cara === "fondo" || (typeof cara === "number" && Number.isInteger(cara) && cara >= 0)) {
+      toque = { donde: "cajon", cajonId: pincelada.cajonId, cara };
+    }
   }
   if (!toque) return { error: "Eso no se puede pintar." };
 

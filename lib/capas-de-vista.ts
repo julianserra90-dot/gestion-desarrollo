@@ -66,9 +66,17 @@ export function useCapasDeVista() {
     elegidas = {};
   }
   const ve = (c: CapaDeVista) => elegidas[c] ?? AL_EMPEZAR[c];
+  // Sobre lo guardado ahora, no sobre lo de este render: varias seguidas
+  // —"ver sólo esta" apaga todas las demás— se suman en vez de pisarse.
   const poner = (c: CapaDeVista, visible: boolean) => {
+    let actuales: Partial<Record<CapaDeVista, boolean>> = {};
     try {
-      window.localStorage.setItem(CLAVE, JSON.stringify({ ...elegidas, [c]: visible }));
+      actuales = JSON.parse(leer());
+    } catch {
+      actuales = {};
+    }
+    try {
+      window.localStorage.setItem(CLAVE, JSON.stringify({ ...actuales, [c]: visible }));
     } catch {
       // Sin almacenamiento —navegación privada—: queda como estaba.
     }

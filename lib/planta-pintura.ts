@@ -15,7 +15,9 @@
  *                      hasta el cielorraso del ambiente, o la losa.
  *   un cielorraso      la pintura entre las capas del cielorraso del ambiente
  *                      —también el aplicado, tocando la losa desde abajo—.
- *   un cajón           la pintura entre las capas del cajón.
+ *   un cajón           **cara por cara**, como una pared: el fondo, o uno de
+ *                      sus frentes. Lo de arriba y lo que va contra el muro no
+ *                      se ven y no se pintan.
  *
  * Tocar otra vez con la misma pintura lo que ya la tiene la saca: el bote
  * pinta y despinta.
@@ -28,7 +30,7 @@
  * Sin React y sin base: recibe un dibujo y devuelve otro, o por qué no.
  */
 
-import { type CapaDibujada, type Dibujo, type TramoDeCapa, distancia } from "@/lib/planta-dibujo";
+import { type CapaDibujada, type CaraDeCajon, type Dibujo, type TramoDeCapa, distancia } from "@/lib/planta-dibujo";
 import { tramoDeCara } from "@/lib/planta-capas";
 import { type Cara, carasVisibles } from "@/lib/planta-trazo";
 
@@ -36,7 +38,7 @@ import { type Cara, carasVisibles } from "@/lib/planta-trazo";
 export type Pincelada =
   | { donde: "cara"; tramo: TramoDeCapa }
   | { donde: "cielorraso"; ambienteId: string }
-  | { donde: "cajon"; cajonId: string };
+  | { donde: "cajon"; cajonId: string; cara: CaraDeCajon };
 
 /** Una cara de muro que se puede pintar, y entre qué alturas iría la pintura. */
 export type CaraPintable = {
@@ -135,12 +137,32 @@ export function pintar(
     case "cajon": {
       const cajon = dibujo.cajones.find((c) => c.id === pincelada.cajonId);
       if (!cajon) return { error: "Ese cajón ya no está en el dibujo: recargá para verlo como quedó." };
-      const yaTiene = cajon.capas.some((c) => c.tarea === tarea);
-      const capas = yaTiene
-        ? cajon.capas.filter((c) => c.tarea !== tarea)
-        : [...cajon.capas, { tarea, hasta: "techo" as const, espesor: null }];
+      const { cara } = pincelada;
+      if (cara !== "fondo" && !(Number.isInteger(cara) && cara >= 0 && cara < cajon.puntos.length)) {
+        return { error: "Esa cara del cajón ya no está igual: recargá para verla como quedó." };
+      }
+      let capas = cajon.capas;
+      let pinturas = cajon.pinturas;
+      // Pintado entero de antes, como una capa más: pasa a ir cara por cara,
+      // en todas, y sobre eso se suma o se saca la tocada.
+      if (capas.some((c) => c.tarea === tarea)) {
+        capas = capas.filter((c) => c.tarea !== tarea);
+        const todas: CaraDeCajon[] = ["fondo", ...cajon.puntos.map((_, i) => i)];
+        pinturas = [...pinturas.filter((p) => p.tarea !== tarea), { tarea, caras: todas }];
+      }
+      const suya = pinturas.find((p) => p.tarea === tarea);
+      const caras = suya?.caras.includes(cara)
+        ? suya.caras.filter((c) => c !== cara)
+        : [...(suya?.caras ?? []), cara];
+      pinturas = [
+        ...pinturas.filter((p) => p.tarea !== tarea),
+        ...(caras.length > 0 ? [{ tarea, caras }] : []),
+      ];
       return {
-        dibujo: { ...dibujo, cajones: dibujo.cajones.map((c) => (c.id === cajon.id ? { ...c, capas } : c)) },
+        dibujo: {
+          ...dibujo,
+          cajones: dibujo.cajones.map((c) => (c.id === cajon.id ? { ...c, capas, pinturas } : c)),
+        },
       };
     }
   }

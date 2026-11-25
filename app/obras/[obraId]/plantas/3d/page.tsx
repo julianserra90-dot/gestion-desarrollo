@@ -129,12 +129,20 @@ export default async function Edificio3DPage({
       Number(a.madre !== null) - Number(b.madre !== null) ||
       a.nombre.localeCompare(b.nombre, "es")
   );
-  // Lo que ofrece el bote de pintura: las pinturas del catálogo, sin sus
-  // subtareas —el enduido y el fijador van solos con su látex—.
+  // Lo que ofrece el bote de pintura: las pinturas del catálogo y, debajo de
+  // cada una, sus subtareas. Con el látex va su enduido solo; el enduido solo
+  // es para la pared que no se pinta —el fondo de un mueble—.
   const pinturas = tareasDelCatalogo
     .filter((t) => t.rubro === "Pintura" && t.unidad === "m²" && !madreDe.has(t.id))
-    .map((t) => ({ id: t.id, nombre: t.nombre }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+    .flatMap((t) => [
+      { id: t.id, nombre: t.nombre, madre: null as string | null },
+      ...(subtareas.get(t.id) ?? [])
+        .map((id) => catalogo.get(id))
+        .filter((h): h is NonNullable<typeof h> => h !== undefined && h.unidad === "m²")
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+        .map((h) => ({ id: h.id, nombre: h.nombre, madre: t.id as string | null })),
+    ]);
 
   const marcas = (marcadas ?? []).map((m) => ({
     planta: m.planta_id,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -55,7 +55,7 @@ type Vista = "ver" | "avance" | "pintar";
 export type PinceladaEn3D =
   | { donde: "cara"; tramo: CaraEn3D["tramo"] }
   | { donde: "cielorraso"; ambienteId: string }
-  | { donde: "cajon"; cajonId: string };
+  | { donde: "cajon"; cajonId: string; cara: "fondo" | number };
 
 /**
  * Lo que el bote tiene debajo: qué se pintaría, cómo se lo resalta y, si no se
@@ -96,7 +96,7 @@ export default function Edificio3D({
   cabecera,
   acciones,
   plantaDeOrigen,
-  pinturas = [],
+  pinturas = SIN_PINTURAS,
   pintar,
 }: {
   /** La planta de la que se vino: el botón 2D vuelve a ella. */
@@ -111,8 +111,9 @@ export default function Edificio3D({
    * para mostrar de dónde sale un número del plano.
    */
   inicial?: { tarea: string | null; nivel: string | null; cosa: string | null; pintar?: boolean };
-  /** Las pinturas que ofrece el bote: las del rubro Pintura, sin sus subtareas. */
-  pinturas?: { id: string; nombre: string }[];
+  /** Las pinturas que ofrece el bote: las del rubro Pintura y, debajo de cada
+   *  una, sus subtareas (`madre`), que también se pintan solas. */
+  pinturas?: { id: string; nombre: string; madre: string | null }[];
   /** Pinta —o despinta— lo tocado de una planta, y guarda. */
   pintar?: (planta: string, tarea: string, pincelada: PinceladaEn3D) => Promise<{ error?: string }>;
   /** El modelo de cada planta, por su id. */
@@ -191,6 +192,10 @@ export default function Edificio3D({
         ? "avance"
         : "ver"
   );
+  /** El color de cada pintura: el mismo en la lista, en el resaltado y en el modelo. */
+  const colorDe = useMemo(() => coloresDePinturas(pinturas), [pinturas]);
+  /** Las subtareas de la lista: el enduido, que va con su látex. */
+  const subtareasDePintura = useMemo(() => new Set(pinturas.filter((p) => p.madre).map((p) => p.id)), [pinturas]);
   /** La pintura del bote: la de interiores, que es la de casi todo, hasta que se elija otra. */
   const [pinturaElegida, setPinturaElegida] = useState<string | null>(
     () => (pinturas.find((p) => /interior/i.test(p.nombre)) ?? pinturas[0])?.id ?? null
@@ -201,9 +206,9 @@ export default function Edificio3D({
    * Qué hacer con un toque mientras se pinta. El visor se arma una sola vez y
    * su manejo del mouse no ve el estado de cada momento: lo lee de acá.
    */
-  const pintor = useRef<((toque: THREE.Intersection) => void) | null>(null);
+  const pintor = useRef<((toques: THREE.Intersection[]) => void) | null>(null);
   /** Lo mismo con el mouse encima, sin tocar: resalta lo que se pintaría. */
-  const sobrevuelo = useRef<((toque: THREE.Intersection | null) => void) | null>(null);
+  const sobrevuelo = useRef<((toques: THREE.Intersection[]) => void) | null>(null);
   /** La tarea cuyo avance se mira, por su id. */
   const [tareaVista, setTareaVista] = useState<string | null>(() =>
     inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea) ? inicial.tarea : null
@@ -365,6 +370,12 @@ export default function Edificio3D({
         camara
       );
       const toques = rayo.intersectObjects(tocables.current, false);
+      // Con el bote en la mano, tocar es pintar: el bote elige entre todo lo
+      // que hay debajo.
+      if (pintor.current) {
+        pintor.current(toques);
+        return;
+      }
       // Una columna va adentro del muro y sus caras coinciden: de lo que
       // está a la misma distancia se elige la estructura, que es lo que se
       // ve ahí.
@@ -376,11 +387,6 @@ export default function Edificio3D({
         ) ?? toques[0];
       if (!toque || toque.faceIndex === undefined || toque.faceIndex === null) {
         setElegido(null);
-        return;
-      }
-      // Con el bote en la mano, tocar es pintar.
-      if (pintor.current) {
-        pintor.current(toque);
         return;
       }
       // De qué sólido es el triángulo que se tocó: la malla tiene los de
@@ -411,14 +417,12 @@ export default function Edificio3D({
           ),
           camara
         );
-        const toques = rayo.intersectObjects(tocables.current, false);
-        const toque = toques[0];
-        sobrevuelo.current?.(toque && toque.faceIndex !== undefined && toque.faceIndex !== null ? toque : null);
+        sobrevuelo.current?.(rayo.intersectObjects(tocables.current, false));
       });
     };
     const alSalir = () => {
       cancelAnimationFrame(cuadroDeSobrevuelo);
-      sobrevuelo.current?.(null);
+      sobrevuelo.current?.([]);
     };
     render.domElement.addEventListener("pointerdown", alBajar);
     render.domElement.addEventListener("pointerup", alSubir);
@@ -496,6 +500,8 @@ export default function Edificio3D({
       return;
     }
 
+    /** El color con que se resalta: el de la pintura elegida, como va a quedar. */
+    const ACENTO_DE_PINTURA = colorDe.get(pinturaElegida) ?? ACENTO;
     const material = (color: string) =>
       new THREE.MeshBasicMaterial({
         color,
@@ -514,7 +520,7 @@ export default function Edificio3D({
       const fundida = mergeGeometries(geometrias);
       geometrias.forEach((g) => g.dispose());
       fundida.translate(0, cota, 0);
-      return new THREE.Mesh(fundida, material(ACENTO));
+      return new THREE.Mesh(fundida, material(ACENTO_DE_PINTURA));
     };
 
     const objetivoDe = (toque: THREE.Intersection): Objetivo | null => {
@@ -528,12 +534,74 @@ export default function Edificio3D({
       const { cota } = piso;
       // La clave no es del piso: es lo mismo en todos los de la planta.
 
+      // Un cajón se pinta cara por cara, como una pared: el fondo, o uno de
+      // sus frentes. Lo de arriba no se ve.
       if (objeto.startsWith("cajon:")) {
+        const cuerpo = modelo.solidos.find((x) => x.objeto === objeto && x.clase === "cajon");
+        if (!cuerpo) return null;
+        const cajonId = objeto.slice("cajon:".length);
+        if (normal.y < -0.5) {
+          return {
+            clave: `${datos.planta}|${objeto}|fondo`,
+            planta: datos.planta,
+            pincelada: { donde: "cajon", cajonId, cara: "fondo" },
+            malla: (enCota) => {
+              const g = geometriaDe({ ...cuerpo, desde: cuerpo.desde - 0.012, hasta: cuerpo.desde - 0.002 });
+              g.translate(0, enCota, 0);
+              return new THREE.Mesh(g, material(ACENTO_DE_PINTURA));
+            },
+          };
+        }
+        if (Math.abs(normal.y) >= 0.5) return null;
+        const puntos: [number, number][] = [];
+        for (let i = 0; i < cuerpo.puntos.length; i += 2) puntos.push([cuerpo.puntos[i], cuerpo.puntos[i + 1]]);
+        let doble = 0;
+        for (let i = 0; i < puntos.length; i++) {
+          const [px, py] = puntos[i];
+          const [qx, qy] = puntos[(i + 1) % puntos.length];
+          doble += px * qy - qx * py;
+        }
+        const sentido = doble >= 0 ? -1 : 1;
+        const largoDeNormal = Math.hypot(normal.x, normal.z) || 1;
+        let lado = -1;
+        let lejos = 0.3;
+        let afuera: [number, number] = [0, 0];
+        for (let i = 0; i < puntos.length; i++) {
+          const p = puntos[i];
+          const q = puntos[(i + 1) % puntos.length];
+          const largo = Math.hypot(q[0] - p[0], q[1] - p[1]);
+          if (!(largo > 0)) continue;
+          const n: [number, number] = [(-(q[1] - p[1]) / largo) * sentido, ((q[0] - p[0]) / largo) * sentido];
+          if ((n[0] * normal.x + n[1] * normal.z) / largoDeNormal < 0.7) continue;
+          const d = distanciaASegmento({ x: toque.point.x, y: toque.point.z }, p, q);
+          if (d < lejos) {
+            lejos = d;
+            lado = i;
+            afuera = n;
+          }
+        }
+        if (lado < 0) return null;
+        const [a, b] = [puntos[lado], puntos[(lado + 1) % puntos.length]];
         return {
-          clave: `${datos.planta}|${objeto}`,
+          clave: `${datos.planta}|${objeto}|${lado}`,
           planta: datos.planta,
-          pincelada: { donde: "cajon", cajonId: objeto.slice("cajon:".length) },
-          malla: deLaCosa(modelo, objeto, "cielorraso"),
+          pincelada: { donde: "cajon", cajonId, cara: lado },
+          malla: (enCota) => {
+            const e = 0.008;
+            const [ax, ay] = [a[0] + afuera[0] * e, a[1] + afuera[1] * e];
+            const [bx, by] = [b[0] + afuera[0] * e, b[1] + afuera[1] * e];
+            const y0 = enCota + cuerpo.desde;
+            const y1 = enCota + cuerpo.hasta;
+            const g = new THREE.BufferGeometry();
+            g.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(
+                [ax, y0, ay, bx, y0, by, bx, y1, by, ax, y0, ay, bx, y1, by, ax, y1, ay],
+                3
+              )
+            );
+            return new THREE.Mesh(g, material(ACENTO_DE_PINTURA));
+          },
         };
       }
       if (datos.clase === "cielorraso" && objeto.startsWith("ambiente:")) {
@@ -558,7 +626,7 @@ export default function Edificio3D({
           malla: (enCota) => {
             const g = geometriaDe({ ...suPiso, desde: alto - 0.012, hasta: alto - 0.002 });
             g.translate(0, enCota, 0);
-            return new THREE.Mesh(g, material(ACENTO));
+            return new THREE.Mesh(g, material(ACENTO_DE_PINTURA));
           },
         };
       }
@@ -609,15 +677,35 @@ export default function Edificio3D({
                 3
               )
             );
-            return new THREE.Mesh(g, material(cara.abajo === null ? "#b91c1c" : ACENTO));
+            return new THREE.Mesh(g, material(cara.abajo === null ? "#b91c1c" : ACENTO_DE_PINTURA));
           },
         };
       }
       return null;
     };
 
+    /**
+     * De todo lo que hay debajo del mouse, lo que se pinta: lo primero, salvo
+     * que sea un cielorraso con un cajón detrás. El cielorraso se ve a través,
+     * y lo que se apunta es el cajón: sin esto no había cómo llegar a él.
+     */
+    const elegido = (toques: THREE.Intersection[]) => {
+      const validos = toques.filter((t) => t.faceIndex !== undefined && t.faceIndex !== null);
+      const primero = validos[0];
+      if (!primero) return null;
+      if ((primero.object.userData as DatosDeMalla).clase === "cielorraso") {
+        const cajon = validos.find((t) => {
+          const clase = (t.object.userData as DatosDeMalla).clase;
+          return clase === "cajon" || clase === "pinturaDeCajon";
+        });
+        if (cajon) return cajon;
+      }
+      return primero;
+    };
+
     let ultima = "";
-    sobrevuelo.current = (toque) => {
+    sobrevuelo.current = (toques) => {
+      const toque = elegido(toques);
       const objetivo = toque ? objetivoDe(toque) : null;
       const clave = objetivo?.clave ?? "";
       if (clave === ultima) return;
@@ -633,8 +721,9 @@ export default function Edificio3D({
       armado.dibujar();
     };
 
-    pintor.current = (toque) => {
-      const objetivo = objetivoDe(toque);
+    pintor.current = (toques) => {
+      const toque = elegido(toques);
+      const objetivo = toque ? objetivoDe(toque) : null;
       if (!objetivo) {
         setErrorAlPintar("Tocá una pared, un cielorraso, la losa desde abajo o un cajón.");
         return;
@@ -656,7 +745,7 @@ export default function Edificio3D({
       sobrevuelo.current = null;
       limpiar();
     };
-  }, [vista, pintar, pinturaElegida, modelos, pisos, soloElPiso, router]);
+  }, [vista, pintar, pinturaElegida, modelos, pisos, soloElPiso, router, colorDe]);
 
   // ---- El edificio: cada vez que cambia qué se muestra --------------------
   useEffect(() => {
@@ -670,11 +759,14 @@ export default function Edificio3D({
     const seVen = new Set(prendidas.split(","));
     const visibles = (clase: ClaseDeSolido) => seVen.has(CAPA_DE[clase]);
 
-    const materiales = new Map<ClaseDeSolido, THREE.Material>();
-    const materialDe = (clase: ClaseDeSolido) => {
-      let material = materiales.get(clase);
+    const materiales = new Map<string, THREE.Material>();
+    /** El material de una clase; una pintura, del color de su tarea. */
+    const materialDe = (clase: ClaseDeSolido, colorPropio?: string) => {
+      const clave = `${clase}|${colorPropio ?? ""}`;
+      let material = materiales.get(clave);
       if (!material) {
-        const { color, opacidad } = ASPECTO[clase];
+        const { opacidad } = ASPECTO[clase];
+        const color = colorPropio ?? ASPECTO[clase].color;
         material = new THREE.MeshLambertMaterial({
           color,
           transparent: opacidad < 1,
@@ -689,7 +781,7 @@ export default function Edificio3D({
           polygonOffsetFactor: 1,
           polygonOffsetUnits: 1,
         });
-        materiales.set(clase, material);
+        materiales.set(clave, material);
         descartables.push(material);
       }
       return material;
@@ -734,6 +826,8 @@ export default function Edificio3D({
         {
           clase: ClaseDeSolido;
           insinuada: boolean;
+          /** El de su pintura, si es una pintura de la lista. */
+          color?: string;
           geometrias: THREE.BufferGeometry[];
           objetos: string[];
         }
@@ -741,10 +835,27 @@ export default function Edificio3D({
       for (const solido of modelo.solidos) {
         if (!visibles(solido.clase)) continue;
         const insinuada = hayRubro && !esDelRubro(modelo, solido);
-        const clave = `${solido.clase}|${insinuada}`;
+        /** La última pintura que lleva —la que queda a la vista—; una subtarea
+         *  (el enduido) sólo si va sola. */
+        const colorDeCielorraso = (tareas: string[]) => {
+          const suyas = [...tareas].reverse().filter((t) => colorDe.has(t));
+          const pintura = suyas.find((t) => !subtareasDePintura.has(t)) ?? suyas[0];
+          return pintura ? colorDe.get(pintura) : undefined;
+        };
+        // Cada pintura, de su color: se ve qué pared lleva qué. Un cielorraso
+        // o un cajón pintados, del color de la última pintura que llevan —la
+        // que queda a la vista—.
+        const color =
+          solido.clase === "pintura" || solido.clase === "pinturaDeCajon"
+            ? colorDe.get(solido.tareas?.[0] ?? "")
+            : solido.clase === "cielorraso" || solido.clase === "cajon"
+              ? colorDeCielorraso(solido.tareas ?? [])
+              : undefined;
+        const clave = `${solido.clase}|${insinuada}|${color ?? ""}`;
         const grupo = porGrupo.get(clave) ?? {
           clase: solido.clase,
           insinuada,
+          color,
           geometrias: [],
           objetos: [],
         };
@@ -755,7 +866,7 @@ export default function Edificio3D({
 
       const piezas: Pieza[] = [];
       const aristas: THREE.LineSegments[] = [];
-      for (const { clase, insinuada, geometrias, objetos } of porGrupo.values()) {
+      for (const { clase, insinuada, color, geometrias, objetos } of porGrupo.values()) {
         // Dónde termina cada sólido en la lista de triángulos de la fundida.
         const hasta: number[] = [];
         let triangulos = 0;
@@ -768,7 +879,7 @@ export default function Edificio3D({
         if (!fundida) continue;
         descartables.push(fundida);
         piezas.push({
-          malla: new THREE.Mesh(fundida, insinuada ? insinuado : materialDe(clase)),
+          malla: new THREE.Mesh(fundida, insinuada ? insinuado : materialDe(clase, color)),
           clase,
           objetos,
           hasta,
@@ -928,7 +1039,7 @@ export default function Edificio3D({
       tocables.current = [];
       for (const cosa of descartables) cosa.dispose();
     };
-  }, [modelos, pisos, prendidas, soloElPiso, tareaEnAvance, hechasDeLaTarea, tareasDelRubro]);
+  }, [modelos, pisos, prendidas, soloElPiso, tareaEnAvance, hechasDeLaTarea, tareasDelRubro, colorDe, subtareasDePintura]);
 
   // ---- Lo elegido, resaltado ----------------------------------------------
   useEffect(() => {
@@ -1131,20 +1242,7 @@ export default function Edificio3D({
               abierto={conCapasAbiertas}
               alTocar={() => setConCapasAbiertas(!conCapasAbiertas)}
             >
-              <div style={seccionFlotante}>
-                {OPCIONES.map((o) => (
-                  <button
-                    key={o.clave}
-                    type="button"
-                    aria-pressed={ve(o.clave)}
-                    onClick={() => poner(o.clave, !ve(o.clave))}
-                    style={ve(o.clave) ? filaDeCapa : filaDeCapaApagada}
-                  >
-                    <Ojo abierto={ve(o.clave)} />
-                    {o.nombre}
-                  </button>
-                ))}
-              </div>
+              <ListaDeCapas ve={ve} poner={poner} />
             </Menu>
           )}
 
@@ -1166,20 +1264,7 @@ export default function Edificio3D({
               alTocar={() => setConCapasAbiertas(!conCapasAbiertas)}
             >
               {vista === "ver" && (
-                <div style={seccionFlotante}>
-                  {OPCIONES.map((o) => (
-                    <button
-                      key={o.clave}
-                      type="button"
-                      aria-pressed={ve(o.clave)}
-                      onClick={() => poner(o.clave, !ve(o.clave))}
-                      style={ve(o.clave) ? filaDeCapa : filaDeCapaApagada}
-                    >
-                      <Ojo abierto={ve(o.clave)} />
-                      {o.nombre}
-                    </button>
-                  ))}
-                </div>
+                <ListaDeCapas ve={ve} poner={poner} />
               )}
 
               {/* El rubro se queda al cambiar de Ver a Avance: en Ver deja
@@ -1322,15 +1407,21 @@ export default function Edificio3D({
             <>
               <div style={seccionFlotante} role="group" aria-label="Pintura">
                 <p style={{ ...sobretitulo, marginBottom: "6px" }}>Pintura</p>
+                {/* Cada subtarea debajo de su pintura, corrida: elegida sola
+                    pinta sólo eso —el enduido del fondo de un mueble—. */}
                 {pinturas.map((p) => (
                   <button
                     key={p.id}
                     type="button"
                     aria-pressed={pinturaElegida === p.id}
                     onClick={() => setPinturaElegida(p.id)}
-                    style={pinturaElegida === p.id ? filaDePisoPuesta : filaDePiso}
+                    style={{
+                      ...(pinturaElegida === p.id ? filaDePisoPuesta : filaDePiso),
+                      ...(p.madre ? { paddingLeft: "22px" } : {}),
+                    }}
                   >
-                    <span style={nombreDePiso}>{p.nombre}</span>
+                    <span style={{ ...muestraDeColor, background: colorDe.get(p.id) }} aria-hidden="true" />
+                    <span style={{ ...nombreDePiso, flex: "1 1 auto" }}>{p.madre ? `↳ ${p.nombre}` : p.nombre}</span>
                   </button>
                 ))}
               </div>
@@ -1605,6 +1696,116 @@ function Menu({
   );
 }
 
+/**
+ * Los colores de las pinturas: bien distintos entre sí y que se lean sobre el
+ * gris de la maqueta. Más que las pinturas que suele haber en el catálogo.
+ */
+/** Sin pinturas: siempre la misma lista vacía, así los colores no se rehacen. */
+const SIN_PINTURAS: { id: string; nombre: string; madre: string | null }[] = [];
+
+const PALETA_DE_PINTURAS = [
+  "#3f86d4",
+  "#e16fa3",
+  "#4fae6e",
+  "#e0a030",
+  "#9467d6",
+  "#2fb0b0",
+  "#e0703f",
+  "#86a530",
+  "#c4425f",
+  "#5c6fd6",
+  "#a9824d",
+  "#59b8e6",
+];
+
+/**
+ * El color de cada pintura de la lista. Cada una arranca en el que le toca por
+ * su id —así no cambia cuando se agrega otra al catálogo— y, si ya lo tiene
+ * otra, pasa al siguiente libre: en la lista no hay dos iguales.
+ */
+function coloresDePinturas(pinturas: { id: string }[]): Map<string, string> {
+  const colores = new Map<string, string>();
+  const usados = new Set<number>();
+  for (const { id } of pinturas) {
+    let suma = 0;
+    for (const letra of id) suma = (suma * 31 + letra.charCodeAt(0)) >>> 0;
+    let i = suma % PALETA_DE_PINTURAS.length;
+    for (let vueltas = 0; usados.has(i) && vueltas < PALETA_DE_PINTURAS.length; vueltas++) {
+      i = (i + 1) % PALETA_DE_PINTURAS.length;
+    }
+    usados.add(i);
+    colores.set(id, PALETA_DE_PINTURAS[i]);
+  }
+  return colores;
+}
+
+/**
+ * Las capas de vista del 3D, como en un programa de modelado: cada una con su
+ * ojo, las subcapas corridas debajo de la suya (los cajones, debajo de los
+ * cielorrasos) y, a la derecha, **ver sólo esa**: apaga las demás. Tocado de
+ * nuevo, vuelve todo como estaba antes.
+ *
+ * Una subcapa se prende y se apaga sola, aparte de su madre: así se ven sólo
+ * los cajones, sin el cielorraso que los tapa.
+ */
+function ListaDeCapas({
+  ve,
+  poner,
+}: {
+  ve: (capa: CapaDeVista) => boolean;
+  poner: (capa: CapaDeVista, prendida: boolean) => void;
+}) {
+  /** Cómo estaban antes de ver sólo una, para volver. */
+  const [antes, setAntes] = useState<Record<string, boolean> | null>(null);
+  const esSola = (clave: CapaDeVista) => ve(clave) && OPCIONES.every((o) => o.clave === clave || !ve(o.clave));
+  const soloEsta = (clave: CapaDeVista) => {
+    if (esSola(clave)) {
+      for (const o of OPCIONES) poner(o.clave, antes ? antes[o.clave] ?? true : true);
+      setAntes(null);
+      return;
+    }
+    if (!antes) setAntes(Object.fromEntries(OPCIONES.map((o) => [o.clave, ve(o.clave)])));
+    for (const o of OPCIONES) poner(o.clave, o.clave === clave);
+  };
+  return (
+    <div style={seccionFlotante}>
+      {OPCIONES.map((o) => {
+        const prendida = ve(o.clave);
+        const sola = esSola(o.clave);
+        return (
+          <div key={o.clave} style={filaConSolo}>
+            <button
+              type="button"
+              aria-pressed={prendida}
+              onClick={() => poner(o.clave, !prendida)}
+              style={{
+                ...(prendida ? filaDeCapa : filaDeCapaApagada),
+                ...(o.madre ? { paddingLeft: "28px" } : {}),
+              }}
+            >
+              <Ojo abierto={prendida} />
+              {o.nombre}
+            </button>
+            <button
+              type="button"
+              aria-pressed={sola}
+              onClick={() => soloEsta(o.clave)}
+              title={sola ? "Volver a ver todas" : `Ver sólo ${o.nombre.toLowerCase()}`}
+              aria-label={sola ? "Volver a ver todas" : `Ver sólo ${o.nombre}`}
+              style={sola ? botonSoloPuesto : botonSolo}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <circle cx="7" cy="7" r="1.8" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Prendida o apagada, como en las capas de cualquier programa de dibujo. */
 function Ojo({ abierto }: { abierto: boolean }) {
   return (
@@ -1678,12 +1879,14 @@ const ACENTO = "#e8590c";
 const ESTRUCTURA = new Set<ClaseDeSolido>(["losa", "viga", "columna", "metal"]);
 
 /** Las capas de vista del 3D: las de la planta que tienen volumen. */
-const OPCIONES: { clave: CapaDeVista; nombre: string }[] = [
+const OPCIONES: { clave: CapaDeVista; nombre: string; madre?: CapaDeVista }[] = [
   { clave: "muros", nombre: "Muros" },
-  { clave: "capas", nombre: "Capas" },
+  // Lo que va sobre los muros: revoques, revestimientos, pinturas.
+  { clave: "capas", nombre: "Capas", madre: "muros" },
   { clave: "aberturas", nombre: "Aberturas" },
   { clave: "ambientes", nombre: "Pisos" },
   { clave: "cielorrasos", nombre: "Cielorrasos" },
+  { clave: "cajones", nombre: "Cajones", madre: "cielorrasos" },
   { clave: "estructura", nombre: "Estructura" },
 ];
 
@@ -1696,6 +1899,8 @@ const CAPA_DE: Record<ClaseDeSolido, CapaDeVista> = {
   puerta: "aberturas",
   piso: "ambientes",
   cielorraso: "cielorrasos",
+  cajon: "cajones",
+  pinturaDeCajon: "cajones",
   losa: "estructura",
   viga: "estructura",
   columna: "estructura",
@@ -1743,6 +1948,8 @@ const ASPECTO: Record<ClaseDeSolido, { color: string; opacidad: number }> = {
   puerta: { color: "#b08457", opacidad: 1 },
   piso: { color: "#e3d7c3", opacidad: 1 },
   cielorraso: { color: "#ffffff", opacidad: 0.55 },
+  cajon: { color: "#ffffff", opacidad: 0.8 },
+  pinturaDeCajon: { color: "#9fcbee", opacidad: 1 },
   losa: { color: "#b9bec7", opacidad: 1 },
   viga: { color: "#9aa1ad", opacidad: 1 },
   columna: { color: "#8a919e", opacidad: 1 },
@@ -1881,6 +2088,27 @@ const filaDeCapa = {
 };
 const filaDeCapaApagada = { ...filaDeCapa, color: "#a5a5a5" };
 
+/** Una capa y su "ver sólo esta", en el mismo renglón. */
+const filaConSolo = {
+  display: "flex",
+  alignItems: "center",
+  gap: "2px",
+};
+const botonSolo = {
+  flex: "0 0 auto",
+  display: "grid",
+  placeItems: "center",
+  width: "28px",
+  height: "28px",
+  padding: 0,
+  background: "transparent",
+  border: "none",
+  borderRadius: "8px",
+  color: "#c2c2c2",
+  cursor: "pointer",
+};
+const botonSoloPuesto = { ...botonSolo, background: "#111111", color: "#ffffff" };
+
 /** Un piso: su nombre y su nivel, en dos columnas alineadas. */
 const filaDePiso = {
   ...filaDeCapa,
@@ -1892,6 +2120,15 @@ const filaDePisoPuesta = {
   color: "#ffffff",
   fontWeight: 600,
 };
+/** El color de una pintura, al lado de su nombre en la lista. */
+const muestraDeColor = {
+  flex: "0 0 auto",
+  width: "12px",
+  height: "12px",
+  borderRadius: "3px",
+  boxShadow: "inset 0 0 0 1px rgba(0, 0, 0, 0.12)",
+};
+
 const nombreDePiso = {
   minWidth: 0,
   overflow: "hidden" as const,

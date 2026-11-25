@@ -204,9 +204,23 @@ export type Cajon = {
   puntos: Punto[];
   /** A qué altura del piso está su fondo, en metros. */
   fondo: number;
-  /** De qué es, por capas: placa de yeso y encima pintura. */
+  /** De qué es, por capas: placa de yeso y encima pintura. Van en todo el
+   *  cajón: el fondo y los frentes. */
   capas: Capa[];
+  /**
+   * Las pinturas, **cara por cara** (el bote de pintura del 3D): un cajón se
+   * pinta como una pared, sólo en lo que se ve —el fondo y el frente, no el
+   * lateral contra el muro—.
+   */
+  pinturas: PinturaDeCajon[];
 };
+
+/** Una cara de un cajón: su fondo, o uno de sus lados por su lugar en el
+ *  contorno (el lado que arranca en `puntos[i]`). */
+export type CaraDeCajon = "fondo" | number;
+
+/** Una pintura de un cajón y en qué caras va. */
+export type PinturaDeCajon = { tarea: string; caras: CaraDeCajon[] };
 
 export type TipoAbertura = "puerta" | "ventana";
 
@@ -1076,11 +1090,23 @@ function leerCajones(valor: unknown): Cajon[] {
       .filter((p): p is Punto => p !== null);
     const fondo = numero(r.fondo);
     if (typeof r.id !== "string" || puntos.length < 3) continue;
+    const pinturas: PinturaDeCajon[] = [];
+    for (const p of Array.isArray(r.pinturas) ? r.pinturas : []) {
+      if (typeof p !== "object" || p === null) continue;
+      const crudo = p as Record<string, unknown>;
+      if (typeof crudo.tarea !== "string" || crudo.tarea === "") continue;
+      const caras = (Array.isArray(crudo.caras) ? crudo.caras : []).filter(
+        (c): c is CaraDeCajon =>
+          c === "fondo" || (typeof c === "number" && Number.isInteger(c) && c >= 0 && c < puntos.length)
+      );
+      if (caras.length > 0) pinturas.push({ tarea: crudo.tarea, caras: Array.from(new Set(caras)) });
+    }
     cajones.push({
       id: r.id,
       puntos,
       fondo: fondo !== null && fondo > 0 ? fondo : 2.4,
       capas: leerCapas(r.capas),
+      pinturas,
     });
   }
   return cajones;
