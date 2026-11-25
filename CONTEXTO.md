@@ -457,6 +457,79 @@ caja, pallet) redondea a la unidad entera, y lo que va a granel (kg, m³) no
 dice nada. Las presentaciones se leen aparte del catálogo y tolerando error:
 si la tabla falla, los formularios de gasto siguen abriendo.
 
+#### Del cómputo a una sola cotización (25/11/2026)
+Pedido del usuario: "cotizando el desglose unificado así enviamos una sola
+cotización". El ladrillo hueco 8 lleva ladrillo, cemento, cal, arena y hierro:
+antes cada uno de esos renglones tenía su casilla **"Cotización"** en el
+desglose y cada tilde creaba un pedido suelto. Cinco pedidos por una tarea, y
+el corralón quiere **una lista**.
+
+Ahora se tilda en la **tabla de cómputo**, al lado del nombre de cada tarea
+(sólo las que tienen materiales en su desglose: de una de mano de obra sola no
+hay nada que pedirle al corralón). La barra de arriba cuenta lo elegido y
+lleva a `presupuestos/computo/cotizar?items=…`, que muestra el desglose de
+**todas las tareas sumado en una sola lista** —el cemento de la mampostería y
+el del revoque son un renglón— con cantidad, lo computado y qué hay que
+comprar, y pregunta a qué rubro se anota (viene propuesto el que más pesa).
+
+De ahí sale **un** `presupuesto` "A cotizar" de tipo Materiales con sus
+`presupuesto_materiales`: material y cantidad, **sin precio** —un cero se
+leería como gratis—, que es lo que carga el proveedor cuando conteste. Sin
+migración: la tabla de items ya existía, es la misma que usa un presupuesto de
+corralón. El pedido es el que ya se dibujaba en Cotizaciones; sólo cambió el
+texto del acordeón, que en un pedido dice "a cotizar" y no "cotizados". Al
+volver, la solapa abre el bloque del pedido recién hecho (`?nuevo=<id>`).
+
+Decisiones que vale la pena no volver a discutir:
+- **La lista se rehace en el servidor** (`listadoDeMateriales` sobre
+  `getComputo`), no se confía en lo que manda el navegador, igual que el pase
+  del plano. Por eso el botón se apaga con cantidades sin guardar: el pedido
+  las leería de la base y saldrían las viejas.
+- **El pedido NO se enlaza a los renglones del desglose.** `porUnidadDe` divide
+  `cotizacion.monto` —que es el total del presupuesto— por la cantidad de la
+  tarea: colgar varios renglones de un mismo pedido le daría a cada uno el
+  monto entero. El camino de vuelta (usar lo cotizado en vez de lo computado)
+  sigue siendo el de los pedidos viejos, renglón por renglón.
+- **Lo que no apunta a un material del catálogo no puede ser item**
+  (`presupuesto_materiales.material_id` es NOT NULL). Va escrito en las
+  **observaciones** del pedido, y la pantalla lo dice antes de pedirlo: nadie
+  se entera después de que faltaba la mitad.
+- **La casilla "Cotización" del desglose se sacó**, pero no se borró nada:
+  `computo_item_desglose.presupuesto_id` y `usar_cotizado` siguen, la columna
+  aparece sólo en los renglones que ya tenían pedido y ahí se sigue eligiendo
+  entre computado y cotizado. Lo que ya no hay es cómo pedir uno nuevo desde
+  el desglose. `sincronizarCotizaciones` no crea ni borra nada de más porque
+  `cotizar` pasó a ser siempre `presupuestoId !== null`.
+
+**La casilla dice qué es y se acuerda** (pedido del usuario, 25/11): era un
+tilde suelto al lado del nombre, sin decir para qué, y volvía vacía después de
+pedir. Ahora es su propia columna con encabezado **"Cotizar"**, y una tarea que
+ya está en un pedido **"A cotizar"** viene tildada y apagada, con el título
+diciendo de qué fecha es el pedido. Cuando ese pedido se cotiza —pasa a
+Pendiente o Aprobado— la tarea se libera y puede ir a otro proveedor; para
+pedirle lo mismo a dos corralones está "Duplicar" en la tarjeta de la
+cotización.
+
+Eso necesitó saber **qué tareas entraron en cada pedido**, que hasta entonces
+vivía sólo en el texto del `detalle` y no se podía consultar: tabla
+`presupuesto_computo_items` (migración `20261201100000`, aplicada), muchos a
+muchos, que es sólo de dónde salió el pedido y no tiene nada que ver con
+`computo_item_desglose.presupuesto_id`. La lee `getTareasPedidas`, que tolera
+el error: si falla, la planilla pierde el tilde pero se sigue pudiendo
+computar. El action además frena el pedido repetido y **nombra** la tarea, en
+vez de dejarla afuera en silencio; si algo falla después de crear el pedido,
+se deshace entero.
+
+De paso: el subrubro pasó a ir **arriba** del encabezado de la tabla (el
+usuario lo pidió dado vuelta), como `caption`, porque un `thead` tiene que ir
+antes del `tbody` y no hay forma de meterle una fila encima. Sube el del
+primer grupo; los subrubros que siguen cortan la tabla con su banda, como
+siempre. Los acordeones por rubro de la tabla de cómputo **arrancan cerrados**
+(se abre el que tiene la fila que llega desplegada por enlace), y el ancho
+mínimo de esas tablas pasó a calcularse (`anchoMinimo`). Estaba fijo en
+1180px, que no alcanzaba cuando aparecen las columnas de Integrado: la columna
+de la tarea —la única sin ancho— se aplastaba a dos letras por renglón.
+
 ### De dónde sale cada número del cómputo (20/11/2026)
 Tres capas nuevas con la misma idea atrás: **guardar lo que se sabe y derivar
 lo que se necesita**, en vez de guardar el resultado y perder la cuenta. Antes,
@@ -3848,7 +3921,16 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (24/11/2026)**: el 3D como un programa de modelado (una barra,
+**Lo último (25/11/2026)**: del cómputo sale **una sola cotización**. Se
+tildan tareas en la tabla, su desglose se suma en una lista de materiales y
+eso va como items de un pedido "A cotizar", con cantidad y sin precio. La
+casilla "Cotización" de cada renglón del desglose se sacó. La casilla nueva
+tiene su columna "Cotizar" y viene tildada y apagada en lo que ya se mandó a
+cotizar. Los acordeones por rubro del cómputo arrancan cerrados y el subrubro
+va arriba del encabezado. Está en "Del cómputo a una sola cotización".
+Migración `20261201100000_el_pedido_recuerda_sus_tareas`, aplicada.
+
+**Antes (24/11/2026)**: el 3D como un programa de modelado (una barra,
 menús que flotan y se pliegan, el mouse gira y corre la vista, 3D ↔ 2D con el
 mismo botón), Desde NPT y Altura en tabiques y columnas, el **bote de pintura**
 y el mismo volver en toda la app. Están en "El 3D como un programa de

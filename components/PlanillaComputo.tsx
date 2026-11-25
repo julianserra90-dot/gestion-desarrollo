@@ -15,7 +15,7 @@ import { type MaterialOpcion } from "@/components/SelectorMaterial";
 import SignoDelPlano from "@/components/SignoDelPlano";
 import * as ui from "@/components/ui";
 import SelectorUnidad from "@/components/SelectorUnidad";
-import { formatMoney } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 
 export type FilaPlanilla = {
   id: string;
@@ -38,6 +38,12 @@ export type FilaPlanilla = {
    * distinto. Null si son iguales o la tarea es propia.
    */
   delCatalogo: RenglonInicial[] | null;
+  /**
+   * El pedido de cotización abierto en el que ya entró esta tarea, si lo hay.
+   * Con esto la casilla "Cotizar" viene tildada y apagada: lo que ya se mandó
+   * a cotizar no se vuelve a pedir hasta que alguien conteste.
+   */
+  pedida: { fecha: string } | null;
 };
 
 export type RubroPlanilla = {
@@ -158,6 +164,10 @@ export default function PlanillaComputo({
   // distintas de la misma tarea y se miran juntas, la de dónde salen los m³ y
   // la de qué lleva cada m³.
   const [midiendo, setMidiendo] = useState<Set<string>>(() => new Set());
+  // Las tareas tildadas para el pedido de cotización. No llevan `name`: son
+  // una elección de esta pantalla y no tienen nada que hacer en el guardado
+  // de las cantidades, que es el form que envuelve a toda la planilla.
+  const [paraCotizar, setParaCotizar] = useState<Set<string>>(() => new Set());
   const [errores, setErrores] = useState<Record<string, string>>({});
   /** Qué les pasó a las otras obras al guardar un desglose como modelo. */
   const [avisoDeModelo, setAvisoDeModelo] = useState("");
@@ -281,6 +291,34 @@ export default function PlanillaComputo({
         <button type="submit" style={cambios ? ui.button : ui.secondaryButton}>
           {cambios ? "Guardar cantidades" : "Guardar"}
         </button>
+
+        {/* El pedido al corralón: se tildan las tareas y sale UNA cotización
+            con el desglose de todas sumado —el cemento de la mampostería y el
+            del revoque son un renglón—. Con cantidades sin guardar no se
+            puede: el pedido las lee de la base, y saldría con las viejas. */}
+        <div style={cajaCotizar}>
+          <span style={notaCotizar}>
+            {cambios
+              ? "Guardá las cantidades antes de pedir la cotización"
+              : paraCotizar.size === 0
+                ? "Tildá tareas para pedir una cotización con sus materiales"
+                : paraCotizar.size === 1
+                  ? "1 tarea elegida"
+                  : `${paraCotizar.size} tareas elegidas`}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                `/obras/${slug}/presupuestos/computo/cotizar?items=${[...paraCotizar].join(",")}`
+              )
+            }
+            disabled={paraCotizar.size === 0 || cambios}
+            style={paraCotizar.size > 0 && !cambios ? ui.button : ui.secondaryButton}
+          >
+            Pedir cotización
+          </button>
+        </div>
       </div>
 
       {rubros.length === 0 && (
@@ -294,7 +332,8 @@ export default function PlanillaComputo({
       <div style={lista}>
         {rubros.map((r) => {
           const t = totalRubro(r);
-          const columnas = 3 + 4 + (conIntegrado ? 2 : 0) + 2;
+          // La de "Cotizar", las tres de la tarea, las de precios, el total y las acciones.
+          const columnas = 1 + 3 + 4 + (conIntegrado ? 2 : 0) + 2;
 
           // Escondido y no sacado: ver el filtro, arriba.
           const oculto = filtro !== "" && r.rubroId !== filtro;
@@ -302,7 +341,11 @@ export default function PlanillaComputo({
           return (
             <details
               key={r.rubroId}
-              open
+              // Arrancan cerrados, como el resto de los acordeones de la app:
+              // el cómputo entero desplegado es una pared de números y lo que
+              // se viene a hacer es casi siempre un rubro. Se abre sólo el que
+              // tiene la fila que llegó desplegada por enlace.
+              open={r.filas.some((f) => f.id === abrirInicial) || undefined}
               style={oculto ? { ...panelRubro, display: "none" } : panelRubro}
             >
               <summary style={resumen}>
@@ -311,10 +354,20 @@ export default function PlanillaComputo({
               </summary>
 
               <div style={scroll}>
-                <table style={tabla}>
+                <table style={{ ...tabla, minWidth: anchoMinimo(conIntegrado) }}>
+                  {/* El primer subrubro, arriba del encabezado: es el título
+                      de lo que viene, y los títulos de columna quedan pegados
+                      a las filas que nombran. Va como `caption` porque un
+                      `thead` tiene que ir antes del `tbody`, así que no hay
+                      forma de meter una fila por encima. Los subrubros que
+                      siguen cortan la tabla más abajo, como siempre. */}
+                  {r.filas[0]?.subrubro && (
+                    <caption style={subrubroArriba}>{r.filas[0].subrubro}</caption>
+                  )}
                   {/* Anchos fijos: todas las tablas de rubros quedan con las
                       columnas en el mismo lugar. */}
                   <colgroup>
+                    <col style={{ width: "72px" }} />
                     <col />
                     <col style={{ width: "48px" }} />
                     <col style={{ width: "116px" }} />
@@ -326,6 +379,11 @@ export default function PlanillaComputo({
                   </colgroup>
                   <thead>
                     <tr>
+                      {/* La casilla tiene que decir para qué es: suelta al
+                          lado del nombre, nadie sabía qué pasaba al tildarla. */}
+                      <th rowSpan={2} style={thCentro}>
+                        Cotizar
+                      </th>
                       <th rowSpan={2} style={thIzq}>
                         Tarea
                       </th>
@@ -368,8 +426,10 @@ export default function PlanillaComputo({
                     {r.filas.map((f, i) => {
                       const v = valores[f.id] ?? editableDe(f);
                       const s = subtotal(f);
+                      // El del primer grupo no va acá: sube arriba del
+                      // encabezado, como título de la tabla (ver `caption`).
                       const nuevoSub =
-                        f.subrubro && f.subrubro !== r.filas[i - 1]?.subrubro;
+                        i > 0 && f.subrubro && f.subrubro !== r.filas[i - 1]?.subrubro;
                       const abierto = abiertos.has(f.id);
                       const midiendoEsta = midiendo.has(f.id);
                       const medida = f.elementosMedidos > 0;
@@ -387,6 +447,38 @@ export default function PlanillaComputo({
                             </tr>
                           )}
                           <tr style={num(v.cantidad) === 0 ? filaVacia : undefined}>
+                            {/* Sólo las que tienen materiales en su desglose:
+                                de una tarea de mano de obra sola no hay nada
+                                que pedirle al corralón. */}
+                            <td style={celdaCotizar}>
+                              {f.renglones.some((x) => x.tipo === "Materiales") && (
+                                <input
+                                  type="checkbox"
+                                  // Ya pedida: tildada y apagada. La casilla
+                                  // dice "esto ya se mandó", no "esto va a ir".
+                                  checked={Boolean(f.pedida) || paraCotizar.has(f.id)}
+                                  disabled={Boolean(f.pedida)}
+                                  onChange={(e) =>
+                                    setParaCotizar((antes) => {
+                                      const nuevo = new Set(antes);
+                                      if (e.target.checked) nuevo.add(f.id);
+                                      else nuevo.delete(f.id);
+                                      return nuevo;
+                                    })
+                                  }
+                                  title={
+                                    f.pedida
+                                      ? `Ya pedida en la cotización del ${formatDate(f.pedida.fecha)}. Se libera cuando el proveedor conteste.`
+                                      : "Incluir en el pedido de cotización"
+                                  }
+                                  aria-label={
+                                    f.pedida
+                                      ? `${v.nombre} ya está pedida en una cotización`
+                                      : `Incluir ${v.nombre} en el pedido de cotización`
+                                  }
+                                />
+                              )}
+                            </td>
                             {editando.has(f.id) ? (
                               <>
                                 <td style={celdaNombre}>
@@ -672,6 +764,22 @@ const campoMes = {
   gap: "8px",
 };
 
+// El pedido de cotización, al final de la barra: la cuenta de lo tildado
+// arriba del botón, que es lo que se mira antes de apretarlo.
+const cajaCotizar = {
+  display: "grid",
+  gap: "8px",
+  justifyItems: "end" as const,
+  // Cuando la barra parte el renglón, esto queda solo abajo: pegado a la
+  // derecha cae justo debajo de "Guardar", y no suelto en el medio.
+  marginLeft: "auto",
+};
+
+const notaCotizar = {
+  fontSize: "12px",
+  color: "#6b7280",
+};
+
 const lista = {
   display: "grid",
   gap: "16px",
@@ -708,10 +816,17 @@ const scroll = {
   containerType: "inline-size" as const,
 };
 
+// El ancho mínimo tiene que dar para TODAS las columnas fijas más la de la
+// tarea, que es la única sin ancho. Con `table-layout: fixed`, si la suma de
+// las fijas se pasa del mínimo, la que sobra es justamente la del nombre: se
+// aplastaba a unas letras por renglón apenas aparecían las de Integrado.
+const ANCHO_TAREA = 260;
+const anchoMinimo = (conIntegrado: boolean) =>
+  `${72 + ANCHO_TAREA + 48 + 116 + (conIntegrado ? 6 : 4) * 104 + 124 + 300}px`;
+
 const tabla = {
   ...ui.table,
   tableLayout: "fixed" as const,
-  minWidth: "1180px",
 };
 
 // Los títulos con el mismo relleno lateral que las celdas, y alineados igual
@@ -756,6 +871,11 @@ const celda = {
   color: "#333333",
 };
 
+const celdaCotizar = {
+  ...celda,
+  textAlign: "center" as const,
+};
+
 const celdaNombre = {
   ...celda,
   minWidth: "220px",
@@ -798,6 +918,19 @@ const celdaAcciones = {
   ...celda,
   whiteSpace: "nowrap" as const,
   textAlign: "right" as const,
+};
+
+// El mismo aspecto que la banda de subrubro de más abajo, sin el borde ni el
+// aire de arriba: acá no corta nada, abre.
+const subrubroArriba = {
+  captionSide: "top" as const,
+  textAlign: "left" as const,
+  padding: "6px 8px",
+  fontSize: "11px",
+  fontWeight: 600,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+  color: "#777777",
 };
 
 const celdaSubrubro = {

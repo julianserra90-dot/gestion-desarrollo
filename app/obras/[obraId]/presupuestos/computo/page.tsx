@@ -13,6 +13,7 @@ import {
   getComputo,
   getIndicesCac,
   getMaterialesParaListado,
+  getTareasPedidas,
   incidenciaPorRubro,
   listadoDeMateriales,
   loCargadoPorTarea,
@@ -124,6 +125,9 @@ export default async function ComputoPage({
   const comparacion = await getComparacion(obra.id, computo, indices, ajustar);
 
   const elegidas = computo.items.map((i) => i.tareaId).filter(Boolean) as string[];
+  // Qué tareas ya están en un pedido de cotización abierto: su casilla
+  // "Cotizar" viene tildada y apagada.
+  const pedidas = await getTareasPedidas(obra.id);
 
   const supabase = await createClient();
   const [{ data: rubros }, { data: tareas }, { data: modelo }] = await Promise.all([
@@ -200,6 +204,7 @@ export default async function ComputoPage({
       elementosMedidos: i.elementosMedidos,
       elementosDelPlano: i.elementosDelPlano,
       delCatalogo: delCatalogo(i.tareaId, i.renglones),
+      pedida: pedidas.get(i.id) ?? null,
     });
   }
   const planilla = [...porRubro.values()].sort(

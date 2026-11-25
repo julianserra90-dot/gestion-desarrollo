@@ -507,7 +507,53 @@ export async function getComparacion(
   return { filas, sinAjustar };
 }
 
+/** Un pedido de cotización abierto, visto desde la tarea que lo alimentó. */
+export type PedidoDeTarea = {
+  presupuestoId: string;
+  fecha: string;
+};
+
+/**
+ * Las tareas del cómputo que ya están en un pedido de cotización **abierto**,
+ * por id de tarea.
+ *
+ * Sólo los que siguen en "A cotizar": mientras nadie contestó, volver a
+ * pedirlas sería pedir dos veces lo mismo. Una vez que el pedido tiene precio
+ * —Pendiente o Aprobado— la tarea se libera y se puede mandar a cotizar a
+ * otro proveedor.
+ *
+ * Tolera el error a propósito: si esto falla, la planilla pierde el tilde de
+ * "ya pedida" pero se sigue pudiendo computar, que es a lo que se entra.
+ */
+export async function getTareasPedidas(obraId: string): Promise<Map<string, PedidoDeTarea>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("presupuesto_computo_items")
+    .select("item_id, presupuestos!inner(id, fecha, estado, obra_id)")
+    .eq("presupuestos.obra_id", obraId)
+    .eq("presupuestos.estado", "A cotizar");
+
+  if (error) {
+    console.error("getTareasPedidas:", error.message);
+    return new Map();
+  }
+
+  return new Map(
+    (data ?? []).map((f) => [
+      f.item_id,
+      { presupuestoId: f.presupuestos.id, fecha: f.presupuestos.fecha },
+    ])
+  );
+}
+
 export type MaterialListado = {
+  /**
+   * El material del catálogo, cuando los renglones que se sumaron apuntan a
+   * uno y en su unidad. Null para lo que sólo existe como texto en el
+   * desglose: ese no se puede pedir por id, y el pedido al corralón lo nombra
+   * aparte en vez de tragárselo.
+   */
+  materialId: string | null;
   descripcion: string;
   /**
    * En lo que se mide lo que hace falta: la unidad de lo que trae el envase si
@@ -613,6 +659,7 @@ export function listadoDeMateriales(
       const material = m.materialId ? catalogo.get(m.materialId) : undefined;
       const compra = material ? compraMinima(m.cantidad, tamanosDe(material)) : null;
       return {
+        materialId: m.materialId,
         descripcion: m.descripcion,
         unidad: m.unidad,
         cantidad: m.cantidad,

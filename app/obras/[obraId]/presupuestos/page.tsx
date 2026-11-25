@@ -50,10 +50,12 @@ export default async function PresupuestosPage({
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  // `nuevo` es la cotización recién pedida desde el cómputo: su bloque llega
+  // abierto, para no tener que buscarla entre los acordeones cerrados.
+  searchParams: Promise<{ error?: string; nuevo?: string }>;
 }) {
   const { obraId } = await params;
-  const { error } = await searchParams;
+  const { error, nuevo } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -262,7 +264,11 @@ export default async function PresupuestosPage({
                   );
 
                   return (
-                    <details key={tipo} style={acordeonTipo}>
+                    <details
+                      key={tipo}
+                      open={ordenadas.some((c) => c.id === nuevo) || undefined}
+                      style={acordeonTipo}
+                    >
                       {/* El contenido va en un span aparte: darle display al
                           summary borra el triangulito nativo, que es la señal
                           de que esto se abre. Columnas de ancho fijo para que
@@ -413,13 +419,27 @@ export default async function PresupuestosPage({
                                       queda con su display por defecto para no
                                       perder el triangulito nativo. */}
                                   {items.length > 0 && (
-                                    <details style={bloqueItems}>
+                                    <details
+                                      open={c.id === nuevo || undefined}
+                                      style={bloqueItems}
+                                    >
                                       <summary style={resumenItems}>
+                                        {/* Un pedido todavía no tiene precios:
+                                            decir "cotizados" sería mentir
+                                            sobre lo que hay. */}
                                         {items.length === 1
-                                          ? "1 material cotizado"
-                                          : `${items.length} materiales cotizados`}
-                                        {" · "}
-                                        {formatMoney(sumaItems)}
+                                          ? esPedido
+                                            ? "1 material a cotizar"
+                                            : "1 material cotizado"
+                                          : `${items.length} materiales ${
+                                              esPedido ? "a cotizar" : "cotizados"
+                                            }`}
+                                        {!esPedido && (
+                                          <>
+                                            {" · "}
+                                            {formatMoney(sumaItems)}
+                                          </>
+                                        )}
                                       </summary>
 
                                       <div style={tablaItems}>

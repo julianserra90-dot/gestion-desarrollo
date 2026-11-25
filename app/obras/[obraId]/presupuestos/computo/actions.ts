@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { firmaDeDesglose } from "@/lib/computo";
+import {
+  firmaDeDesglose,
+  getComputo,
+  getMaterialesParaListado,
+  getTareasPedidas,
+  listadoDeMateriales,
+} from "@/lib/computo";
 import { cantidadDesdeConsumo, envaseDelRenglon } from "@/lib/consumo";
 import {
   cantidadDeElemento,
@@ -1626,4 +1632,153 @@ export async function guardarMedicionDe(
 function texto(valor: string | null | undefined): string | null {
   const limpio = String(valor ?? "").trim();
   return limpio === "" ? null : limpio;
+}
+
+/* ===================== El pedido de cotización unificado =================== */
+
+/**
+ * El texto que nombra de dónde salió el pedido. Con pocas tareas las nombra a
+ * todas, que es lo que el corralón va a querer saber; con muchas, las primeras
+ * y cuántas más, para que el renglón del listado siga siendo legible.
+ */
+function detalleDelPedido(nombres: string[]): string {
+  if (nombres.length <= 3) return `Cómputo: ${nombres.join(", ")}`;
+  return `Cómputo: ${nombres.length} tareas (${nombres.slice(0, 2).join(", ")} y ${
+    nombres.length - 2
+  } más)`;
+}
+
+/**
+ * Pide **una** cotización por las tareas tildadas en el cómputo.
+ *
+ * El desglose de todas se suma en una sola lista de materiales —el cemento de
+ * la mampostería y el del revoque son un renglón— y esa lista va como items
+ * del presupuesto, con la cantidad y sin precio: lo que se le manda al
+ * corralón para que ponga los suyos. Antes se pedía una cotización por
+ * renglón de desglose y salían cinco pedidos sueltos por una sola tarea.
+ *
+ * No confía en lo que llega del navegador: las cantidades se rehacen leyendo
+ * el cómputo, igual que el pase del plano.
+ */
+export async function pedirCotizacion(formData: FormData) {
+  const slug = String(formData.get("slug") ?? "");
+  const obraId = String(formData.get("obra_id") ?? "");
+  const rubroId = String(formData.get("rubro_id") ?? "");
+  const itemIds = [...new Set(formData.getAll("item").map(String).filter(Boolean))];
+
+  const destino = `${base(slug)}/cotizar?items=${encodeURIComponent(itemIds.join(","))}`;
+
+  if (itemIds.length === 0) volver(base(slug), "No se eligió ninguna tarea para cotizar.");
+
+  const supabase = await createClient();
+
+  // El rubro al que se anota el pedido tiene que ser de esta obra: es el que
+  // después va a mostrar lo cotizado contra lo computado.
+  const { data: rubro } = await supabase
+    .from("rubros")
+    .select("id")
+    .eq("id", rubroId)
+    .eq("obra_id", obraId)
+    .maybeSingle();
+  if (!rubro) volver(destino, "Elegí a qué rubro se anota la cotización.");
+
+  const computo = await getComputo(obraId);
+  if (!computo) volver(destino, "Esta obra todavía no tiene cómputo.");
+
+  const elegidos = computo.items.filter((i) => itemIds.includes(i.id));
+  if (elegidos.length === 0) {
+    volver(destino, "Las tareas elegidas ya no están en el cómputo.");
+  }
+
+  // La casilla de una tarea ya pedida viene apagada, pero el action se puede
+  // llamar igual: pedir dos veces lo mismo se frena acá y se dice cuál, en vez
+  // de dejarlas afuera en silencio.
+  const pedidas = await getTareasPedidas(obraId);
+  const repetidas = elegidos.filter((i) => pedidas.has(i.id));
+  if (repetidas.length) {
+    volver(
+      destino,
+      `Ya hay un pedido de cotización abierto con ${repetidas
+        .map((i) => `"${i.nombre}"`)
+        .join(", ")}. Cotizalo o descartalo antes de volver a pedirlo.`
+    );
+  }
+
+  const catalogo = await getMaterialesParaListado();
+  const listado = listadoDeMateriales(elegidos, catalogo);
+  if (listado.length === 0) {
+    volver(
+      destino,
+      "Las tareas elegidas no tienen materiales en su desglose: no hay nada que pedir."
+    );
+  }
+
+  // Sólo lo que apunta al catálogo puede ir como item: el item se guarda por
+  // id de material. Lo que en el desglose es nada más que texto se nombra en
+  // las observaciones, que es lo que el proveedor va a leer igual, en vez de
+  // quedar afuera sin que nadie se entere.
+  const items = listado.filter((m) => m.materialId !== null);
+  const sueltos = listado.filter((m) => m.materialId === null);
+
+  const monto = Math.round(listado.reduce((a, m) => a + m.importe, 0) * 100) / 100;
+
+  const observaciones = sueltos.length
+    ? [
+        "Sin material del catálogo, a cotizar aparte:",
+        ...sueltos.map(
+          (m) => `· ${m.descripcion} — ${m.cantidad.toLocaleString("es-AR")} ${m.unidad}`
+        ),
+      ].join("\n")
+    : null;
+
+  const { data: pedido, error } = await supabase
+    .from("presupuestos")
+    .insert({
+      obra_id: obraId,
+      rubro_id: rubroId,
+      tipo: "Materiales",
+      estado: "A cotizar",
+      monto,
+      detalle: detalleDelPedido(elegidos.map((i) => i.nombre)),
+      observaciones,
+    })
+    .select("id")
+    .single();
+
+  if (error || !pedido) {
+    volver(destino, error?.message ?? sinPermisoPara("pedir la cotización"));
+  }
+
+  // Un pedido a medio hacer sería peor que no haberlo hecho: si algo de lo
+  // que sigue falla, se deshace entero y se avisa.
+  const deshacer = async (mensaje: string): Promise<never> => {
+    await supabase.from("presupuestos").delete().eq("id", pedido.id);
+    volver(destino, mensaje);
+  };
+
+  if (items.length) {
+    const { error: alGuardarItems } = await supabase.from("presupuesto_materiales").insert(
+      items.map((m, i) => ({
+        presupuesto_id: pedido.id,
+        material_id: m.materialId!,
+        cantidad: Math.round(m.cantidad * 100) / 100,
+        // Sin precio: lo pone el proveedor cuando conteste. Un cero se leería
+        // como gratis.
+        precio_unitario: null,
+        orden: i,
+      }))
+    );
+    if (alGuardarItems) await deshacer(alGuardarItems.message);
+  }
+
+  // De qué tareas salió. El `detalle` las nombra en un texto, que no se puede
+  // consultar: esto es lo que deja a la tabla de cómputo mostrar tildado lo
+  // que ya se mandó a cotizar.
+  const { error: alGuardarTareas } = await supabase
+    .from("presupuesto_computo_items")
+    .insert(elegidos.map((i) => ({ presupuesto_id: pedido.id, item_id: i.id })));
+  if (alGuardarTareas) await deshacer(alGuardarTareas.message);
+
+  revalidarComputo();
+  redirect(`/obras/${slug}/presupuestos?nuevo=${pedido.id}`);
 }

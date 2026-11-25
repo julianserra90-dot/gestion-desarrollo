@@ -113,87 +113,6 @@ export type Database = {
           },
         ]
       }
-      avances_del_plano: {
-        Row: {
-          cantidad: number
-          creado_en: string
-          creado_por: string | null
-          fecha: string
-          fecha_inicio: string | null
-          id: string
-          objeto: string
-          obra_id: string
-          piso: number
-          planta_id: string
-          tarea_id: string
-        }
-        Insert: {
-          cantidad: number
-          creado_en?: string
-          creado_por?: string | null
-          fecha?: string
-          fecha_inicio?: string | null
-          id?: string
-          objeto: string
-          obra_id: string
-          piso: number
-          planta_id: string
-          tarea_id: string
-        }
-        Update: {
-          cantidad?: number
-          creado_en?: string
-          creado_por?: string | null
-          fecha?: string
-          fecha_inicio?: string | null
-          id?: string
-          objeto?: string
-          obra_id?: string
-          piso?: number
-          planta_id?: string
-          tarea_id?: string
-        }
-        Relationships: []
-      }
-      avances_de_tarea: {
-        Row: {
-          cantidad: number
-          comentario: string | null
-          creado_en: string
-          creado_por: string | null
-          fecha: string
-          fecha_inicio: string | null
-          id: string
-          obra_id: string
-          piso: number | null
-          tarea_id: string
-        }
-        Insert: {
-          cantidad: number
-          comentario?: string | null
-          creado_en?: string
-          creado_por?: string | null
-          fecha?: string
-          fecha_inicio?: string | null
-          id?: string
-          obra_id: string
-          piso?: number | null
-          tarea_id: string
-        }
-        Update: {
-          cantidad?: number
-          comentario?: string | null
-          creado_en?: string
-          creado_por?: string | null
-          fecha?: string
-          fecha_inicio?: string | null
-          id?: string
-          obra_id?: string
-          piso?: number | null
-          tarea_id?: string
-        }
-        Relationships: []
-      }
       avances: {
         Row: {
           actualizado_en: string
@@ -275,6 +194,152 @@ export type Database = {
             columns: ["rubro_id"]
             isOneToOne: false
             referencedRelation: "rubros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      avances_de_tarea: {
+        Row: {
+          cantidad: number
+          comentario: string | null
+          creado_en: string
+          creado_por: string | null
+          fecha: string
+          fecha_inicio: string | null
+          id: string
+          obra_id: string
+          piso: number | null
+          tarea_id: string
+        }
+        Insert: {
+          cantidad: number
+          comentario?: string | null
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          fecha_inicio?: string | null
+          id?: string
+          obra_id: string
+          piso?: number | null
+          tarea_id: string
+        }
+        Update: {
+          cantidad?: number
+          comentario?: string | null
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          fecha_inicio?: string | null
+          id?: string
+          obra_id?: string
+          piso?: number | null
+          tarea_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "avances_de_tarea_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "avances_de_tarea_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "avances_de_tarea_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avances_de_tarea_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      avances_del_plano: {
+        Row: {
+          cantidad: number
+          creado_en: string
+          creado_por: string | null
+          fecha: string
+          fecha_inicio: string | null
+          id: string
+          objeto: string
+          obra_id: string
+          piso: number
+          planta_id: string
+          tarea_id: string
+        }
+        Insert: {
+          cantidad: number
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          fecha_inicio?: string | null
+          id?: string
+          objeto: string
+          obra_id: string
+          piso: number
+          planta_id: string
+          tarea_id: string
+        }
+        Update: {
+          cantidad?: number
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          fecha_inicio?: string | null
+          id?: string
+          objeto?: string
+          obra_id?: string
+          piso?: number
+          planta_id?: string
+          tarea_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "avances_del_plano_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "avances_del_plano_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "avances_del_plano_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avances_del_plano_planta_id_fkey"
+            columns: ["planta_id"]
+            isOneToOne: false
+            referencedRelation: "plantas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avances_del_plano_tarea_id_fkey"
+            columns: ["tarea_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
             referencedColumns: ["id"]
           },
         ]
@@ -2170,6 +2235,39 @@ export type Database = {
         }
         Relationships: []
       }
+      presupuesto_computo_items: {
+        Row: {
+          creado_en: string
+          item_id: string
+          presupuesto_id: string
+        }
+        Insert: {
+          creado_en?: string
+          item_id: string
+          presupuesto_id: string
+        }
+        Update: {
+          creado_en?: string
+          item_id?: string
+          presupuesto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presupuesto_computo_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "computo_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presupuesto_computo_items_presupuesto_id_fkey"
+            columns: ["presupuesto_id"]
+            isOneToOne: false
+            referencedRelation: "presupuestos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       presupuesto_materiales: {
         Row: {
           cantidad: number
@@ -2540,12 +2638,20 @@ export type Database = {
           subrubro?: string | null
           unidad?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tareas_madre_id_fkey"
+            columns: ["madre_id"]
+            isOneToOne: false
+            referencedRelation: "tareas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tipos_de_abertura: {
         Row: {
-          ancho: number
           alto: number
+          ancho: number
           antepecho: number | null
           apertura: string | null
           creado_en: string
@@ -2558,8 +2664,8 @@ export type Database = {
           tipo: string
         }
         Insert: {
-          ancho: number
           alto: number
+          ancho: number
           antepecho?: number | null
           apertura?: string | null
           creado_en?: string
@@ -2572,8 +2678,8 @@ export type Database = {
           tipo: string
         }
         Update: {
-          ancho?: number
           alto?: number
+          ancho?: number
           antepecho?: number | null
           apertura?: string | null
           creado_en?: string
@@ -2585,7 +2691,29 @@ export type Database = {
           tareas?: string[]
           tipo?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tipos_de_abertura_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "tipos_de_abertura_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "tipos_de_abertura_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tipos_de_muro: {
         Row: {

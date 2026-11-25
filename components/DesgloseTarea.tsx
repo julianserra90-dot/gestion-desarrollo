@@ -282,6 +282,14 @@ export default function DesgloseTarea({
       : { consumo: null, consumoUnidad: null };
   };
 
+  // Las cotizaciones ya no se piden renglón por renglón: el pedido sale de la
+  // tabla del cómputo, que tilda las tareas y manda el desglose de todas
+  // unificado en una sola cotización —el corralón quiere una lista, no cinco
+  // pedidos sueltos—. La columna queda para lo que se pidió así antes: el
+  // pedido sigue a la vista y se puede seguir eligiendo con qué precio se
+  // queda el cómputo. Lo que ya no hay es cómo pedir uno nuevo desde acá.
+  const hayCotizaciones = renglones.some((r) => r.presupuestoId !== null);
+
   const computado = (r: Renglon) => num(r.cantidad) * num(r.precio);
   // Lo que suma por unidad de la tarea. Si se eligió lo cotizado, la
   // cotización es por la obra entera y se reparte en la cantidad computada.
@@ -381,7 +389,7 @@ export default function DesgloseTarea({
                 <th style={thCentro}>Precio unit.</th>
                 <th style={thDer}>Por {unidadTarea}</th>
                 {!modelo && <th style={thDer}>En la obra</th>}
-                {!modelo && <th style={thIzq}>Cotización</th>}
+                {!modelo && hayCotizaciones && <th style={thIzq}>Cotización</th>}
                 <th style={thIzq} />
               </tr>
             </thead>
@@ -482,20 +490,19 @@ export default function DesgloseTarea({
                   </td>
                   <td style={celdaNumero}>{formatMoney(subtotal(r))}</td>
                   {!modelo && (
-                    <>
-                      <td style={celdaTotal}>
-                        {formatMoney(subtotal(r) * cantidadTarea)}
-                        {usaCotizado(r) && <span style={marcaCotizado}>cotizado</span>}
-                      </td>
-                      <td style={celda}>
-                        <CeldaCotizacion
-                          renglon={r}
-                          computadoEnObra={computado(r) * cantidadTarea}
-                          alTildar={(v) => cambiar(r.clave, "cotizar", v)}
-                          alElegir={(v) => cambiar(r.clave, "usarCotizado", v)}
-                        />
-                      </td>
-                    </>
+                    <td style={celdaTotal}>
+                      {formatMoney(subtotal(r) * cantidadTarea)}
+                      {usaCotizado(r) && <span style={marcaCotizado}>cotizado</span>}
+                    </td>
+                  )}
+                  {!modelo && hayCotizaciones && (
+                    <td style={celda}>
+                      <CeldaCotizacion
+                        renglon={r}
+                        computadoEnObra={computado(r) * cantidadTarea}
+                        alElegir={(v) => cambiar(r.clave, "usarCotizado", v)}
+                      />
+                    </td>
                   )}
                   <td style={celda}>
                     <button
@@ -548,27 +555,27 @@ export default function DesgloseTarea({
 }
 
 /**
- * La casilla para pedir cotización y, cuando ya llegó, la elección entre lo
- * computado y lo cotizado.
+ * El pedido que este renglón tiene enlazado y, cuando ya llegó cotizado, la
+ * elección entre lo computado y lo cotizado.
+ *
+ * Sólo aparece en renglones que ya tenían pedido: se pedía uno por renglón y
+ * ahora el pedido sale de la tabla del cómputo, con varias tareas en una sola
+ * cotización. Por eso acá no hay con qué pedir: lo que hay se mira y se elige.
  */
 function CeldaCotizacion({
   renglon: r,
   computadoEnObra,
-  alTildar,
   alElegir,
 }: {
   renglon: Renglon;
   computadoEnObra: number;
-  alTildar: (v: boolean) => void;
   alElegir: (v: boolean) => void;
 }) {
   const c = r.cotizacion;
-  const vinculada = r.cotizar && r.presupuestoId !== null;
+  const vinculada = r.presupuestoId !== null;
 
   let estado: React.ReactNode = null;
-  if (r.cotizar && !vinculada) {
-    estado = <span style={notaCotizacion}>Se pide al guardar</span>;
-  } else if (vinculada && c?.estado === "A cotizar") {
+  if (vinculada && c?.estado === "A cotizar") {
     estado = <span style={etiquetaPedido}>A cotizar</span>;
   } else if (vinculada && c?.estado === "Descartado") {
     estado = <span style={notaCotizacion}>Descartada</span>;
@@ -576,10 +583,7 @@ function CeldaCotizacion({
 
   return (
     <div style={celdaCotizacionCaja}>
-      <label style={casillaCotizar} title="Pedir cotización de esta subtarea">
-        <input type="checkbox" checked={r.cotizar} onChange={(e) => alTildar(e.target.checked)} />
-        {estado}
-      </label>
+      {estado && <div style={casillaCotizar}>{estado}</div>}
 
       {vinculada && conPrecio(c) && (
         // Lo cotizado al lado de lo computado, y se elige con cuál se queda
