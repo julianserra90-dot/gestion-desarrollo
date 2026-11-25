@@ -11,11 +11,12 @@ import { leerPisos } from "@/lib/pisos";
 import { leerDibujo, leerEscala, leerTiposDeAbertura, metrosPorPixel } from "@/lib/planta-dibujo";
 import { type Pincelada, pintar } from "@/lib/planta-pintura";
 import { getPisos, getPlantas, getSubtareas, getTiposDeMuroDeObra } from "@/lib/plantas";
-import { cantidadEnUnidad, cargasDelPlano, type TareaDelRubro } from "@/lib/avance-del-plano";
+import { cantidadEnUnidad } from "@/lib/avance-del-plano";
 import { modeloDePlanta } from "@/lib/planta-3d";
 import { aplicarCambio } from "@/lib/planta-edicion";
 import { conSusTipos, leerComposicion, medidasDelMuro } from "@/lib/tipos-de-muro";
 import { createClient } from "@/lib/supabase/server";
+import { rehacerCargasDelRubro } from "@/lib/avance-del-rubro";
 import { alternarTarea } from "../presupuestos/computo/actions";
 
 type Resultado = { error?: string };
@@ -737,8 +738,10 @@ export type MarcaEnElPlano = {
   objeto: string;
   tarea: string;
   hecho: boolean;
-  /** El día que se hizo, AAAA-MM-DD. */
+  /** El día que se hizo —o se terminó—, AAAA-MM-DD. */
   fecha: string;
+  /** El día que se empezó. Null o igual a `fecha`: en el día. */
+  fechaInicio?: string | null;
 };
 
 const ES_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -769,6 +772,11 @@ export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Pr
     return { error: "Eso no se puede marcar." };
   }
   if (!Number.isInteger(piso) || !ES_FECHA.test(String(fecha))) return { error: "Falta el piso o el día." };
+  const inicio = crudo.fechaInicio ? String(crudo.fechaInicio) : null;
+  if (inicio !== null && (!ES_FECHA.test(inicio) || inicio > String(fecha))) {
+    return { error: "El inicio no puede ser después del fin." };
+  }
+  const fechaInicio = inicio !== null && inicio < String(fecha) ? inicio : null;
 
   const supabase = await createClient();
   const [plantas, pisos, tiposDeLaObra, subtareas] = await Promise.all([
@@ -811,7 +819,7 @@ export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Pr
     const { data, error } = await supabase
       .from("avances_del_plano")
       .upsert(
-        { obra_id: obraId, planta_id: plantaId, piso, objeto, tarea_id: tareaId, cantidad, fecha },
+        { obra_id: obraId, planta_id: plantaId, piso, objeto, tarea_id: tareaId, cantidad, fecha, fecha_inicio: fechaInicio },
         { onConflict: "obra_id,planta_id,piso,objeto,tarea_id" }
       )
       .select("id");
@@ -831,61 +839,10 @@ export async function marcarEnElPlano(obraId: string, crudo: MarcaEnElPlano): Pr
     if (noTocoNada(data)) return { error: sinPermisoPara("marcar el avance") };
   }
 
-  // Las cargas del plano del rubro, de nuevo y enteras.
-  const rubroId = deLaTarea.rubro_id;
-  const porTarea = new Map<string, TareaDelRubro>();
-  for (const i of items ?? []) {
-    if (i.rubro_id !== rubroId || !i.tarea_id) continue;
-    const ya = porTarea.get(i.tarea_id) ?? { tareaId: i.tarea_id, cantidad: 0, costo: 0 };
-    ya.cantidad += Number(i.cantidad);
-    ya.costo +=
-      Number(i.cantidad) * (Number(i.precio_materiales) + Number(i.precio_mano_obra) + Number(i.precio_integrado));
-    porTarea.set(i.tarea_id, ya);
-  }
-  const { data: marcas, error: alLeerMarcas } = await supabase
-    .from("avances_del_plano")
-    .select("tarea_id, cantidad, fecha")
-    .eq("obra_id", obraId)
-    .in("tarea_id", Array.from(porTarea.keys()));
-  if (alLeerMarcas) return { error: alLeerMarcas.message };
-
-  const cargas = cargasDelPlano(
-    (marcas ?? []).map((m) => ({ tareaId: m.tarea_id, cantidad: Number(m.cantidad), fecha: m.fecha })),
-    Array.from(porTarea.values())
-  );
-
-  const { error: alBorrar } = await supabase
-    .from("avances")
-    .delete()
-    .eq("obra_id", obraId)
-    .eq("rubro_id", rubroId)
-    .eq("desde_el_plano", true);
-  if (alBorrar) return { error: alBorrar.message };
-
-  if (cargas.length > 0) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { data: perfil } = await supabase
-      .from("perfiles")
-      .select("nombre")
-      .eq("id", user?.id ?? "")
-      .maybeSingle();
-    const { error: alCargar } = await supabase.from("avances").insert(
-      cargas.map((c) => ({
-        obra_id: obraId,
-        rubro_id: rubroId,
-        porcentaje: c.porcentaje,
-        fecha_desde: c.fecha,
-        fecha_hasta: c.fecha,
-        comentario: `Marcado en el 3D: ${c.cosas} ${c.cosas === 1 ? "cosa" : "cosas"}`,
-        desde_el_plano: true,
-        actualizado_por: user?.id ?? null,
-        actualizado_por_nombre: perfil?.nombre ?? null,
-      }))
-    );
-    if (alCargar) return { error: alCargar.message };
-  }
+  // Las cargas del rubro que salen de lo hecho por tarea —en el 3D y a
+  // mano—, de nuevo y enteras.
+  const rehecho = await rehacerCargasDelRubro(supabase, obraId, deLaTarea.rubro_id);
+  if (rehecho.error) return { error: rehecho.error };
 
   revalidatePath("/", "layout");
   return {};

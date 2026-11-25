@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState, useTransition } f
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import ElegirFechas from "@/components/ElegirFechas";
 import * as ui from "@/components/ui";
 import { type CapaDeVista, useCapasDeVista } from "@/lib/capas-de-vista";
 import { cantidadEnUnidad } from "@/lib/avance-del-plano";
@@ -98,7 +99,14 @@ export default function Edificio3D({
   plantaDeOrigen,
   pinturas = SIN_PINTURAS,
   pintar,
+  aMano = SIN_CARGAS,
 }: {
+  /**
+   * Lo cargado a mano de cada tarea en la solapa de Avances, en su unidad, por
+   * piso ("" sin piso). En cada piso, lo hecho es el mayor de eso y lo marcado
+   * acá; lo de a mano que falta ubicar se pinta en verde claro.
+   */
+  aMano?: Record<string, Record<string, number>>;
   /** La planta de la que se vino: el botón 2D vuelve a ella. */
   plantaDeOrigen?: { href: string; nombre: string };
   /** Lo que la pantalla pone a la izquierda de la barra: volver y el título. */
@@ -138,6 +146,7 @@ export default function Edificio3D({
     tarea: string;
     hecho: boolean;
     fecha: string;
+    fechaInicio?: string | null;
   }) => Promise<{ error?: string }>;
 }) {
   const router = useRouter();
@@ -237,11 +246,23 @@ export default function Edificio3D({
   const [seccionAbierta, setSeccionAbierta] = useState<"capas" | "rubros" | null>("capas");
   /** Los rubros desplegados en el acordeón. */
   const [rubrosAbiertos, setRubrosAbiertos] = useState<string[]>([]);
-  /** El día con que se marca lo hecho. */
+  /** El día con que se marca lo hecho, y desde cuándo (null: en el día). */
   const [dia, setDia] = useState(hoy);
+  const [desdeDia, setDesdeDia] = useState<string | null>(null);
   const [marcando, iniciarMarcado] = useTransition();
   const [errorAlMarcar, setErrorAlMarcar] = useState<string | null>(null);
   const tareaEnAvance = vista === "avance" ? tareaVista : null;
+  /** Lo de a mano de la tarea en Avance, piso por piso: "piso:cantidad,…". Se
+   *  pinta en verde claro sobre lo pendiente de ese piso. */
+  const aManoDeLaTarea = (() => {
+    if (!tareaEnAvance) return "";
+    const deTarea = aMano[tareaEnAvance] ?? {};
+    return Object.entries(deTarea)
+      .filter(([piso]) => piso !== "")
+      .map(([piso, cantidad]) => `${piso}:${cantidad}`)
+      .join(",");
+  })();
+  const unidadEnAvance = tareasDeAvance.find((t) => t.id === tareaEnAvance)?.unidad ?? "m²";
   /** Lo hecho de la tarea que se mira: planta, piso y cosa. */
   const hechasDeLaTarea = marcas
     .filter((m) => m.tarea === tareaEnAvance)
@@ -925,8 +946,20 @@ export default function Edificio3D({
       // lo que falta en blanco, y lo que no lleva la tarea apenas insinuado,
       // para ubicarse. Sólo lo que la lleva se puede tocar.
       const hechas = new Set(hechasDeLaTarea.split(","));
+      // Lo cargado a mano en cada piso que todavía no se marcó: se pinta en
+      // verde claro sobre lo pendiente, cosa por cosa hasta cubrirlo.
+      const porUbicar = new Map(
+        aManoDeLaTarea
+          .split(",")
+          .filter(Boolean)
+          .map((par) => {
+            const [piso, cantidad] = par.split(":");
+            return [Number(piso), Number(cantidad)] as const;
+          })
+      );
       const aspecto = {
         hecho: new THREE.MeshLambertMaterial({ color: HECHO }),
+        aMano: new THREE.MeshLambertMaterial({ color: HECHO_A_MANO }),
         pendiente: new THREE.MeshLambertMaterial({ color: "#f8f8f6" }),
         contexto: new THREE.MeshBasicMaterial({
           color: "#b8bcc2",
@@ -936,15 +969,31 @@ export default function Edificio3D({
         }),
       };
       const filoDeAvance = new THREE.LineBasicMaterial({ color: "#5c5f66" });
-      descartables.push(aspecto.hecho, aspecto.pendiente, aspecto.contexto, filoDeAvance);
+      descartables.push(aspecto.hecho, aspecto.aMano, aspecto.pendiente, aspecto.contexto, filoDeAvance);
       for (const piso of pisos) {
         if (soloElPiso !== null && piso.numero !== soloElPiso) continue;
         const modelo = piso.planta ? modelos[piso.planta] : undefined;
         if (!piso.planta || !modelo) continue;
         const nivel = new THREE.Group();
         nivel.position.y = piso.cota;
+        // Qué pendientes cubren lo de a mano de este piso que falta ubicar:
+        // las primeras, en el orden del dibujo, hasta llegar.
+        const deAMano = new Set<string>();
+        let falta = porUbicar.get(piso.numero) ?? 0;
+        if (falta > 0) {
+          for (const [objeto, ficha] of Object.entries(modelo.objetos)) {
+            if (falta <= 1e-9) break;
+            if (hechas.has(`${piso.planta}|${piso.numero}|${objeto}`)) continue;
+            const medida = ficha.tareas?.find((t) => t.tarea === tareaEnAvance);
+            const cuanto = medida ? cantidadEnUnidad(medida, unidadEnAvance) ?? 0 : 0;
+            if (!(cuanto > 0)) continue;
+            deAMano.add(objeto);
+            falta -= cuanto;
+          }
+        }
         const grupos = {
           hecho: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
+          aMano: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
           pendiente: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
           contexto: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
         };
@@ -958,11 +1007,13 @@ export default function Edificio3D({
             ? "contexto"
             : hechas.has(`${piso.planta}|${piso.numero}|${solido.objeto}`)
               ? "hecho"
-              : "pendiente";
+              : deAMano.has(solido.objeto)
+                ? "aMano"
+                : "pendiente";
           grupos[estado].geometrias.push(geometriaDe(solido));
           grupos[estado].objetos.push(solido.objeto);
         }
-        for (const estado of ["hecho", "pendiente", "contexto"] as const) {
+        for (const estado of ["hecho", "aMano", "pendiente", "contexto"] as const) {
           const { geometrias, objetos } = grupos[estado];
           if (geometrias.length === 0) continue;
           const hasta: number[] = [];
@@ -1043,7 +1094,19 @@ export default function Edificio3D({
       tocables.current = [];
       for (const cosa of descartables) cosa.dispose();
     };
-  }, [modelos, pisos, prendidas, soloElPiso, tareaEnAvance, hechasDeLaTarea, tareasDelRubro, colorDe, subtareasDePintura]);
+  }, [
+    modelos,
+    pisos,
+    prendidas,
+    soloElPiso,
+    tareaEnAvance,
+    hechasDeLaTarea,
+    tareasDelRubro,
+    colorDe,
+    subtareasDePintura,
+    aManoDeLaTarea,
+    unidadEnAvance,
+  ]);
 
   // ---- Lo elegido, resaltado ----------------------------------------------
   useEffect(() => {
@@ -1153,9 +1216,32 @@ export default function Edificio3D({
     }
   }
   const marcasDeLaTarea = marcas.filter((m) => m.tarea === tareaElegida?.id);
-  const hechoDeLaTarea = marcasDeLaTarea
-    .filter((m) => soloElPiso === null || m.piso === soloElPiso)
-    .reduce((s, m) => s + m.cantidad, 0);
+  // Lo cargado a mano en Avances suma con lo marcado acá —los dos van de la
+  // mano—, pero no tiene piso: entra mirando todos.
+  // Lo cargado a mano en Avances se suma a lo marcado acá, piso por piso: es
+  // lo que se hizo y no se marcó cosa por cosa. Lo sin piso entra mirando
+  // todos.
+  const manoPorPiso = (tareaElegida && aMano[tareaElegida.id]) || {};
+  const marcadoEn = (piso: number) =>
+    marcasDeLaTarea.filter((m) => m.piso === piso).reduce((s, m) => s + m.cantidad, 0);
+  const pisosConAlgo =
+    soloElPiso !== null
+      ? [soloElPiso]
+      : Array.from(
+          new Set([
+            ...marcasDeLaTarea.map((m) => m.piso),
+            ...Object.keys(manoPorPiso)
+              .filter((k) => k !== "")
+              .map(Number),
+          ])
+        );
+  const marcadoEnEl3d = pisosConAlgo.reduce((s, p) => s + marcadoEn(p), 0);
+  const hechoDeLaTarea = Math.min(
+    totalDeLaTarea > 0 ? totalDeLaTarea : Infinity,
+    pisosConAlgo.reduce((s, p) => s + marcadoEn(p) + (manoPorPiso[String(p)] ?? 0), 0) +
+      (soloElPiso === null ? manoPorPiso[""] ?? 0 : 0)
+  );
+  const aManoSinMarcar = Math.max(0, hechoDeLaTarea - marcadoEnEl3d);
   /**
    * Las tareas de lo elegido, con lo que mide de cada una: una ventana lleva
    * el amure de su premarco y su colocación, y cada una se tilda aparte.
@@ -1190,7 +1276,7 @@ export default function Edificio3D({
     const { planta, piso, objeto } = elegido;
     const hecho = marcaDe(tareaId) === null;
     iniciarMarcado(async () => {
-      const r = await marcar({ planta, piso, objeto, tarea: tareaId, hecho, fecha: dia });
+      const r = await marcar({ planta, piso, objeto, tarea: tareaId, hecho, fecha: dia, fechaInicio: desdeDia });
       setErrorAlMarcar(r.error ?? null);
       if (!r.error) router.refresh();
     });
@@ -1531,11 +1617,20 @@ export default function Edificio3D({
                       <h3 style={tituloDeFicha}>{tareaElegida.nombre}</h3>
                     </div>
                     <div style={{ display: "grid", gap: "6px" }}>
-                      <div style={barraDeAvance}>
+                      {/* Lo marcado en verde y, a continuación, lo cargado a
+                          mano que todavía no se marcó, en verde claro. */}
+                      <div style={{ ...barraDeAvance, display: "flex" }}>
                         <div
                           style={{
                             ...rellenoDeAvance,
-                            width: `${totalDeLaTarea > 0 ? Math.min(100, (hechoDeLaTarea / totalDeLaTarea) * 100) : 0}%`,
+                            width: `${totalDeLaTarea > 0 ? Math.min(100, (Math.min(marcadoEnEl3d, hechoDeLaTarea) / totalDeLaTarea) * 100) : 0}%`,
+                          }}
+                        />
+                        <div
+                          style={{
+                            ...rellenoDeAvance,
+                            background: HECHO_A_MANO,
+                            width: `${totalDeLaTarea > 0 ? Math.min(100, (aManoSinMarcar / totalDeLaTarea) * 100) : 0}%`,
                           }}
                         />
                       </div>
@@ -1543,6 +1638,7 @@ export default function Edificio3D({
                         {formatCantidad(hechoDeLaTarea)} de {formatCantidad(totalDeLaTarea)} {tareaElegida.unidad}
                         {totalDeLaTarea > 0 && ` · ${Math.round((hechoDeLaTarea / totalDeLaTarea) * 100)} %`}
                       </p>
+
                     </div>
                     {!tareaElegida.enComputo && <p style={errorDeCampo}>No está en el cómputo</p>}
                   </>
@@ -1561,12 +1657,13 @@ export default function Edificio3D({
                       <p style={vacio}>Sin tareas.</p>
                     ) : (
                       <>
-                        <input
-                          type="date"
-                          value={dia}
-                          onChange={(e) => setDia(e.target.value || hoy())}
-                          style={ui.input}
-                          aria-label="Día"
+                        <ElegirFechas
+                          desde={desdeDia}
+                          hasta={dia}
+                          alCambiar={({ desde, hasta }) => {
+                            setDesdeDia(desde);
+                            setDia(hasta);
+                          }}
                         />
                         <ul style={tareasDeLaCosa}>
                           {tareasDelElegido.map(({ tarea, cantidad }) => {
@@ -1793,6 +1890,9 @@ function Menu({
  * Los colores de las pinturas: bien distintos entre sí y que se lean sobre el
  * gris de la maqueta. Más que las pinturas que suele haber en el catálogo.
  */
+/** Sin cargas a mano: siempre el mismo objeto. */
+const SIN_CARGAS: Record<string, Record<string, number>> = {};
+
 /** Sin pinturas: siempre la misma lista vacía, así los colores no se rehacen. */
 const SIN_PINTURAS: { id: string; nombre: string; madre: string | null }[] = [];
 
@@ -2047,6 +2147,10 @@ const VISTAS: { valor: Vista; nombre: string }[] = [
 
 /** Lo hecho, en el 3D y en el panel. */
 const HECHO = "#2f9e44";
+/** Lo cargado a mano que todavía no se marcó: no tiene lugar, sólo va en la barra. */
+const HECHO_A_MANO = "#a9dcb2";
+
+
 
 /** Hoy, en el día de quien mira (no en el de Greenwich): AAAA-MM-DD. */
 function hoy() {

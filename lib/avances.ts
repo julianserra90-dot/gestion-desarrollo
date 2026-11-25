@@ -35,6 +35,8 @@ export type CargaDeAvance = {
   cargadoPor: string | null;
   /** Cuánto daba el acumulado del rubro después de esta carga. */
   acumulado: number;
+  /** La arma el sistema con lo hecho por tarea (3D y a mano): no se edita. */
+  desdeElPlano: boolean;
 };
 
 /**
@@ -175,7 +177,7 @@ export async function getCargasDeRubro(
   const { data } = await supabase
     .from("avances")
     .select(
-      "id, porcentaje, comentario, fecha_desde, fecha_hasta, actualizado_por_nombre"
+      "id, porcentaje, comentario, fecha_desde, fecha_hasta, actualizado_por_nombre, desde_el_plano"
     )
     .eq("obra_id", obraId)
     .eq("rubro_id", rubroId)
@@ -197,6 +199,7 @@ export async function getCargasDeRubro(
       fechaHasta: c.fecha_hasta,
       cargadoPor: c.actualizado_por_nombre,
       acumulado,
+      desdeElPlano: c.desde_el_plano,
     };
   });
 
@@ -251,7 +254,7 @@ export async function getCarga(
   const { data } = await supabase
     .from("avances")
     .select(
-      "id, rubro_id, porcentaje, comentario, fecha_desde, fecha_hasta, actualizado_por_nombre"
+      "id, rubro_id, porcentaje, comentario, fecha_desde, fecha_hasta, actualizado_por_nombre, desde_el_plano"
     )
     .eq("id", avanceId)
     .eq("obra_id", obraId)
@@ -268,6 +271,7 @@ export async function getCarga(
     fechaHasta: data.fecha_hasta,
     cargadoPor: data.actualizado_por_nombre,
     acumulado: 0,
+    desdeElPlano: data.desde_el_plano,
   };
 }
 

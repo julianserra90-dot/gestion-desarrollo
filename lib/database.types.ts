@@ -119,6 +119,7 @@ export type Database = {
           creado_en: string
           creado_por: string | null
           fecha: string
+          fecha_inicio: string | null
           id: string
           objeto: string
           obra_id: string
@@ -131,6 +132,7 @@ export type Database = {
           creado_en?: string
           creado_por?: string | null
           fecha?: string
+          fecha_inicio?: string | null
           id?: string
           objeto: string
           obra_id: string
@@ -143,11 +145,51 @@ export type Database = {
           creado_en?: string
           creado_por?: string | null
           fecha?: string
+          fecha_inicio?: string | null
           id?: string
           objeto?: string
           obra_id?: string
           piso?: number
           planta_id?: string
+          tarea_id?: string
+        }
+        Relationships: []
+      }
+      avances_de_tarea: {
+        Row: {
+          cantidad: number
+          comentario: string | null
+          creado_en: string
+          creado_por: string | null
+          fecha: string
+          fecha_inicio: string | null
+          id: string
+          obra_id: string
+          piso: number | null
+          tarea_id: string
+        }
+        Insert: {
+          cantidad: number
+          comentario?: string | null
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          fecha_inicio?: string | null
+          id?: string
+          obra_id: string
+          piso?: number | null
+          tarea_id: string
+        }
+        Update: {
+          cantidad?: number
+          comentario?: string | null
+          creado_en?: string
+          creado_por?: string | null
+          fecha?: string
+          fecha_inicio?: string | null
+          id?: string
+          obra_id?: string
+          piso?: number | null
           tarea_id?: string
         }
         Relationships: []

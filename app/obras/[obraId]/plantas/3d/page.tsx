@@ -82,7 +82,7 @@ export default async function Edificio3DPage({
   // El avance: las tareas que el dibujo lleva, con su rubro y lo que el
   // cómputo tiene de cada una, y lo ya marcado como hecho, piso por piso.
   const supabase = await createClient();
-  const [{ data: items }, { data: marcadas, error: alLeerMarcas }] = await Promise.all([
+  const [{ data: items }, { data: marcadas, error: alLeerMarcas }, { data: cargadas }] = await Promise.all([
     supabase
       .from("computo_items")
       .select("tarea_id, unidad, cantidad")
@@ -92,7 +92,16 @@ export default async function Edificio3DPage({
       .from("avances_del_plano")
       .select("planta_id, piso, objeto, tarea_id, cantidad, fecha")
       .eq("obra_id", obra.id),
+    // Lo cargado a mano por tarea en Avances: suma con lo marcado acá.
+    supabase.from("avances_de_tarea").select("tarea_id, cantidad, piso").eq("obra_id", obra.id),
   ]);
+  // Por tarea y por piso; "" es sin piso.
+  const aMano: Record<string, Record<string, number>> = {};
+  for (const c of cargadas ?? []) {
+    const dePiso = (aMano[c.tarea_id] ??= {});
+    const clave = c.piso === null ? "" : String(c.piso);
+    dePiso[clave] = (dePiso[clave] ?? 0) + Number(c.cantidad);
+  }
   // Sin la tabla todavía —la migración sin aplicar—, no hay nada marcado.
   if (alLeerMarcas) console.error("avances_del_plano:", alLeerMarcas.message);
   // Todo el catálogo: una abertura lleva tareas por unidad o por metro.
@@ -172,10 +181,14 @@ export default async function Edificio3DPage({
   // El volver de arriba va a la lista de plantas, o al cómputo si se vino de
   // ahí. A la planta que se estaba dibujando se vuelve con el 2D, abajo a la
   // derecha del modelo: el mismo lugar donde la planta tiene su 3D.
+  // Desde el avance de un rubro ("avance:<rubro>"), de vuelta a él.
+  const rubroDeVuelta = desde?.startsWith("avance:") ? desde.slice("avance:".length) : null;
   const vuelta =
     desde === "computo"
       ? { href: `/obras/${obra.slug}/presupuestos/computo`, nombre: "Cómputo" }
-      : { href: `/obras/${obra.slug}/plantas`, nombre: "Plantas" };
+      : rubroDeVuelta && /^[0-9a-f-]{36}$/i.test(rubroDeVuelta)
+        ? { href: `/obras/${obra.slug}/avances/${rubroDeVuelta}`, nombre: "Avance" }
+        : { href: `/obras/${obra.slug}/plantas`, nombre: "Plantas" };
 
   const porque = [
     sinPlanta > 0 &&
@@ -236,6 +249,7 @@ export default async function Edificio3DPage({
             inicial={{ tarea: tarea ?? null, nivel: nivel ?? null, cosa: cosa ?? null, pintar: modo === "pintar" }}
             pinturas={pinturas}
             pintar={pintarEnPlanta}
+            aMano={aMano}
             cabecera={cabecera}
             acciones={definirPisos}
             plantaDeOrigen={

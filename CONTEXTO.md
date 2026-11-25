@@ -3140,6 +3140,66 @@ afuera del ponderado, en vez de entrar con peso inventado; sólo la obra que no
 tiene ni cotizaciones ni cómputo cae al promedio simple. La fórmula está en
 `lib/avances.ts` y, igual, en la vista `obra_resumen` de la base.
 
+**La carga a mano, tarea por tarea** (25/11/2026; el usuario: "la parte manual
+hay que ver cómo tener una lógica similar al marcado del 3D"). Migración
+`20261128100000_el_avance_se_carga_por_tarea` (la aplica el usuario): tabla
+`avances_de_tarea` —tarea, cantidad en su unidad, día, comentario—.
+- **La pantalla del rubro** lista sus tareas del cómputo (`getTareasConAvance`,
+  `lib/avance-del-rubro.ts`) con lo que tiene el cómputo, lo hecho (3D + a
+  mano, con su %), un campo "Hoy" en su unidad y en cuánto queda; abajo, el día,
+  qué se hizo y **cuánto suma al rubro**, calculado mientras se escribe. Sin
+  tareas en el cómputo, el formulario de porcentaje de siempre.
+- **La misma cuenta que el 3D**: `rehacerCargasDelRubro` junta lo marcado en el
+  3D y lo cargado a mano en `cargasDelPlano` —cada tarea pesa lo que cuesta;
+  lo hecho de cada una se suma con tope en su cantidad— y rehace las cargas
+  `desde_el_plano` del rubro. `marcarEnElPlano` usa la misma función. El
+  comentario dice de dónde salió ("Marcado en el 3D: 3 cosas · Cargado por
+  tarea: 1 carga").
+- **3D y a mano van de la mano** (pedido del usuario: "si pongo a mano 10 ml
+  de buña, después en el 3D me tiene que mostrar que ya hay 10 ml
+  realizados"). Cada tarea que viene del plano (`enElPlano`: alguna medición
+  de su renglón es de origen plano) tiene en la pantalla del rubro un botón
+  negro **3D** que abre el 3D en Avance con esa tarea (`?desde=avance:<rubro>`,
+  y el volver dice "Avance" y vuelve al rubro). "Hecho" dice de dónde salió
+  (en el 3D, a mano, o los dos). En el 3D, el total de la tarea suma lo
+  cargado a mano (`aMano`, de `avances_de_tarea`) y lo dice aparte; como no
+  tiene piso, entra mirando todos los pisos. "Hoy" no se completa con lo
+  marcado en el 3D: el 3D ya lo guarda al marcar y se contaría dos veces.
+- **Lo de a mano y lo del 3D se suman** (`hechoDeTarea`), piso por piso y con
+  tope en lo que tiene cada piso: "si en el 3D marqué 10 % y a mano 10 %, el
+  avance es 20; no en el 3D es tanto y a mano tanto, es confuso". Lo de a mano
+  es lo hecho que no se marcó cosa por cosa; en el 3D se pinta en verde claro
+  sobre lo pendiente, así no se pisan. (Un rato valió el mayor de los dos,
+  pensando que lo de a mano eran las mismas cosas que después se marcaban: al
+  usuario le resultó confuso y se volvió a sumar.) Ni el rubro ni el 3D
+  desglosan "tanto en el 3D, tanto a mano": un solo número.
+- **A mano, piso por piso** (pedido del usuario: "que detecte como el cómputo
+  los cálculos por piso… se despliegan como acordeón los pisos, cada uno con
+  sus m², y ahí completo; si fueron 10 % se pinta el 10 de alguna superficie
+  en color clarito"). Migración `20261129100000_el_avance_a_mano_va_por_piso`:
+  `avances_de_tarea.piso` (null: sin piso). Los pisos de una tarea salen de
+  sus mediciones del plano en el cómputo (el renglón "1.º piso" es el piso
+  que se llama así, `nombreDePiso`). En la pantalla del rubro, una tarea con
+  pisos se despliega y cada piso lleva lo que tiene, lo hecho y un campo de
+  **porcentaje** (`pct_<tarea>_<piso>`), que se guarda como cantidad de ese
+  piso; sin pisos, un campo en su unidad. La cuenta es por tarea **y piso**:
+  en cada uno, lo marcado más lo de a mano; lo sin piso, aparte. En
+  el 3D, en cada piso, lo de a mano que falta ubicar se pinta en **verde
+  claro** sobre las cosas pendientes de la tarea, en el orden del dibujo,
+  hasta cubrirlo; marcándolas pasan a verde.
+- **Inicio y fin** (migración `20261130100000_el_avance_tiene_inicio_y_fin`:
+  `fecha_inicio` en `avances_del_plano` y `avances_de_tarea`; null es en el
+  día). La carga a mano y el marcado del 3D eligen "En el día" o
+  "Desde/hasta" (`ElegirFechas`), para saber cuántos días llevó. Las cargas
+  del rubro van desde el primer inicio de lo que las hizo hasta su día.
+- **Un solo historial** (el usuario: "cargado por tarea e historial deberían
+  ser lo mismo"): período, días, tarea, piso, avance (un solo número: la
+  cantidad, o "+15 %" en las de antes), qué se hizo y quién. Junta lo cargado a
+  mano (se borra desde ahí), lo marcado en el 3D por día, tarea y piso (con su
+  botón 3D) y los porcentajes del rubro de antes (se editan). Las cargas que
+  arma el sistema no se listan: son la suma de esto. Arriba, sin el texto
+  "N cargas desde…".
+
 ### Documentos (hechos en la otra máquina)
 Se clasifican por dos ejes: **ámbito** (de obra / de proyecto / administrativa
 / lote) y **rubro**. Administrativa y Lote van por título en vez de rubro —el

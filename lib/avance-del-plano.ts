@@ -20,14 +20,44 @@
  * Sin React y sin base.
  */
 
-/** Una cosa marcada como hecha, de una tarea, con lo que mide y su día. */
-export type MarcaDelPlano = { tareaId: string; cantidad: number; fecha: string };
+/**
+ * Una cosa marcada como hecha, de una tarea, con lo que mide y su día. O una
+ * carga a mano de la tarea (`aMano`): cuánto se hizo, sin decir dónde.
+ *
+ * **Se suman**, piso por piso (`hechoDeTarea`): 10 % marcado en el 3D y 10 %
+ * cargado a mano son 20 %. Lo de a mano es lo que se hizo y no se marcó cosa
+ * por cosa —en el 3D se pinta en verde claro sobre lo pendiente—. Lo cargado
+ * a mano sin piso va aparte, como su propio piso. Lo de la tarea, con tope en
+ * su cantidad. (Hubo un tiempo en que valía el mayor de los dos: el usuario
+ * lo encontró confuso.) Lo cargado a mano es "por lo menos
+ * esto"; marcar en el 3D dice dónde, y al alcanzarlo lo absorbe. Sumadas, los
+ * 10 m² cargados a mano se volvían a contar cuando después se tildaban esos
+ * mismos cielorrasos. Una tarea que el plano no mide sólo tiene lo de a mano.
+ */
+export type MarcaDelPlano = {
+  tareaId: string;
+  cantidad: number;
+  fecha: string;
+  aMano?: boolean;
+  /** En qué piso. Lo del 3D siempre tiene; lo de a mano puede no tener. */
+  piso?: number | null;
+  /** El día en que se empezó; null, en el día. */
+  inicio?: string | null;
+};
 
 /** Una tarea del rubro en el cómputo: cuánto tiene y cuánto cuesta. */
 export type TareaDelRubro = { tareaId: string; cantidad: number; costo: number };
 
-/** Una carga de Avances que sale del plano. */
-export type CargaDelPlano = { fecha: string; porcentaje: number; cosas: number };
+/** Una carga de Avances que sale del plano: cuántas cosas del 3D y cuántas
+ *  cargas a mano la hicieron. */
+export type CargaDelPlano = {
+  /** Desde el primer día que empezó algo de lo que la hizo, hasta `fecha`. */
+  desde: string;
+  fecha: string;
+  porcentaje: number;
+  cosas: number;
+  aMano: number;
+};
 
 /**
  * Las cargas del plano de un rubro, del primer día al último. Los días que no
@@ -48,28 +78,52 @@ export function cargasDelPlano(marcas: MarcaDelPlano[], tareas: TareaDelRubro[])
   const delRubro = marcas.filter((m) => peso.has(m.tareaId));
   const dias = Array.from(new Set(delRubro.map((m) => m.fecha))).sort();
 
-  const hecho = new Map<string, number>();
+  // Por tarea y piso: "tarea|piso". Sin piso, "tarea|".
+  const enEl3d = new Map<string, number>();
+  const aManoPorTarea = new Map<string, number>();
+  const claveDe = (m: MarcaDelPlano) => `${m.tareaId}|${m.piso ?? ""}`;
   const cargas: CargaDelPlano[] = [];
   let anterior = 0;
   let cosas = 0;
+  let aMano = 0;
+  let desde: string | null = null;
   for (const dia of dias) {
     for (const m of delRubro) {
       if (m.fecha !== dia) continue;
-      hecho.set(m.tareaId, (hecho.get(m.tareaId) ?? 0) + m.cantidad);
-      cosas += 1;
+      const dondeVa = m.aMano ? aManoPorTarea : enEl3d;
+      dondeVa.set(claveDe(m), (dondeVa.get(claveDe(m)) ?? 0) + m.cantidad);
+      if (m.aMano) aMano += 1;
+      else cosas += 1;
+      const empezo = m.inicio ?? m.fecha;
+      if (desde === null || empezo < desde) desde = empezo;
     }
     let acumulado = 0;
     for (const [tareaId, p] of peso) {
-      acumulado += p * Math.min(1, (hecho.get(tareaId) ?? 0) / cantidad.get(tareaId)!);
+      const claves = new Set(
+        [...enEl3d.keys(), ...aManoPorTarea.keys()].filter((k) => k.startsWith(`${tareaId}|`))
+      );
+      let hecho = 0;
+      for (const k of claves) hecho += hechoDeTarea(enEl3d.get(k) ?? 0, aManoPorTarea.get(k) ?? 0);
+      acumulado += p * Math.min(1, hecho / cantidad.get(tareaId)!);
     }
     const redondo = Math.min(100, Math.round(acumulado * 100));
     if (redondo > anterior) {
-      cargas.push({ fecha: dia, porcentaje: redondo - anterior, cosas });
+      cargas.push({ desde: desde ?? dia, fecha: dia, porcentaje: redondo - anterior, cosas, aMano });
       anterior = redondo;
       cosas = 0;
+      aMano = 0;
+      desde = null;
     }
   }
   return cargas;
+}
+
+/**
+ * Lo hecho de una tarea en un piso: lo marcado en el 3D más lo cargado a mano,
+ * con tope en lo que el piso tiene, si se sabe.
+ */
+export function hechoDeTarea(enEl3d: number, aMano: number, tope = Infinity): number {
+  return Math.min(tope, enEl3d + aMano);
 }
 
 /** Una tarea que se cotiza por unidad: "un", "u", "c/u". */
