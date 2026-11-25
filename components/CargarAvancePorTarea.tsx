@@ -12,7 +12,7 @@ import type { PisoDeTarea, TareaConAvance } from "@/lib/avance-del-rubro";
  * con la misma lógica que marcar en el 3D. Cada tarea que el cómputo reparte
  * por piso se despliega como un acordeón con sus pisos, cada uno con lo que
  * tiene, lo hecho y un campo para el porcentaje que avanzó; en el 3D, lo de
- * ese piso que todavía no se marcó cosa por cosa se pinta en verde claro. Una
+ * ese piso que todavía no se marcó cosa por cosa se pinta en amarillo, o en verde si completa el piso. Una
  * tarea sin pisos lleva un solo campo, en su unidad.
  *
  * En cada piso, lo hecho es lo marcado en el 3D más lo cargado a mano, con

@@ -104,7 +104,7 @@ export default function Edificio3D({
   /**
    * Lo cargado a mano de cada tarea en la solapa de Avances, en su unidad, por
    * piso ("" sin piso). En cada piso, lo hecho es el mayor de eso y lo marcado
-   * acá; lo de a mano que falta ubicar se pinta en verde claro.
+   * acá; lo de a mano que falta ubicar se pinta en amarillo —en verde si completa el piso—.
    */
   aMano?: Record<string, Record<string, number>>;
   /** La planta de la que se vino: el botón 2D vuelve a ella. */
@@ -253,7 +253,7 @@ export default function Edificio3D({
   const [errorAlMarcar, setErrorAlMarcar] = useState<string | null>(null);
   const tareaEnAvance = vista === "avance" ? tareaVista : null;
   /** Lo de a mano de la tarea en Avance, piso por piso: "piso:cantidad,…" —"x"
-   *  lo cargado sin piso—. Se pinta en verde claro sobre lo pendiente. */
+   *  lo cargado sin piso—. Se pinta en amarillo sobre lo pendiente —en verde si completa el piso—. */
   const aManoDeLaTarea = (() => {
     if (!tareaEnAvance) return "";
     const deTarea = aMano[tareaEnAvance] ?? {};
@@ -945,7 +945,7 @@ export default function Edificio3D({
       // lo que falta en blanco, y lo que no lleva la tarea apenas insinuado,
       // para ubicarse. Sólo lo que la lleva se puede tocar.
       const hechas = new Set(hechasDeLaTarea.split(","));
-      // Lo cargado a mano que todavía no se marcó: se pinta en verde claro
+      // Lo cargado a mano que todavía no se marcó: se pinta en amarillo
       // sobre lo pendiente, cosa por cosa hasta cubrirlo. Lo de cada piso, en
       // su piso; lo cargado sin piso, en lo que quede pendiente, del piso más
       // bajo para arriba. Se reparte con todos los pisos, aunque se mire uno,
@@ -959,7 +959,9 @@ export default function Edificio3D({
             return [piso, Number(cantidad)] as const;
           })
       );
-      const ubicadasAMano = new Map<number, Set<string>>();
+      // Si lo de a mano llega a todo lo que le falta al piso, el piso está
+      // terminado y se ve como lo marcado; si no, en amarillo: hecho en parte.
+      const ubicadasAMano = new Map<number, { objetos: Set<string>; completo: boolean }>();
       let sinPiso = porUbicar.get("x") ?? 0;
       for (const piso of [...pisos].sort((a, b) => a.numero - b.numero)) {
         const modelo = piso.planta ? modelos[piso.planta] : undefined;
@@ -967,17 +969,23 @@ export default function Edificio3D({
         const deAMano = new Set<string>();
         let delPiso = porUbicar.get(String(piso.numero)) ?? 0;
         if (delPiso <= 1e-9 && sinPiso <= 1e-9) continue;
+        let pendiente = 0;
+        let puesto = 0;
         for (const [objeto, ficha] of Object.entries(modelo.objetos)) {
-          if (delPiso <= 1e-9 && sinPiso <= 1e-9) break;
           if (hechas.has(`${piso.planta}|${piso.numero}|${objeto}`)) continue;
           const medida = ficha.tareas?.find((t) => t.tarea === tareaEnAvance);
           const cuanto = medida ? cantidadEnUnidad(medida, unidadEnAvance) ?? 0 : 0;
           if (!(cuanto > 0)) continue;
+          pendiente += cuanto;
+          if (delPiso <= 1e-9 && sinPiso <= 1e-9) continue;
           deAMano.add(objeto);
-          if (delPiso > 1e-9) delPiso -= cuanto;
-          else sinPiso -= cuanto;
+          const deEste = Math.min(cuanto, Math.max(0, delPiso));
+          delPiso -= deEste;
+          const deSinPiso = Math.min(cuanto - deEste, Math.max(0, sinPiso));
+          sinPiso -= deSinPiso;
+          puesto += deEste + deSinPiso;
         }
-        ubicadasAMano.set(piso.numero, deAMano);
+        ubicadasAMano.set(piso.numero, { objetos: deAMano, completo: pendiente > 0 && casiTodo(puesto, pendiente) });
       }
       const aspecto = {
         hecho: new THREE.MeshLambertMaterial({ color: HECHO }),
@@ -994,7 +1002,7 @@ export default function Edificio3D({
       // que su filo, y así también se ve hecho.
       const filoDeAvance = {
         hecho: new THREE.LineBasicMaterial({ color: "#1f6f30" }),
-        aMano: new THREE.LineBasicMaterial({ color: "#5fae70" }),
+        aMano: new THREE.LineBasicMaterial({ color: "#b8860b" }),
         pendiente: new THREE.LineBasicMaterial({ color: "#5c5f66" }),
       };
       descartables.push(
@@ -1012,7 +1020,7 @@ export default function Edificio3D({
         if (!piso.planta || !modelo) continue;
         const nivel = new THREE.Group();
         nivel.position.y = piso.cota;
-        const deAMano = ubicadasAMano.get(piso.numero) ?? new Set<string>();
+        const deAMano = ubicadasAMano.get(piso.numero) ?? { objetos: new Set<string>(), completo: false };
         const grupos = {
           hecho: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
           aMano: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
@@ -1033,8 +1041,10 @@ export default function Edificio3D({
             ? "contexto"
             : hechas.has(`${piso.planta}|${piso.numero}|${solido.objeto}`)
               ? "hecho"
-              : deAMano.has(solido.objeto)
-                ? "aMano"
+              : deAMano.objetos.has(solido.objeto)
+                ? deAMano.completo
+                  ? "hecho"
+                  : "aMano"
                 : "pendiente";
           grupos[estado].geometrias.push(geometriaDe(solido));
           grupos[estado].objetos.push(solido.objeto);
@@ -1267,7 +1277,22 @@ export default function Edificio3D({
     pisosConAlgo.reduce((s, p) => s + marcadoEn(p) + (manoPorPiso[String(p)] ?? 0), 0) +
       (soloElPiso === null ? manoPorPiso[""] ?? 0 : 0)
   );
-  const aManoSinMarcar = Math.max(0, hechoDeLaTarea - marcadoEnEl3d);
+  // En la barra, como en el edificio: lo marcado y los pisos que lo de a mano
+  // completa, en verde; lo de a mano que no completa su piso, en amarillo.
+  const totalDelPiso = (numero: number) => {
+    const p = conPlanta.find((x) => x.numero === numero);
+    return p ? Object.keys(modelos[p.planta!].objetos).reduce((s, o) => s + cuantoDe(p.planta!, o), 0) : 0;
+  };
+  const completadoAMano = pisosConAlgo.reduce((s, p) => {
+    const mano = manoPorPiso[String(p)] ?? 0;
+    const falta = Math.max(0, totalDelPiso(p) - marcadoEn(p));
+    return mano > 0 && casiTodo(mano, falta) ? s + falta : s;
+  }, 0);
+  const enVerde =
+    totalDeLaTarea > 0 && casiTodo(hechoDeLaTarea, totalDeLaTarea)
+      ? hechoDeLaTarea
+      : Math.min(hechoDeLaTarea, marcadoEnEl3d + completadoAMano);
+  const aManoSinMarcar = Math.max(0, hechoDeLaTarea - enVerde);
   /**
    * Las tareas de lo elegido, con lo que mide de cada una: una ventana lleva
    * el amure de su premarco y su colocación, y cada una se tilda aparte.
@@ -1643,13 +1668,13 @@ export default function Edificio3D({
                       <h3 style={tituloDeFicha}>{tareaElegida.nombre}</h3>
                     </div>
                     <div style={{ display: "grid", gap: "6px" }}>
-                      {/* Lo marcado en verde y, a continuación, lo cargado a
-                          mano que todavía no se marcó, en verde claro. */}
+                      {/* Lo terminado en verde y, a continuación, lo cargado a
+                          mano que no completa su piso, en amarillo. */}
                       <div style={{ ...barraDeAvance, display: "flex" }}>
                         <div
                           style={{
                             ...rellenoDeAvance,
-                            width: `${totalDeLaTarea > 0 ? Math.min(100, (Math.min(marcadoEnEl3d, hechoDeLaTarea) / totalDeLaTarea) * 100) : 0}%`,
+                            width: `${totalDeLaTarea > 0 ? Math.min(100, (enVerde / totalDeLaTarea) * 100) : 0}%`,
                           }}
                         />
                         <div
@@ -2174,7 +2199,17 @@ const VISTAS: { valor: Vista; nombre: string }[] = [
 /** Lo hecho, en el 3D y en el panel. */
 const HECHO = "#2f9e44";
 /** Lo cargado a mano que todavía no se marcó: no tiene lugar, sólo va en la barra. */
-const HECHO_A_MANO = "#a9dcb2";
+/**
+ * Si lo hecho llega a todo, con medio por ciento de margen: lo de a mano se
+ * carga en % y se guarda al centésimo, y dos cargas del 50 % tienen que
+ * completar el piso, como dice el panel cuando muestra 100 %.
+ */
+function casiTodo(hecho: number, todo: number): boolean {
+  return hecho >= todo * 0.995 - 1e-9;
+}
+
+/** Lo cargado a mano que no completa el piso: hecho en parte, sin saber dónde. */
+const HECHO_A_MANO = "#f2c94c";
 
 
 

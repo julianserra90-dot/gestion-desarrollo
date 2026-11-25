@@ -1553,12 +1553,20 @@ Dos cosas del dibujo que esto obligó:
     estructura. En Avance, una cosa **lleva** la tarea sólo si la mide en su
     unidad: la buña es hija de la placa, y el cielorraso heredaba la buña sin
     metros lineales —se pintaba pendiente y tapaba la buña—. El filo de lo
-    hecho es verde (verde claro lo de a mano): lo finito, como la buña, casi
-    no es más que su filo.
+    hecho es verde (amarillo lo de a mano en parte): lo finito, como la buña,
+    casi no es más que su filo.
   - **Lo cargado a mano sin piso también se ve** (cargas viejas, antes de ir
-    por piso): en verde claro sobre lo pendiente, del piso más bajo para
-    arriba, después de lo de cada piso. Se reparte con todos los pisos aunque
-    se mire uno, para que cada cosa quede igual.
+    por piso): sobre lo pendiente, del piso más bajo para arriba, después de
+    lo de cada piso. Se reparte con todos los pisos aunque se mire uno, para
+    que cada cosa quede igual.
+  - **A mano: verde si completa el piso, amarillo si no** (pedido del usuario,
+    25/11/2026: "se completó el 100 % pero sigue sin pintarse de verde
+    oscuro… el verde claro debería ser amarillo para identificarlo más
+    fácil"). Si lo de a mano llega a todo lo que le falta al piso, el piso se
+    ve terminado, igual que lo marcado; si no, lo que cubre va en amarillo
+    —hecho en parte, sin saber dónde—. La barra del panel, igual. Con medio
+    por ciento de margen (`casiTodo`): el % se guarda al centésimo y dos
+    cargas del 50 % tienen que completar el piso.
   - **Cada cosa, con todas sus tareas para tildar** (pedido del usuario: "una
     ventana tiene amure de premarco y colocación… cuando la selecciono que me
     figure qué tildar como realizado y qué queda pendiente"). En Avance, al
