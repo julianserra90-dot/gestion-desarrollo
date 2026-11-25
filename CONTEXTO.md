@@ -1824,6 +1824,15 @@ así:
   (`SeccionPlegable`; pedido del usuario: "se hace muy largo, capas debería
   ser un acordeón y rubros otro"). Plegada, cada una dice en su rótulo lo
   que tiene prendido ("2 de 8").
+- **El piso, capa por capa** (25/11/2026; el usuario: "cuando veo la carpeta
+  desde el cómputo se ve todo el paquete entero; esas capas se deberían armar
+  como capas"). Antes el piso de un ambiente era un solo sólido del espesor
+  del paquete con todas sus tareas. Ahora cada capa es su losa, apilada de la
+  losa hacia arriba en el orden de la lista, con su espesor y su tarea
+  (`piso|<ambiente>|<i>`); termina en el 0,00. Una capa sin espesor va
+  finita donde le toca. Así el 3D muestra también el orden: en el Balcón de
+  Andonaegui la carpeta estaba cargada después del porcelanato y queda
+  arriba de él.
 - **El aviso de pisos sin planta** pasó a un número rojo en la esquina de
   "Definir pisos" (el porqué en su `title`), que es donde se arregla.
 - Se sacaron los textos de ayuda (la pista de abajo, "Qué se ve", "el resto

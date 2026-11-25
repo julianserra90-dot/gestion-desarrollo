@@ -718,17 +718,31 @@ export function modeloDePlanta(
   for (const ambiente of dibujo.ambientes) {
     const objeto = `ambiente:${ambiente.id}`;
     // El piso termina en el 0,00 y baja lo que suman sus capas: es el
-    // paquete que va sobre la losa.
+    // paquete que va sobre la losa. **Cada capa es su losa**, apiladas de la
+    // losa hacia arriba en el orden en que se cargaron —contrapiso, carpeta,
+    // porcelanato—, cada una con su espesor y su tarea: mirando la carpeta se
+    // ve la carpeta, no el paquete entero. Una capa sin espesor se ve finita
+    // donde le toca. Sin capas, una placa fina para verlo y tocarlo.
     const paquete = ambiente.piso.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
-    sumar(
-      "piso",
-      objeto,
-      `piso|${ambiente.id}`,
-      ambiente.puntos,
-      -(paquete > 0 ? paquete : FINO),
-      0,
-      tareasDe(ambiente.piso)
-    );
+    if (ambiente.piso.length === 0) {
+      sumar("piso", objeto, `piso|${ambiente.id}`, ambiente.puntos, -FINO, 0, []);
+    } else {
+      let abajo = -paquete;
+      ambiente.piso.forEach((capa, i) => {
+        const grueso = capa.espesor ?? 0;
+        const arriba = abajo + grueso;
+        sumar(
+          "piso",
+          objeto,
+          `piso|${ambiente.id}|${i}`,
+          ambiente.puntos,
+          grueso > 0 ? abajo : Math.min(arriba, 0) - FINO / 2,
+          grueso > 0 ? arriba : Math.min(arriba, 0),
+          tareasDe([capa])
+        );
+        abajo = arriba;
+      });
+    }
 
     const espesor = ambiente.cielorraso.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
     // Hasta donde llega: su borde, si se le dibujó uno.
