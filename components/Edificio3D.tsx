@@ -252,14 +252,13 @@ export default function Edificio3D({
   const [marcando, iniciarMarcado] = useTransition();
   const [errorAlMarcar, setErrorAlMarcar] = useState<string | null>(null);
   const tareaEnAvance = vista === "avance" ? tareaVista : null;
-  /** Lo de a mano de la tarea en Avance, piso por piso: "piso:cantidad,…". Se
-   *  pinta en verde claro sobre lo pendiente de ese piso. */
+  /** Lo de a mano de la tarea en Avance, piso por piso: "piso:cantidad,…" —"x"
+   *  lo cargado sin piso—. Se pinta en verde claro sobre lo pendiente. */
   const aManoDeLaTarea = (() => {
     if (!tareaEnAvance) return "";
     const deTarea = aMano[tareaEnAvance] ?? {};
     return Object.entries(deTarea)
-      .filter(([piso]) => piso !== "")
-      .map(([piso, cantidad]) => `${piso}:${cantidad}`)
+      .map(([piso, cantidad]) => `${piso === "" ? "x" : piso}:${cantidad}`)
       .join(",");
   })();
   const unidadEnAvance = tareasDeAvance.find((t) => t.id === tareaEnAvance)?.unidad ?? "m²";
@@ -946,17 +945,40 @@ export default function Edificio3D({
       // lo que falta en blanco, y lo que no lleva la tarea apenas insinuado,
       // para ubicarse. Sólo lo que la lleva se puede tocar.
       const hechas = new Set(hechasDeLaTarea.split(","));
-      // Lo cargado a mano en cada piso que todavía no se marcó: se pinta en
-      // verde claro sobre lo pendiente, cosa por cosa hasta cubrirlo.
-      const porUbicar = new Map(
+      // Lo cargado a mano que todavía no se marcó: se pinta en verde claro
+      // sobre lo pendiente, cosa por cosa hasta cubrirlo. Lo de cada piso, en
+      // su piso; lo cargado sin piso, en lo que quede pendiente, del piso más
+      // bajo para arriba. Se reparte con todos los pisos, aunque se mire uno,
+      // para que cada cosa quede siempre igual.
+      const porUbicar = new Map<string, number>(
         aManoDeLaTarea
           .split(",")
           .filter(Boolean)
           .map((par) => {
             const [piso, cantidad] = par.split(":");
-            return [Number(piso), Number(cantidad)] as const;
+            return [piso, Number(cantidad)] as const;
           })
       );
+      const ubicadasAMano = new Map<number, Set<string>>();
+      let sinPiso = porUbicar.get("x") ?? 0;
+      for (const piso of [...pisos].sort((a, b) => a.numero - b.numero)) {
+        const modelo = piso.planta ? modelos[piso.planta] : undefined;
+        if (!piso.planta || !modelo) continue;
+        const deAMano = new Set<string>();
+        let delPiso = porUbicar.get(String(piso.numero)) ?? 0;
+        if (delPiso <= 1e-9 && sinPiso <= 1e-9) continue;
+        for (const [objeto, ficha] of Object.entries(modelo.objetos)) {
+          if (delPiso <= 1e-9 && sinPiso <= 1e-9) break;
+          if (hechas.has(`${piso.planta}|${piso.numero}|${objeto}`)) continue;
+          const medida = ficha.tareas?.find((t) => t.tarea === tareaEnAvance);
+          const cuanto = medida ? cantidadEnUnidad(medida, unidadEnAvance) ?? 0 : 0;
+          if (!(cuanto > 0)) continue;
+          deAMano.add(objeto);
+          if (delPiso > 1e-9) delPiso -= cuanto;
+          else sinPiso -= cuanto;
+        }
+        ubicadasAMano.set(piso.numero, deAMano);
+      }
       const aspecto = {
         hecho: new THREE.MeshLambertMaterial({ color: HECHO }),
         aMano: new THREE.MeshLambertMaterial({ color: HECHO_A_MANO }),
@@ -968,29 +990,29 @@ export default function Edificio3D({
           depthWrite: false,
         }),
       };
-      const filoDeAvance = new THREE.LineBasicMaterial({ color: "#5c5f66" });
-      descartables.push(aspecto.hecho, aspecto.aMano, aspecto.pendiente, aspecto.contexto, filoDeAvance);
+      // El filo, del color de cómo está: lo finito —una buña— casi no es más
+      // que su filo, y así también se ve hecho.
+      const filoDeAvance = {
+        hecho: new THREE.LineBasicMaterial({ color: "#1f6f30" }),
+        aMano: new THREE.LineBasicMaterial({ color: "#5fae70" }),
+        pendiente: new THREE.LineBasicMaterial({ color: "#5c5f66" }),
+      };
+      descartables.push(
+        aspecto.hecho,
+        aspecto.aMano,
+        aspecto.pendiente,
+        aspecto.contexto,
+        filoDeAvance.hecho,
+        filoDeAvance.aMano,
+        filoDeAvance.pendiente
+      );
       for (const piso of pisos) {
         if (soloElPiso !== null && piso.numero !== soloElPiso) continue;
         const modelo = piso.planta ? modelos[piso.planta] : undefined;
         if (!piso.planta || !modelo) continue;
         const nivel = new THREE.Group();
         nivel.position.y = piso.cota;
-        // Qué pendientes cubren lo de a mano de este piso que falta ubicar:
-        // las primeras, en el orden del dibujo, hasta llegar.
-        const deAMano = new Set<string>();
-        let falta = porUbicar.get(piso.numero) ?? 0;
-        if (falta > 0) {
-          for (const [objeto, ficha] of Object.entries(modelo.objetos)) {
-            if (falta <= 1e-9) break;
-            if (hechas.has(`${piso.planta}|${piso.numero}|${objeto}`)) continue;
-            const medida = ficha.tareas?.find((t) => t.tarea === tareaEnAvance);
-            const cuanto = medida ? cantidadEnUnidad(medida, unidadEnAvance) ?? 0 : 0;
-            if (!(cuanto > 0)) continue;
-            deAMano.add(objeto);
-            falta -= cuanto;
-          }
-        }
+        const deAMano = ubicadasAMano.get(piso.numero) ?? new Set<string>();
         const grupos = {
           hecho: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
           aMano: { geometrias: [] as THREE.BufferGeometry[], objetos: [] as string[] },
@@ -999,10 +1021,14 @@ export default function Edificio3D({
         };
         for (const solido of modelo.solidos) {
           // La pieza que dice qué lleva manda: el cielorraso de un baño no
-          // lleva su contrapiso.
-          const lleva = solido.tareas
-            ? solido.tareas.includes(tareaEnAvance)
-            : modelo.objetos[solido.objeto]?.tareas?.some((t) => t.tarea === tareaEnAvance);
+          // lleva su contrapiso. Y la cosa tiene que medirla en su unidad: la
+          // buña es hija de la placa, pero el cielorraso no tiene metros
+          // lineales de buña —los tiene la buña—.
+          const medida = modelo.objetos[solido.objeto]?.tareas?.find((t) => t.tarea === tareaEnAvance);
+          const lleva =
+            (solido.tareas ? solido.tareas.includes(tareaEnAvance) : !!medida) &&
+            !!medida &&
+            (cantidadEnUnidad(medida, unidadEnAvance) ?? 0) > 0;
           const estado = !lleva
             ? "contexto"
             : hechas.has(`${piso.planta}|${piso.numero}|${solido.objeto}`)
@@ -1034,7 +1060,7 @@ export default function Edificio3D({
           mallas.push(malla);
           const bordes = new THREE.EdgesGeometry(fundida, 25);
           descartables.push(bordes);
-          nivel.add(new THREE.LineSegments(bordes, filoDeAvance));
+          nivel.add(new THREE.LineSegments(bordes, filoDeAvance[estado]));
         }
         edificio.add(nivel);
       }

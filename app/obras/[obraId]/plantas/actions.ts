@@ -745,13 +745,14 @@ export type MarcaEnElPlano = {
 };
 
 const ES_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Una cosa del 3D: un muro, un ambiente, una pieza de la estructura; una cara
-// de un muro (`cara:<muro>:<lado>`), o una capa dibujada en una cara
-// (`capa:<capa>:<muro>:<lado>`). El lado es 1, -1, o la punta a o b.
+// Una cosa del 3D: un muro, un ambiente, la buña de un ambiente, un cajón,
+// una pieza de la estructura; una cara de un muro (`cara:<muro>:<lado>`), o
+// una capa dibujada en una cara (`capa:<capa>:<muro>:<lado>`). El lado es 1,
+// -1, o la punta a o b.
 const UUID = "[0-9a-f-]{36}";
 const LADO = "(1|-1|a|b)";
 const ES_OBJETO = new RegExp(
-  `^((muro|ambiente|losa|viga|columna|abertura):${UUID}|cara:${UUID}:${LADO}|capa:${UUID}:${UUID}:${LADO})$`,
+  `^((muro|ambiente|buna|cajon|losa|viga|columna|abertura):${UUID}|cara:${UUID}:${LADO}|capa:${UUID}:${UUID}:${LADO})$`,
   "i"
 );
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;

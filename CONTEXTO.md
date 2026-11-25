@@ -1547,6 +1547,18 @@ Dos cosas del dibujo que esto obligó:
     entero, se redondea el **acumulado** y cada día lleva la diferencia: diez
     marcas del 0,4 % hacen 4 % (`prueba48`). Las cargas a mano no se tocan.
     Una tarea que no está en el cómputo no se puede marcar.
+  - **Las buñas y los cajones se marcan** (pedido del usuario, 25/11/2026: "no
+    me deja marcar las buñas como realizadas"). `marcarEnElPlano` acepta
+    `buna:<ambiente>` y `cajon:<id>` además de muros, ambientes, caras, capas y
+    estructura. En Avance, una cosa **lleva** la tarea sólo si la mide en su
+    unidad: la buña es hija de la placa, y el cielorraso heredaba la buña sin
+    metros lineales —se pintaba pendiente y tapaba la buña—. El filo de lo
+    hecho es verde (verde claro lo de a mano): lo finito, como la buña, casi
+    no es más que su filo.
+  - **Lo cargado a mano sin piso también se ve** (cargas viejas, antes de ir
+    por piso): en verde claro sobre lo pendiente, del piso más bajo para
+    arriba, después de lo de cada piso. Se reparte con todos los pisos aunque
+    se mire uno, para que cada cosa quede igual.
   - **Cada cosa, con todas sus tareas para tildar** (pedido del usuario: "una
     ventana tiene amure de premarco y colocación… cuando la selecciono que me
     figure qué tildar como realizado y qué queda pendiente"). En Avance, al
