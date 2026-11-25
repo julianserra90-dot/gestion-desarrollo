@@ -2016,6 +2016,13 @@ y los dos juegos de agarraderas quedan uno sobre otro.
   que antes era siempre el ambiente entero y computaba placa donde no había.
   Se congela al tocarlo, igual que la buña, y "Que llegue hasta los muros" lo
   devuelve a null.
+- **El 3D también usa ese borde** (25/11/2026; el usuario: "el durlock cuando
+  lo dibujo me toma toda el área del ambiente"). El cómputo ya lo usaba, pero
+  el 3D dibujaba el cielorraso con el contorno del ambiente y las cantidades
+  de cada ambiente —las de Avance y la ficha— eran el ambiente entero, sin
+  descontar los cajones: la placa de Andonaegui daba 73,84 m² en Avance y
+  64 en el cómputo. Ahora el cielorraso del 3D es su borde, y lo que lleva
+  se mide como en `medirCaras`: el borde menos el fondo de los cajones.
 - **La buña sale de ese borde**, no del ambiente: la buña es el remate del
   borde del cielorraso, así que corrido el cielorraso la buña lo sigue sola y
   el caso del placard se arregla con un solo gesto.

@@ -46,6 +46,7 @@ import {
   prismasDeHormigon,
   recortar,
 } from "@/lib/planta-estructura";
+import { contornoDeCielorraso } from "@/lib/planta-bunas";
 import { piezasDeCapas } from "@/lib/planta-capas";
 import { carasPintables } from "@/lib/planta-pintura";
 import type { Composicion } from "@/lib/tipos-de-muro";
@@ -724,12 +725,14 @@ export function modeloDePlanta(
     );
 
     const espesor = ambiente.cielorraso.reduce((t, capa) => t + (capa.espesor ?? 0), 0);
+    // Hasta donde llega: su borde, si se le dibujó uno.
+    const bordeDelCielorraso = contornoDeCielorraso(ambiente);
     if (ambiente.alturaCielorraso !== null) {
       sumar(
         "cielorraso",
         objeto,
         `cielorraso|${ambiente.id}`,
-        ambiente.puntos,
+        bordeDelCielorraso,
         ambiente.alturaCielorraso,
         ambiente.alturaCielorraso + (espesor > 0 ? espesor : FINO),
         tareasDe(ambiente.cielorraso)
@@ -741,7 +744,7 @@ export function modeloDePlanta(
         "cielorraso",
         objeto,
         `cielorraso|${ambiente.id}`,
-        ambiente.puntos,
+        bordeDelCielorraso,
         techo - (espesor > 0 ? espesor : FINO),
         techo,
         tareasDe(ambiente.cielorraso)
@@ -987,8 +990,18 @@ export function modeloDePlanta(
   }
   for (const ambiente of dibujo.ambientes) {
     const superficie = areaDe(ambiente.puntos) * mpp * mpp;
-    for (const capa of [...ambiente.piso, ...ambiente.cielorraso]) {
+    for (const capa of ambiente.piso) {
       anotar(`ambiente:${ambiente.id}`, capa.tarea, superficie, superficie * (capa.espesor ?? 0));
+    }
+    // El cielorraso, como en el cómputo (`medirCaras`): su propio borde si se
+    // lo dibujó —el durlock que muere contra un placard—, sin el fondo de los
+    // cajones, que se cuentan aparte.
+    const bajoCajones = (medidas?.cajones ?? [])
+      .filter((c) => c.ambienteId === ambiente.id)
+      .reduce((t, c) => t + c.area, 0);
+    const delCielorraso = Math.max(0, areaDe(contornoDeCielorraso(ambiente)) * mpp * mpp - bajoCajones);
+    for (const capa of ambiente.cielorraso) {
+      anotar(`ambiente:${ambiente.id}`, capa.tarea, delCielorraso, delCielorraso * (capa.espesor ?? 0));
     }
   }
   if (medida) {
