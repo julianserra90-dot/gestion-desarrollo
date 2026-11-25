@@ -1887,6 +1887,7 @@ const OPCIONES: { clave: CapaDeVista; nombre: string; madre?: CapaDeVista }[] = 
   { clave: "ambientes", nombre: "Pisos" },
   { clave: "cielorrasos", nombre: "Cielorrasos" },
   { clave: "cajones", nombre: "Cajones", madre: "cielorrasos" },
+  { clave: "bunas", nombre: "Buñas", madre: "cielorrasos" },
   { clave: "estructura", nombre: "Estructura" },
 ];
 
@@ -1901,6 +1902,7 @@ const CAPA_DE: Record<ClaseDeSolido, CapaDeVista> = {
   cielorraso: "cielorrasos",
   cajon: "cajones",
   pinturaDeCajon: "cajones",
+  buna: "bunas",
   losa: "estructura",
   viga: "estructura",
   columna: "estructura",
@@ -1950,6 +1952,8 @@ const ASPECTO: Record<ClaseDeSolido, { color: string; opacidad: number }> = {
   cielorraso: { color: "#ffffff", opacidad: 0.55 },
   cajon: { color: "#ffffff", opacidad: 0.8 },
   pinturaDeCajon: { color: "#9fcbee", opacidad: 1 },
+  // Ocre, como en la planta.
+  buna: { color: "#b7791f", opacidad: 1 },
   losa: { color: "#b9bec7", opacidad: 1 },
   viga: { color: "#9aa1ad", opacidad: 1 },
   columna: { color: "#8a919e", opacidad: 1 },

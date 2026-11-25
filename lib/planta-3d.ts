@@ -46,7 +46,7 @@ import {
   prismasDeHormigon,
   recortar,
 } from "@/lib/planta-estructura";
-import { contornoDeCielorraso } from "@/lib/planta-bunas";
+import { anilloDeBuna, contornoDeCielorraso, ladosDeBuna, largoDeBuna } from "@/lib/planta-bunas";
 import { piezasDeCapas } from "@/lib/planta-capas";
 import { carasPintables } from "@/lib/planta-pintura";
 import type { Composicion } from "@/lib/tipos-de-muro";
@@ -82,6 +82,9 @@ export type ClaseDeSolido =
   | "cajon"
   /** La pintura de una cara de un cajón: va con los cajones, no con las capas. */
   | "pinturaDeCajon"
+  /** La buña del cielorraso: un perfil chico en su borde, por los lados que
+   *  la llevan. */
+  | "buna"
   | "losa"
   | "viga"
   | "columna"
@@ -216,6 +219,9 @@ export type CaraEn3D = {
   /** Cuánto tiene encima: dónde queda la cara terminada, en metros. */
   grosor: number;
 };
+
+/** El perfil de la buña en el 3D: un cuadradito de 2 cm, para verla. */
+const PERFIL_DE_BUNA = 0.02;
 
 /** Lo que mide de grueso una pintura en el 3D: lo justo para verla. */
 const PIEL_DE_PINTURA = 0.004;
@@ -751,6 +757,52 @@ export function modeloDePlanta(
       );
     }
 
+    // La buña: un perfil de 2 cm en el borde del cielorraso, hacia adentro,
+    // pegado a su altura, por los lados que la llevan. Es su propia cosa: se
+    // la ve, se la toca y se le marca el avance.
+    if (ambiente.buna?.tarea) {
+      const anillo = anilloDeBuna(ambiente);
+      const deBuna = `buna:${ambiente.id}`;
+      let doble = 0;
+      for (let i = 0; i < anillo.length; i++) {
+        const p = anillo[i];
+        const q = anillo[(i + 1) % anillo.length];
+        doble += p.x * q.y - q.x * p.y;
+      }
+      // Hacia adentro del anillo, recorrido en el sentido que tenga.
+      const sentido = doble >= 0 ? 1 : -1;
+      const ancho = PERFIL_DE_BUNA / mpp;
+      const alto = ambiente.alturaCielorraso ?? techo;
+      for (const lado of ladosDeBuna(anillo)) {
+        if (!lado.lleva) continue;
+        const largo = distancia(lado.a, lado.b);
+        if (!(largo > 0)) continue;
+        const n = {
+          x: (-(lado.b.y - lado.a.y) / largo) * sentido * ancho,
+          y: ((lado.b.x - lado.a.x) / largo) * sentido * ancho,
+        };
+        sumar(
+          "buna",
+          deBuna,
+          `buna|${ambiente.buna.tarea}`,
+          [lado.a, lado.b, { x: lado.b.x + n.x, y: lado.b.y + n.y }, { x: lado.a.x + n.x, y: lado.a.y + n.y }],
+          alto - PERFIL_DE_BUNA,
+          alto,
+          [ambiente.buna.tarea]
+        );
+      }
+      objetos[deBuna] = {
+        titulo: "Buña",
+        nombre: ambiente.nombre,
+        renglones: [
+          ["Tarea", tarea(ambiente.buna.tarea)],
+          ["Largo", formatMetros(largoDeBuna(anillo, mpp))],
+          ["A", formatMetros(alto)],
+        ],
+        campos: [],
+      };
+    }
+
     objetos[objeto] = {
       titulo: "Ambiente",
       nombre: ambiente.nombre,
@@ -959,7 +1011,8 @@ export function modeloDePlanta(
     largo = 0,
     unidades = 0
   ) => {
-    if (!tarea || !objetos[objeto] || !(superficie > 0 || volumen > 0 || unidades > 0)) return;
+    // Lo que se mide por metro —una buña— sólo tiene largo.
+    if (!tarea || !objetos[objeto] || !(superficie > 0 || volumen > 0 || largo > 0 || unidades > 0)) return;
     const de = porObjeto.get(objeto) ?? new Map<string, Cuanto>();
     const ya = de.get(tarea) ?? { superficie: 0, volumen: 0, largo: 0, unidades: 0 };
     de.set(tarea, {
@@ -1002,6 +1055,10 @@ export function modeloDePlanta(
     const delCielorraso = Math.max(0, areaDe(contornoDeCielorraso(ambiente)) * mpp * mpp - bajoCajones);
     for (const capa of ambiente.cielorraso) {
       anotar(`ambiente:${ambiente.id}`, capa.tarea, delCielorraso, delCielorraso * (capa.espesor ?? 0));
+    }
+    // La buña, por su largo: lo mismo que pasa al cómputo.
+    if (ambiente.buna?.tarea) {
+      anotar(`buna:${ambiente.id}`, ambiente.buna.tarea, 0, 0, largoDeBuna(anilloDeBuna(ambiente), mpp));
     }
   }
   if (medida) {

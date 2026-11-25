@@ -2035,6 +2035,16 @@ y los dos juegos de agarraderas quedan uno sobre otro.
   cielorraso vuelve a él desde la buña, un clic en el vacío no suelta lo
   elegido (soltarlo apagaría el modo de rebote) y Escape sale del modo antes
   que de la selección.
+- **La buña en el 3D** (25/11/2026; el usuario: "cuando pongo buña y voy al
+  3D me muestra todo eso"). "Ver en el 3D" desde el cómputo no la encontraba:
+  no se dibujaba ni era de ninguna cosa, así que el 3D caía en Ver con lo
+  prendido. Ahora cada buña es su cosa (`buna:<ambiente>`, clase `buna`, capa
+  de vista **Buñas** debajo de Cielorrasos): un perfil de 2 cm en el borde
+  del cielorraso, hacia adentro y a su altura, por los lados que la llevan,
+  en ocre como en la planta, con su tarea y su largo. Para eso `anotar`
+  acepta lo que sólo tiene largo (antes lo descartaba: nada por metro
+  llegaba a Avance). El 3D suma el largo sin redondear; el cómputo lo
+  redondea al centímetro por piso (52,66 contra 52,64 ml).
 - **Las agarraderas de la buña van en su color** (ocre, `colorDelContorno`) y
   las del cielorraso y el ambiente en naranja: dos anillos encima no se pueden
   distinguir por la forma.
