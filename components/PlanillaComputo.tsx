@@ -367,15 +367,20 @@ export default function PlanillaComputo({
                   {/* Anchos fijos: todas las tablas de rubros quedan con las
                       columnas en el mismo lugar. */}
                   <colgroup>
-                    <col style={{ width: "72px" }} />
+                    <col style={{ width: `${ANCHO_COTIZAR}px` }} />
                     <col />
-                    <col style={{ width: "48px" }} />
-                    <col style={{ width: "116px" }} />
+                    <col style={{ width: `${ANCHO_UNIDAD}px` }} />
+                    <col style={{ width: `${ANCHO_CANTIDAD}px` }} />
+                    {/* Unitario más angosto que subtotal: uno lleva el precio
+                        de un m² y el otro el de la obra entera. */}
                     {Array.from({ length: conIntegrado ? 6 : 4 }, (_, i) => (
-                      <col key={i} style={{ width: "104px" }} />
+                      <col
+                        key={i}
+                        style={{ width: `${i % 2 === 0 ? ANCHO_UNITARIO : ANCHO_SUBTOTAL}px` }}
+                      />
                     ))}
-                    <col style={{ width: "124px" }} />
-                    <col style={{ width: "300px" }} />
+                    <col style={{ width: `${ANCHO_TOTAL}px` }} />
+                    <col style={{ width: `${ANCHO_ACCIONES}px` }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -816,13 +821,36 @@ const scroll = {
   containerType: "inline-size" as const,
 };
 
-// El ancho mínimo tiene que dar para TODAS las columnas fijas más la de la
-// tarea, que es la única sin ancho. Con `table-layout: fixed`, si la suma de
-// las fijas se pasa del mínimo, la que sobra es justamente la del nombre: se
-// aplastaba a unas letras por renglón apenas aparecían las de Integrado.
-const ANCHO_TAREA = 260;
+// Los anchos de la planilla, en un solo lugar porque el mínimo de la tabla
+// es su suma y las dos cosas tienen que moverse juntas.
+//
+// Con `table-layout: fixed`, si la suma de las fijas se pasa del mínimo, la
+// que paga es la única sin ancho —la del nombre—, que se aplastaba a unas
+// letras por renglón apenas aparecían las columnas de Integrado. Y si el
+// mínimo se pasa del ancho de la pantalla, aparece el desplazador: por eso
+// esto entra justo en lo que da un monitor con la página a lo ancho, y no
+// un píxel más.
+const ANCHO_COTIZAR = 72;
+const ANCHO_TAREA = 220;
+const ANCHO_UNIDAD = 40;
+const ANCHO_CANTIDAD = 108;
+const ANCHO_UNITARIO = 100;
+const ANCHO_SUBTOTAL = 104;
+const ANCHO_TOTAL = 124;
+// Las dos botoneras (118 cada una), el tacho y los aires entre ellos.
+const ANCHO_BOTON_FILA = 118;
+const ANCHO_ACCIONES = 292;
+
 const anchoMinimo = (conIntegrado: boolean) =>
-  `${72 + ANCHO_TAREA + 48 + 116 + (conIntegrado ? 6 : 4) * 104 + 124 + 300}px`;
+  `${
+    ANCHO_COTIZAR +
+    ANCHO_TAREA +
+    ANCHO_UNIDAD +
+    ANCHO_CANTIDAD +
+    (conIntegrado ? 3 : 2) * (ANCHO_UNITARIO + ANCHO_SUBTOTAL) +
+    ANCHO_TOTAL +
+    ANCHO_ACCIONES
+  }px`;
 
 const tabla = {
   ...ui.table,
@@ -1071,7 +1099,7 @@ const botonDesglose = {
   ...ui.button,
   padding: "7px 10px",
   fontSize: "13px",
-  width: "128px",
+  width: `${ANCHO_BOTON_FILA}px`,
   boxSizing: "border-box" as const,
   textAlign: "center" as const,
   marginLeft: "6px",
@@ -1081,7 +1109,7 @@ const botonDesglosar = {
   ...ui.secondaryButton,
   padding: "7px 10px",
   fontSize: "13px",
-  width: "128px",
+  width: `${ANCHO_BOTON_FILA}px`,
   boxSizing: "border-box" as const,
   textAlign: "center" as const,
   marginLeft: "6px",

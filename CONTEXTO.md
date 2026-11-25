@@ -524,7 +524,23 @@ De paso: el subrubro pasó a ir **arriba** del encabezado de la tabla (el
 usuario lo pidió dado vuelta), como `caption`, porque un `thead` tiene que ir
 antes del `tbody` y no hay forma de meterle una fila encima. Sube el del
 primer grupo; los subrubros que siguen cortan la tabla con su banda, como
-siempre. Los acordeones por rubro de la tabla de cómputo **arrancan cerrados**
+siempre.
+
+**La planilla entra sin desplazador** (pedido del usuario, 25/11: "ese
+desplazador se debería ver completo a pantalla completa"). Eran dos cosas a la
+vez: el tope de 1480px del `AppShell` dejaba 400px de margen vacío a los
+costados **mientras la tabla se corría**, que es lo peor de los dos mundos, y
+la tabla pedía 1544px. Ahora la página del cómputo va `aLoAncho` (opción nueva
+del `AppShell`: saca el tope y deja los márgenes de siempre) y la tabla bajó a
+1468px, con los anchos en constantes (`ANCHO_TAREA`, `ANCHO_UNITARIO`…) de las
+que sale el mínimo, para que no se puedan mover por separado. El unitario es
+más angosto que el subtotal —uno lleva el precio de un m² y el otro el de la
+obra entera— y los botones de la fila pasaron de 128 a 118px. Entra entero a
+partir de una ventana de ~1660px; abajo de eso vuelve el desplazador, que es
+lo correcto, y la columna de la tarea ya no se aplasta. Verificado celda por
+celda: nada recortado ni envuelto.
+
+Los acordeones por rubro de la tabla de cómputo **arrancan cerrados**
 (se abre el que tiene la fila que llega desplegada por enlace), y el ancho
 mínimo de esas tablas pasó a calcularse (`anchoMinimo`). Estaba fijo en
 1180px, que no alcanzaba cuando aparecen las columnas de Integrado: la columna

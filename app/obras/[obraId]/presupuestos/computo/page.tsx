@@ -273,6 +273,9 @@ export default async function ComputoPage({
   return (
     <AppShell
       sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="presupuestos" />}
+      // La planilla es lo más ancho de la app: con el tope de 1480 sobraba
+      // margen vacío a los costados mientras la tabla se corría.
+      aLoAncho
     >
       {encabezado}
 

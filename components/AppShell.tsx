@@ -4,6 +4,7 @@ export default function AppShell({
   children,
   sidebar,
   pantallaCompleta = false,
+  aLoAncho = false,
 }: {
   children: React.ReactNode;
   /** La franja lateral fija (`ObraSidebar`). Al ser `position: fixed` no
@@ -17,6 +18,15 @@ export default function AppShell({
    * no hace falta correr la página para verlo entero.
    */
   pantallaCompleta?: boolean;
+  /**
+   * Saca el tope de 1480px, dejando los márgenes de siempre: la página se
+   * lee igual, pero lo ancho que tenga adentro usa la pantalla entera.
+   *
+   * Es para la planilla del cómputo. Con el tope puesto, en un monitor grande
+   * quedaban 400px de margen vacío a los costados **mientras la tabla se
+   * corría con un desplazador**, que es lo peor de los dos mundos.
+   */
+  aLoAncho?: boolean;
 }) {
   const borde = pantallaCompleta ? 16 : 40;
   return (
@@ -32,7 +42,7 @@ export default function AppShell({
 
       <section
         style={{
-          maxWidth: pantallaCompleta ? "none" : "1480px",
+          maxWidth: pantallaCompleta || aLoAncho ? "none" : "1480px",
           margin: "0 auto",
           padding: `${borde}px ${borde}px ${pantallaCompleta ? borde : 80}px ${
             (sidebar ? ANCHO_SIDEBAR_CERRADO : 0) + borde
