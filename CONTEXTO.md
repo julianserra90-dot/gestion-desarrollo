@@ -1812,6 +1812,18 @@ así:
   **Pisos**, apilados como en el edificio, con su nivel. Al pasar de Ver a
   Avance con un solo rubro prendido, Avance arranca en él; al volver, queda
   prendido sólo el de Avance.
+- **Los rubros, un acordeón de tareas** (25/11/2026; el usuario: "se
+  deberían ver en acordeón para cada rubro, por ejemplo pisos, donde se vean
+  las carpetas de nivelación"). En Ver el filtro es **por tarea**
+  (`tareasApagadas`): cada rubro se despliega con su flechita y muestra sus
+  tareas, cada una con su ojo; el ojo del rubro prende o apaga todas sus
+  tareas juntas, y a medias se ve más tenue. Apagar la carpeta deja
+  insinuado lo que sólo la lleva y sólido lo que lleva otra tarea prendida.
+- **El menú de la izquierda en Ver se llama Filtros** y tiene dos secciones
+  que se pliegan, **Capas** y **Rubros**, con una sola abierta a la vez
+  (`SeccionPlegable`; pedido del usuario: "se hace muy largo, capas debería
+  ser un acordeón y rubros otro"). Plegada, cada una dice en su rótulo lo
+  que tiene prendido ("2 de 8").
 - **El aviso de pisos sin planta** pasó a un número rojo en la esquina de
   "Definir pisos" (el porqué en su `title`), que es donde se arregla.
 - Se sacaron los textos de ayuda (la pista de abajo, "Qué se ve", "el resto

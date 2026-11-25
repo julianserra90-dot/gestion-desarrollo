@@ -223,16 +223,20 @@ export default function Edificio3D({
     () => tareasDeAvance.find((t) => t.id === inicial?.tarea)?.rubro ?? null
   );
   /**
-   * En Ver, los rubros apagados, como las capas: lo de un rubro con el ojo
-   * abierto se ve sólido y lo del resto apenas insinuado. Se pueden mirar
-   * varios a la vez. Ninguno apagado es todo el edificio, como siempre.
+   * En Ver, las **tareas** apagadas, como las capas: lo que lleva una tarea con
+   * el ojo abierto se ve sólido y el resto apenas insinuado. Los rubros son un
+   * acordeón: su ojo prende o apaga todas sus tareas juntas, y desplegados
+   * dejan mirar de a una —en Pisos, la carpeta sin el porcelanato—. Ninguna
+   * apagada es todo el edificio, como siempre.
    */
-  const [rubrosApagados, setRubrosApagados] = useState<string[]>(() => {
+  const [tareasApagadas, setTareasApagadas] = useState<string[]>(() => {
     const delInicial = tareasDeAvance.find((t) => t.id === inicial?.tarea)?.rubro;
-    return delInicial
-      ? Array.from(new Set(tareasDeAvance.map((t) => t.rubro))).filter((r) => r !== delInicial)
-      : [];
+    return delInicial ? tareasDeAvance.filter((t) => t.rubro !== delInicial).map((t) => t.id) : [];
   });
+  /** Cuál de las dos secciones del menú de filtros está abierta. */
+  const [seccionAbierta, setSeccionAbierta] = useState<"capas" | "rubros" | null>("capas");
+  /** Los rubros desplegados en el acordeón. */
+  const [rubrosAbiertos, setRubrosAbiertos] = useState<string[]>([]);
   /** El día con que se marca lo hecho. */
   const [dia, setDia] = useState(hoy);
   const [marcando, iniciarMarcado] = useTransition();
@@ -254,10 +258,10 @@ export default function Edificio3D({
   // sólido —"-" no es ninguna tarea—.
   const tareasDelRubro =
     vista === "ver"
-      ? rubrosApagados.length === 0
+      ? tareasApagadas.length === 0
         ? ""
         : tareasDeAvance
-            .filter((t) => !rubrosApagados.includes(t.rubro))
+            .filter((t) => !tareasApagadas.includes(t.id))
             .map((t) => t.id)
             .sort()
             .join(",") || "-"
@@ -1131,6 +1135,9 @@ export default function Edificio3D({
   // ---- El avance de la tarea que se mira ----------------------------------
   const rubros = Array.from(new Set(tareasDeAvance.map((t) => t.rubro)));
   const tareaElegida = tareasDeAvance.find((t) => t.id === tareaVista) ?? null;
+  /** Si un rubro tiene alguna tarea prendida en Ver. */
+  const rubroConAlgo = (rubro: string) =>
+    tareasDeAvance.some((t) => t.rubro === rubro && !tareasApagadas.includes(t.id));
   /** Lo que mide una cosa de la tarea elegida, en su unidad. */
   const cuantoDe = (planta: string, objeto: string) => {
     const t = modelos[planta]?.objetos[objeto]?.tareas?.find((x) => x.tarea === tareaElegida?.id);
@@ -1157,7 +1164,7 @@ export default function Edificio3D({
   // un rubro elegido arriba, sólo las de ese rubro: mirando Cielorrasos, el
   // porcelanato del mismo baño no va.
   const tareasDelElegido = tareasDeAvance.flatMap((tarea) => {
-    if (vista === "ver" ? rubrosApagados.includes(tarea.rubro) : rubroVisto !== null && tarea.rubro !== rubroVisto)
+    if (vista === "ver" ? tareasApagadas.includes(tarea.id) : rubroVisto !== null && tarea.rubro !== rubroVisto)
       return [];
     const medida = ficha?.tareas?.find((x) => x.tarea === tarea.id);
     return medida ? [{ tarea, cantidad: cantidadEnUnidad(medida, tarea.unidad) }] : [];
@@ -1205,11 +1212,13 @@ export default function Edificio3D({
                 aria-pressed={vista === v.valor}
                 onClick={() => {
                   if (v.valor === "avance" && vista === "ver") {
-                    const prendidos = rubros.filter((r) => !rubrosApagados.includes(r));
+                    const prendidos = rubros.filter((r) => rubroConAlgo(r));
                     setRubroVisto(prendidos.length === 1 ? prendidos[0] : null);
                   }
                   if (v.valor === "ver" && vista === "avance") {
-                    setRubrosApagados(rubroVisto === null ? [] : rubros.filter((r) => r !== rubroVisto));
+                    setTareasApagadas(
+                      rubroVisto === null ? [] : tareasDeAvance.filter((t) => t.rubro !== rubroVisto).map((t) => t.id)
+                    );
                   }
                   setErrorAlPintar(null);
                   setVista(v.valor);
@@ -1250,21 +1259,25 @@ export default function Edificio3D({
             <Menu
               lado="izquierda"
               ancho="240px"
-              titulo={vista === "ver" ? "Capas" : "Rubro"}
-              resumen={
-                vista === "ver"
-                  ? rubrosApagados.length === 0
-                    ? undefined
-                    : rubros.length - rubrosApagados.length === 1
-                      ? rubros.find((r) => !rubrosApagados.includes(r))
-                      : `${rubros.length - rubrosApagados.length} de ${rubros.length} rubros`
-                  : tareaElegida?.nombre ?? rubroVisto ?? "Todos"
-              }
+              titulo={vista === "ver" ? "Filtros" : "Rubro"}
+              resumen={vista === "ver" ? undefined : tareaElegida?.nombre ?? rubroVisto ?? "Todos"}
               abierto={conCapasAbiertas}
               alTocar={() => setConCapasAbiertas(!conCapasAbiertas)}
             >
+              {/* Dos secciones que se pliegan, y una sola abierta: el menú
+                  no se hace más largo que la pantalla. */}
               {vista === "ver" && (
-                <ListaDeCapas ve={ve} poner={poner} />
+                <SeccionPlegable
+                  titulo="Capas"
+                  resumen={(() => {
+                    const apagadas = OPCIONES.filter((o) => !ve(o.clave)).length;
+                    return apagadas === 0 ? undefined : `${OPCIONES.length - apagadas} de ${OPCIONES.length}`;
+                  })()}
+                  abierta={seccionAbierta === "capas"}
+                  alTocar={() => setSeccionAbierta(seccionAbierta === "capas" ? null : "capas")}
+                >
+                  <ListaDeCapas ve={ve} poner={poner} />
+                </SeccionPlegable>
               )}
 
               {/* El rubro se queda al cambiar de Ver a Avance: en Ver deja
@@ -1272,42 +1285,122 @@ export default function Edificio3D({
                   son las tareas. Sin tareas en el dibujo no hay qué filtrar. */}
               {rubros.length > 0 && (
                 <div style={seccionFlotante}>
-                  {vista === "ver" && <span style={rotuloFlotante}>Rubro</span>}
                   {/* En Ver, cada rubro con su ojo, como las capas: se
                       prenden varios a la vez, y Todos los prende o los apaga
                       juntos. En Avance, uno solo, el de las tareas. */}
                   {vista === "ver" ? (
+                    <SeccionPlegable
+                      titulo="Rubros"
+                      resumen={
+                        tareasApagadas.length === 0
+                          ? undefined
+                          : rubros.filter(rubroConAlgo).length === 1
+                            ? rubros.find(rubroConAlgo)
+                            : `${rubros.filter(rubroConAlgo).length} de ${rubros.length}`
+                      }
+                      abierta={seccionAbierta === "rubros"}
+                      alTocar={() => setSeccionAbierta(seccionAbierta === "rubros" ? null : "rubros")}
+                    >
                     <div style={seccionFlotante} role="group" aria-label="Rubros">
                       <button
                         type="button"
-                        aria-pressed={rubrosApagados.length === 0}
-                        onClick={() => setRubrosApagados(rubrosApagados.length === 0 ? rubros : [])}
-                        style={rubrosApagados.length === rubros.length ? filaDeCapaApagada : filaDeCapa}
+                        aria-pressed={tareasApagadas.length === 0}
+                        onClick={() => {
+                          setTareasApagadas(tareasApagadas.length === 0 ? tareasDeAvance.map((t) => t.id) : []);
+                          setElegido(null);
+                        }}
+                        style={rubros.some(rubroConAlgo) ? filaDeCapa : filaDeCapaApagada}
                       >
-                        <Ojo abierto={rubrosApagados.length < rubros.length} />
+                        <span style={lugarDeFlecha} />
+                        <Ojo abierto={rubros.some(rubroConAlgo)} />
                         Todos
                       </button>
                       {rubros.map((r) => {
-                        const prendido = !rubrosApagados.includes(r);
+                        const suyas = tareasDeAvance.filter((t) => t.rubro === r);
+                        const algo = rubroConAlgo(r);
+                        const todas = suyas.every((t) => !tareasApagadas.includes(t.id));
+                        const abierto = rubrosAbiertos.includes(r);
                         return (
-                          <button
-                            key={r}
-                            type="button"
-                            aria-pressed={prendido}
-                            onClick={() => {
-                              setRubrosApagados(
-                                prendido ? [...rubrosApagados, r] : rubrosApagados.filter((x) => x !== r)
-                              );
-                              setElegido(null);
-                            }}
-                            style={prendido ? filaDeCapa : filaDeCapaApagada}
-                          >
-                            <Ojo abierto={prendido} />
-                            <span style={nombreDePiso}>{r}</span>
-                          </button>
+                          <div key={r} style={seccionFlotante}>
+                            <div style={filaConSolo}>
+                              {/* Desplegar: sus tareas, cada una con su ojo. */}
+                              <button
+                                type="button"
+                                aria-expanded={abierto}
+                                aria-label={`${abierto ? "Plegar" : "Desplegar"} ${r}`}
+                                onClick={() =>
+                                  setRubrosAbiertos(abierto ? rubrosAbiertos.filter((x) => x !== r) : [...rubrosAbiertos, r])
+                                }
+                                style={botonDeFlecha}
+                              >
+                                <svg
+                                  width="10"
+                                  height="10"
+                                  viewBox="0 0 10 10"
+                                  aria-hidden="true"
+                                  style={{ transform: abierto ? "rotate(90deg)" : undefined }}
+                                >
+                                  <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </button>
+                              {/* El ojo del rubro: todas sus tareas juntas. A
+                                  medias, más tenue. */}
+                              <button
+                                type="button"
+                                aria-pressed={todas}
+                                onClick={() => {
+                                  const ids = suyas.map((t) => t.id);
+                                  setTareasApagadas(
+                                    todas
+                                      ? [...tareasApagadas.filter((id) => !ids.includes(id)), ...ids]
+                                      : tareasApagadas.filter((id) => !ids.includes(id))
+                                  );
+                                  setElegido(null);
+                                }}
+                                style={{
+                                  ...(algo ? filaDeCapa : filaDeCapaApagada),
+                                  ...(algo && !todas ? { color: "#6f6f6f" } : {}),
+                                  // Al lado de la flecha: lo que queda, sin pasarse del menú.
+                                  flex: "1 1 auto",
+                                  width: "auto",
+                                  minWidth: 0,
+                                  paddingLeft: "2px",
+                                }}
+                              >
+                                <Ojo abierto={algo} />
+                                <span style={nombreDePiso}>{r}</span>
+                              </button>
+                            </div>
+                            {abierto &&
+                              suyas.map((t) => {
+                                const prendida = !tareasApagadas.includes(t.id);
+                                return (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    aria-pressed={prendida}
+                                    title={t.nombre}
+                                    onClick={() => {
+                                      setTareasApagadas(
+                                        prendida ? [...tareasApagadas, t.id] : tareasApagadas.filter((id) => id !== t.id)
+                                      );
+                                      setElegido(null);
+                                    }}
+                                    style={{
+                                      ...(prendida ? filaDeCapa : filaDeCapaApagada),
+                                      paddingLeft: t.madre ? "52px" : "38px",
+                                    }}
+                                  >
+                                    <Ojo abierto={prendida} />
+                                    <span style={nombreDePiso}>{t.nombre}</span>
+                                  </button>
+                                );
+                              })}
+                          </div>
                         );
                       })}
                     </div>
+                    </SeccionPlegable>
                   ) : (
                   <div style={seccionFlotante} role="group" aria-label="Rubro">
                     {[null, ...rubros].map((cual) => (
@@ -1806,6 +1899,43 @@ function ListaDeCapas({
   );
 }
 
+/**
+ * Una sección del menú que se pliega: su rótulo con lo que tiene apagado y una
+ * flechita, y debajo lo suyo sólo si está abierta.
+ */
+function SeccionPlegable({
+  titulo,
+  resumen,
+  abierta,
+  alTocar,
+  children,
+}: {
+  titulo: string;
+  resumen?: string;
+  abierta: boolean;
+  alTocar: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div style={seccionFlotante}>
+      <button type="button" aria-expanded={abierta} onClick={alTocar} style={cabezaDeSeccion}>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          aria-hidden="true"
+          style={{ flex: "0 0 auto", transform: abierta ? "rotate(90deg)" : undefined }}
+        >
+          <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span style={tituloDeMenu}>{titulo}</span>
+        {resumen && <span style={resumenDeSeccion}>{resumen}</span>}
+      </button>
+      {abierta && children}
+    </div>
+  );
+}
+
 /** Prendida o apagada, como en las capas de cualquier programa de dibujo. */
 function Ojo({ abierto }: { abierto: boolean }) {
   return (
@@ -2006,6 +2136,7 @@ const flotante = {
   gap: "14px",
   maxHeight: "calc(100% - 24px)",
   overflowY: "auto" as const,
+  overflowX: "hidden" as const,
   boxSizing: "border-box" as const,
   padding: "4px",
   background: "rgba(255, 255, 255, 0.94)",
@@ -2059,15 +2190,6 @@ const seccionFlotante = {
   gap: "2px",
 };
 
-const rotuloFlotante = {
-  padding: "2px 8px 6px",
-  fontSize: "11px",
-  fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase" as const,
-  color: "#8a8a8a",
-};
-
 const selectores = {
   display: "flex",
   flexDirection: "column" as const,
@@ -2091,6 +2213,47 @@ const filaDeCapa = {
   cursor: "pointer",
 };
 const filaDeCapaApagada = { ...filaDeCapa, color: "#a5a5a5" };
+
+/** El rótulo de una sección del menú, que la pliega y la despliega. */
+const cabezaDeSeccion = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  width: "100%",
+  minWidth: 0,
+  padding: "8px",
+  background: "transparent",
+  border: "none",
+  borderRadius: "8px",
+  color: "#8a8a8a",
+  fontFamily: "inherit",
+  textAlign: "left" as const,
+  cursor: "pointer",
+};
+const resumenDeSeccion = {
+  marginLeft: "auto",
+  fontSize: "12px",
+  color: "#111111",
+  whiteSpace: "nowrap" as const,
+  overflow: "hidden" as const,
+  textOverflow: "ellipsis" as const,
+};
+
+/** La flechita que despliega un rubro, y su lugar en los renglones sin ella. */
+const botonDeFlecha = {
+  flex: "0 0 auto",
+  display: "grid",
+  placeItems: "center",
+  width: "20px",
+  height: "28px",
+  padding: 0,
+  background: "transparent",
+  border: "none",
+  color: "#8a8a8a",
+  cursor: "pointer",
+};
+// El ojo de "Todos" queda en la misma columna que el de cada rubro.
+const lugarDeFlecha = { flex: "0 0 auto", width: "6px" };
 
 /** Una capa y su "ver sólo esta", en el mismo renglón. */
 const filaConSolo = {
