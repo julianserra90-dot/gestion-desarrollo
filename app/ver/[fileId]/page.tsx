@@ -1,6 +1,6 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import BotonDescarga from "@/components/BotonDescarga";
+import Volver from "@/components/Volver";
 import * as ui from "@/components/ui";
 import { buscarArchivoVisible } from "@/lib/archivos";
 
@@ -41,6 +41,8 @@ export default async function VerArchivoPage({
 
   return (
     <AppShell>
+      <Volver href={volver ?? "/"} />
+
       <header style={header}>
         <div>
           <p style={ui.eyebrow}>Archivo</p>
@@ -49,10 +51,6 @@ export default async function VerArchivoPage({
 
         <div style={acciones}>
           <BotonDescarga fileId={fileId} etiqueta="Descargar" />
-
-          <Link href={volver ?? "/"} style={ui.secondaryButton}>
-            Volver
-          </Link>
         </div>
       </header>
 

@@ -324,7 +324,7 @@ export function trozosEnPlanta(
 }
 
 /** Una cara como tramo de capa: entera. */
-function tramoDeCara(cara: Cara, largo: number): TramoDeCapa {
+export function tramoDeCara(cara: Cara, largo: number): TramoDeCapa {
   return {
     muroId: cara.muroId,
     cara: caraDe(cara),

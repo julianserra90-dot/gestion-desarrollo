@@ -1788,6 +1788,113 @@ Dos cosas del dibujo que esto obligó:
   cómo abre o el marco cambia también el tipo guardado; Copiar y renombrar
   llevan el marco.
 
+#### El 3D como un programa de modelado (24/11/2026, sigue a la barra de arriba)
+
+Pedidos del usuario: "este sector está muy desorganizado, quiero que sea más
+amigable, más app de modelado 3D"; "lo que marqué podrían ser menús que al
+hacer clic se expanden para que no molesten"; "el mover y girar podría estar
+incorporado a la interfaz del 3D". La barra de dos renglones de arriba quedó
+así:
+
+- **Una sola barra**: a la izquierda volver y el título (la página se lo pasa
+  al visor como `cabecera`), a la derecha Ver / Avance / Pintar y "Definir
+  pisos" (`acciones`). Todo a 38 px de alto.
+- **El mouse, como en cualquier programa de 3D**: arrastrar con el izquierdo
+  gira, con la rueda apretada (o el derecho) corre la vista, la rueda acerca.
+  Ya no hay selector Girar / Mover. Se anula el desplazamiento automático de
+  Windows al apretar la rueda.
+- **Dos menús que flotan sobre el modelo** (`Menu` en `Edificio3D.tsx`),
+  cerrados al entrar: sólo su botón, con lo elegido ("Pisos · 2.º piso",
+  "Capas · 2 de 8 rubros"). A la izquierda **Capas**: cada capa con su ojo y,
+  debajo, los **rubros también con ojo** —varios a la vez; "Todos" los prende
+  o los apaga juntos—. En Avance ese menú es **Rubro**, uno solo (es el que
+  arma la lista de tareas), con la tarea en un desplegable. A la derecha
+  **Pisos**, apilados como en el edificio, con su nivel. Al pasar de Ver a
+  Avance con un solo rubro prendido, Avance arranca en él; al volver, queda
+  prendido sólo el de Avance.
+- **El aviso de pisos sin planta** pasó a un número rojo en la esquina de
+  "Definir pisos" (el porqué en su `title`), que es donde se arregla.
+- Se sacaron los textos de ayuda (la pista de abajo, "Qué se ve", "el resto
+  del edificio queda insinuado").
+- **Planta ↔ 3D con el mismo botón en el mismo lugar**: en la planta, "3D"
+  negro con letra blanca abajo a la derecha del dibujo; en el 3D, "2D" en ese
+  lugar, que vuelve a la planta de la que se vino (sólo si se vino de una).
+  `ui.botonDeVista`. El volver de arriba del 3D va a Plantas (o al Cómputo).
+- Un elemento que la página le pasa al visor necesita `key` en él y en sus
+  hijos, o React avisa "Each child in a list…" al entrar navegando.
+
+#### Tabiques de hormigón y columnas: Desde NPT y Altura (24/11/2026)
+
+Pedido del usuario: "para el tabique debería poder definir la altura… desde
+el nivel de piso terminado y altura"; después: "podría ser siempre desde NPT,
+por ejemplo para columnas y alturas".
+
+- **Tabique** (`Viga` con `tabique`): `desde` (m sobre el NPT de la planta,
+  puede ser negativo) y `altura` (m). Vacíos, de la losa de abajo al fondo de
+  la de arriba, como antes (`medirEstructura`).
+- **Columna**: los mismos dos campos, **Desde NPT** y **Altura**, en el editor
+  y en el 3D. `Columna.altura` es nuevo; `arriba` (lo de antes: cuánto le
+  falta al piso de arriba) se sigue leyendo, pero ya no se escribe: una
+  columna que lo tiene muestra la altura que le da, y al escribirle una
+  altura se borra. Las seis de Andonaegui quedaron como estaban (−0,05 / 2,80).
+- Un tabique o una columna sin losa dibujada encima ni `bajoNpt` llega a la
+  altura de piso a techo de la planta (2,65 en Andonaegui), no al piso de
+  arriba.
+
+#### El bote de pintura (24/11/2026)
+
+Idea del usuario: "una herramienta tipo bote de pintura que al tocarla en el 2D
+se pasa al 3D y se seleccionan las tareas de esa pintada: planchado con
+enduido, fijador, látex… los cielorrasos también se pueden pintar". Decisiones
+suyas: **un clic pinta esa cara del muro** (no el ambiente entero), **sólo lo
+que queda a la vista**, y **las subtareas (enduido, fijador) las carga él** en
+Rubros y Tareas.
+
+- **El paquete es la tarea madre con sus subtareas**: se pinta con "Látex en
+  muros interiores" y, si tiene de hijas el enduido y el fijador, el cómputo
+  les da los mismos m² (`planta-computo.ts` ya lo hacía con el pastinado).
+- **Cómo se entra**: el bote al final de las herramientas de Arquitectura abre
+  el 3D en **Pintar** (`?modo=pintar`), con el menú de la pintura abierto y
+  "Látex en muros interiores" elegida. Se ofrecen las tareas m² del rubro
+  Pintura que no son subtareas.
+- **Qué deja cada toque** (`lib/planta-pintura.ts`, acción `pintarEnPlanta`):
+  - una **cara de muro**: una `CapaDibujada` con espesor 0, desde lo
+    revestido hasta `"cielorraso"`, con el tramo de esa cara **en lo que da al
+    ambiente tocado** (`carasVisibles` + `puntoEnCara` + `tramoDeCara`). Se
+    suma a otra capa de la misma pintura que arranque a la misma altura.
+  - un **cielorraso** o **la losa vista desde abajo**: la pintura entre las
+    capas del cielorraso del ambiente.
+  - un **cajón**: entre las capas del cajón.
+  - Tocar otra vez con la misma pintura **despinta**.
+- **Lo que tapa la pintura es sólo lo revestido** (tareas del rubro
+  Revestimientos que arrancan del piso): un revoque hasta 2,50 es lo que se
+  pinta; un porcelanato hasta 2,10 la hace arrancar en 2,10; uno hasta arriba
+  no deja nada ("Esa cara está revestida hasta arriba").
+- **Lo que se va a pintar se ve antes de tocar** (pedido del usuario: "al
+  pasar el mouse debería identificar la cara que se va a pintar"). El modelo
+  trae sus **caras pintables** ya calculadas (`modelo.caras`, de
+  `carasPintables`): tramo, ambiente, puntas, hacia dónde mira y entre qué
+  alturas iría la pintura. Con el mouse encima, el 3D busca la más cercana a
+  lo apuntado, del lado que se ve, y la resalta en naranja entre esas alturas
+  (en rojo si está revestida hasta arriba); un cielorraso o un cajón se
+  resaltan enteros. **Tocar manda esa cara —su tramo—**, y el servidor la
+  vuelve a buscar entre las suyas: lo resaltado es lo que se pinta.
+- **La lista de pinturas va en el panel de la derecha**; a la izquierda, sólo
+  el menú de Capas (plegado). Así no tapa el modelo.
+- **Los cantos también se pintan** (pedido del usuario: "esos frentes de muros
+  no los toma"): la punta de un muro que termina suelto es una cara pintable,
+  con tramo `"a"` o `"b"`. Para no confundir un canto con la cara larga que
+  dobla en su punta, la cara elegida tiene que **mirar para el mismo lado que
+  lo tocado** (su normal contra la del triángulo).
+- **El resaltado va en todos los pisos de la planta**: lo que se pinta en una
+  planta tipo se pinta en todos sus pisos —siempre fue así, es el mismo
+  dibujo—, y ahora se ve antes de tocar.
+- **En el 3D la pintura se ve**: una piel de 4 mm, celeste (clase `pintura`,
+  con la capa de vista Capas), sobre lo que pinta.
+- Pinta la planta: si es la de varios pisos, se ve pintada en todos.
+- Probado en Andonaegui (pintar y despintar una cara y el cielorraso del
+  Dormitorio Frente): el dibujo quedó igual que antes, sin diferencias.
+
 #### Cajones de cielorraso (23/11/2026)
 
 Pedido del usuario: el durlock puede cubrir todo el ambiente —eso ya estaba,
@@ -2528,6 +2635,15 @@ la URL; un `ver` inventado se ignora y la pantalla abre sin filtro ni vuelta.
 
 Los formularios no llevan: ya tienen **Cancelar** al lado de Guardar, que es la
 salida que corresponde ahí.
+
+**Un solo aspecto en toda la app (24/11/2026)**. Pedido del usuario: "que tenga
+la misma estética en toda la app, con más protagonismo". Había una docena de
+volver distintos —texto gris, subrayado, botón secundario, una nota al pie—.
+Ahora todos son `Volver` con `ui.volver`: borde, flecha y el nombre de adónde va,
+38 px de alto, arriba a la izquierda. `enBarra` le saca el aire de abajo cuando
+va en una barra (editor de plantas, 3D, presupuesto). Donde la cabecera de la
+obra ya pone su volver solo (detalle de rubro, subir fotos) se sacó el
+repetido.
 
 ### Beneficio estimado (si el negocio cierra)
 La app contestaba cuánto sale la obra, pero no si conviene. La solapa
@@ -3573,7 +3689,16 @@ Decir: "leé CONTEXTO.md y el README para ponerte al día". Con eso alcanza para
 tener el panorama completo: qué es la app, cómo está armada, qué se decidió y qué
 falta.
 
-**Lo último (20/11/2026)**: los dos hallazgos que quedaban de la revisión del
+**Lo último (24/11/2026)**: el 3D como un programa de modelado (una barra,
+menús que flotan y se pliegan, el mouse gira y corre la vista, 3D ↔ 2D con el
+mismo botón), Desde NPT y Altura en tabiques y columnas, el **bote de pintura**
+y el mismo volver en toda la app. Están en "El 3D como un programa de
+modelado", "Tabiques de hormigón y columnas", "El bote de pintura" y "Cómo se
+sale de una pantalla de detalle". Sin migraciones: todo vive en el dibujo.
+Falta que el usuario cargue en el catálogo el enduido y el fijador como
+subtareas de los látex.
+
+**Antes (20/11/2026)**: los dos hallazgos que quedaban de la revisión del
 cómputo del 07/10 de los que podían costar datos. Armar el cómputo ya no
 desploma el avance de la obra: el peso de un rubro pasa a ser su mejor costo
 conocido —la cotización aprobada, y si no el estimado del cómputo— en

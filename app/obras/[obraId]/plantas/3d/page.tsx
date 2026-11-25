@@ -1,8 +1,8 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import BotonDefinirPisos from "@/components/BotonDefinirPisos";
 import Edificio3D, { type PisoEn3D, type TareaDeAvance } from "@/components/Edificio3D";
 import ObraSidebar from "@/components/ObraSidebar";
+import Volver from "@/components/Volver";
 import * as ui from "@/components/ui";
 import { getObraPorSlug } from "@/lib/obras";
 import { type Modelo, modeloDePlanta } from "@/lib/planta-3d";
@@ -15,7 +15,7 @@ import {
 } from "@/lib/plantas";
 import { createClient } from "@/lib/supabase/server";
 import { conSusTipos } from "@/lib/tipos-de-muro";
-import { editarEnPlanta, guardarPisos, marcarEnElPlano } from "../actions";
+import { editarEnPlanta, guardarPisos, marcarEnElPlano, pintarEnPlanta } from "../actions";
 
 /**
  * El edificio en 3D: cada piso de la obra con la planta que le toca, a su
@@ -39,10 +39,10 @@ export default async function Edificio3DPage({
    * piso por su nombre y una pieza por el suyo—, para ver de dónde sale lo
    * que el plano le pasó al cómputo.
    */
-  searchParams: Promise<{ desde?: string; tarea?: string; nivel?: string; cosa?: string }>;
+  searchParams: Promise<{ desde?: string; tarea?: string; nivel?: string; cosa?: string; modo?: string }>;
 }) {
   const { obraId } = await params;
-  const { desde, tarea, nivel, cosa } = await searchParams;
+  const { desde, tarea, nivel, cosa, modo } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
@@ -61,6 +61,8 @@ export default async function Edificio3DPage({
   // Cómo se llama cada tarea del catálogo: es lo que dice de qué está hecho
   // un muro o qué capas lleva un piso al tocarlo.
   const nombres = new Map(tareasDelCatalogo.map((t) => [t.id, t.nombre]));
+  // Lo que reviste no se pinta: el bote arranca donde termina.
+  const revestimientos = new Set(tareasDelCatalogo.filter((t) => t.rubro === "Revestimientos").map((t) => t.id));
 
   // El modelo de cada planta que algún piso usa, una sola vez.
   const modelos: Record<string, Modelo> = {};
@@ -73,7 +75,7 @@ export default async function Edificio3DPage({
       ...planta,
       dibujo: { ...planta.dibujo, muros: conSusTipos(planta.dibujo.muros, mapaDeTipos) },
     };
-    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres, mapaDeTipos, subtareas);
+    const modelo = modeloDePlanta(conTipos, suPiso.altura, nombres, mapaDeTipos, subtareas, revestimientos);
     if (modelo && modelo.solidos.length > 0) modelos[planta.id] = modelo;
   }
 
@@ -127,6 +129,13 @@ export default async function Edificio3DPage({
       Number(a.madre !== null) - Number(b.madre !== null) ||
       a.nombre.localeCompare(b.nombre, "es")
   );
+  // Lo que ofrece el bote de pintura: las pinturas del catálogo, sin sus
+  // subtareas —el enduido y el fijador van solos con su látex—.
+  const pinturas = tareasDelCatalogo
+    .filter((t) => t.rubro === "Pintura" && t.unidad === "m²" && !madreDe.has(t.id))
+    .map((t) => ({ id: t.id, nombre: t.nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+
   const marcas = (marcadas ?? []).map((m) => ({
     planta: m.planta_id,
     piso: m.piso,
@@ -143,13 +152,54 @@ export default async function Edificio3DPage({
     planta: p.plantaId,
   }));
 
-  // Lo que falta para que el edificio esté entero, dicho antes del dibujo:
-  // un piso que no aparece no puede parecer que no existe.
+  // Lo que falta para que el edificio esté entero: un piso que no aparece no
+  // puede parecer que no existe. Se dice en el botón de los pisos, que es
+  // donde se arregla.
   const sinPlanta = pisosDeObra.filter((p) => p.plantaId === null).length;
   const sinDibujo = pisosDeObra.filter(
     (p) => p.plantaId !== null && modelos[p.plantaId] === undefined
   ).length;
   const hayAlgo = pisos.some((p) => p.planta !== null && modelos[p.planta] !== undefined);
+
+  // El volver de arriba va a la lista de plantas, o al cómputo si se vino de
+  // ahí. A la planta que se estaba dibujando se vuelve con el 2D, abajo a la
+  // derecha del modelo: el mismo lugar donde la planta tiene su 3D.
+  const vuelta =
+    desde === "computo"
+      ? { href: `/obras/${obra.slug}/presupuestos/computo`, nombre: "Cómputo" }
+      : { href: `/obras/${obra.slug}/plantas`, nombre: "Plantas" };
+
+  const porque = [
+    sinPlanta > 0 &&
+      `${sinPlanta} ${sinPlanta === 1 ? "piso no tiene" : "pisos no tienen"} planta asignada`,
+    sinDibujo > 0 &&
+      `${sinDibujo} ${sinDibujo === 1 ? "piso tiene" : "pisos tienen"} una planta sin escala o sin dibujar`,
+  ]
+    .filter(Boolean)
+    .join(", y ");
+
+  const definirPisos = (
+    <BotonDefinirPisos
+      key="definir-pisos"
+      enBarra
+      faltan={{
+        cuantos: sinPlanta + sinDibujo,
+        porque: `${porque}: no ${sinPlanta + sinDibujo === 1 ? "aparece" : "aparecen"} en el 3D.`,
+      }}
+      pisos={pisosDeObra}
+      plantas={plantas.map((p) => ({ id: p.id, nombre: p.nombre }))}
+      guardar={guardarPisos.bind(null, obra.slug, obra.id)}
+    />
+  );
+
+  const cabecera = (
+    <div key="cabecera" style={lado}>
+      <Volver key="volver" href={vuelta.href} enBarra>
+        {vuelta.nombre}
+      </Volver>
+      <h2 key="titulo" style={titulo}>{obra.nombre} en 3D</h2>
+    </div>
+  );
 
   return (
     <AppShell
@@ -157,45 +207,13 @@ export default async function Edificio3DPage({
       sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="plantas" />}
     >
       <div style={marco}>
-        <div style={barra}>
-          <div style={lado}>
-            <Link href={`/obras/${obra.slug}/plantas`} style={volver}>
-              ← Plantas
-            </Link>
-            <h2 style={titulo}>{obra.nombre} en 3D</h2>
+        {/* Con el edificio a la vista, la barra es la del visor: volver y el
+            título a la izquierda, y a la derecha lo suyo y los pisos. */}
+        {!hayAlgo && (
+          <div style={barra}>
+            {cabecera}
+            {definirPisos}
           </div>
-          <div style={lado}>
-            {/* Si se vino de una planta, se vuelve a ella y no a la lista. */}
-            {desde === "computo" && (
-              <Link href={`/obras/${obra.slug}/presupuestos/computo`} style={ui.secondaryButton}>
-                ← Cómputo
-              </Link>
-            )}
-            {plantaDeOrigen && (
-              <Link href={`/obras/${obra.slug}/plantas/${plantaDeOrigen.id}`} style={ui.secondaryButton}>
-                ← {plantaDeOrigen.nombre || "Volver a la planta"}
-              </Link>
-            )}
-            <BotonDefinirPisos
-              pisos={pisosDeObra}
-              plantas={plantas.map((p) => ({ id: p.id, nombre: p.nombre }))}
-              guardar={guardarPisos.bind(null, obra.slug, obra.id)}
-            />
-          </div>
-        </div>
-
-        {(sinPlanta > 0 || sinDibujo > 0) && hayAlgo && (
-          <p style={aviso}>
-            {[
-              sinPlanta > 0 &&
-                `${sinPlanta} ${sinPlanta === 1 ? "piso no tiene" : "pisos no tienen"} planta asignada`,
-              sinDibujo > 0 &&
-                `${sinDibujo} ${sinDibujo === 1 ? "piso tiene" : "pisos tienen"} una planta sin escala o sin dibujar`,
-            ]
-              .filter(Boolean)
-              .join(", y ")}
-            : no {sinPlanta + sinDibujo === 1 ? "aparece" : "aparecen"}.
-          </p>
         )}
 
         {hayAlgo ? (
@@ -207,7 +225,19 @@ export default async function Edificio3DPage({
             tareasDeAvance={tareasDeAvance}
             marcas={marcas}
             marcar={marcarEnElPlano.bind(null, obra.id)}
-            inicial={{ tarea: tarea ?? null, nivel: nivel ?? null, cosa: cosa ?? null }}
+            inicial={{ tarea: tarea ?? null, nivel: nivel ?? null, cosa: cosa ?? null, pintar: modo === "pintar" }}
+            pinturas={pinturas}
+            pintar={pintarEnPlanta}
+            cabecera={cabecera}
+            acciones={definirPisos}
+            plantaDeOrigen={
+              plantaDeOrigen
+                ? {
+                    href: `/obras/${obra.slug}/plantas/${plantaDeOrigen.id}`,
+                    nombre: plantaDeOrigen.nombre || "la planta",
+                  }
+                : undefined
+            }
           />
         ) : (
           <p style={ui.vacio}>
@@ -245,14 +275,6 @@ const lado = {
   minWidth: 0,
 };
 
-const volver = {
-  flex: "0 0 auto",
-  color: "#555555",
-  fontSize: "14px",
-  textDecoration: "none",
-  whiteSpace: "nowrap" as const,
-};
-
 const titulo = {
   minWidth: 0,
   overflow: "hidden" as const,
@@ -260,12 +282,5 @@ const titulo = {
   whiteSpace: "nowrap" as const,
   fontSize: "18px",
   fontWeight: 600,
-  margin: 0,
-};
-
-const aviso = {
-  flex: "0 0 auto",
-  fontSize: "13px",
-  color: ui.ROJO,
   margin: 0,
 };

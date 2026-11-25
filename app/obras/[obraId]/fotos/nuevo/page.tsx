@@ -57,12 +57,6 @@ export default async function NuevasFotosPage({
         rubros={rubros}
         error={error}
       />
-
-      <p style={{ ...ui.note, marginTop: "20px" }}>
-        <Link href={`/obras/${obra.slug}/fotos`} style={{ color: "#666666" }}>
-          Volver a las fotos de la obra
-        </Link>
-      </p>
     </AppShell>
   );
 }

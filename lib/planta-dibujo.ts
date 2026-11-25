@@ -401,11 +401,17 @@ export type Columna = {
    * fondo de la losa, unos centímetros por debajo del piso que esa losa
    * sostiene—. Null: hasta el fondo de la losa que tiene encima.
    *
-   * La altura no se guarda: sale de dónde arranca y dónde termina. Es como se
-   * define una columna en un programa de arquitectura, y evita que un alto
-   * escrito a mano quede viejo cuando se cambia el nivel de un piso.
+   * Lo de antes de `altura`: se sigue leyendo en las que lo tienen, pero ya
+   * no se escribe. Al ponerle una altura se borra.
    */
   arriba: number | null;
+  /**
+   * Cuánto sube desde donde arranca, en metros. Todo se mide **desde el NPT**
+   * de la planta, como los muros y los tabiques: de dónde arranca y cuánto
+   * sube. Null: lo que diga `arriba` si lo tiene, y si no hasta el fondo de
+   * la losa que tiene encima.
+   */
+  altura: number | null;
 };
 
 /** Una viga: se traza como un muro, con su línea de referencia. */
@@ -448,6 +454,18 @@ export type Viga = {
    * `alto` y `nivel` no se usan.
    */
   tabique: boolean;
+  /**
+   * Sólo en tabiques: de dónde arranca, en metros sobre el piso terminado de
+   * la planta —negativo si arranca más abajo—. Null: de la cara de arriba de
+   * la losa de abajo, como una columna.
+   */
+  desde: number | null;
+  /**
+   * Sólo en tabiques: cuánto sube desde donde arranca, en metros. Null: hasta
+   * el fondo de la losa que tiene encima. Un tabique que no llega a la losa
+   * —el de una baranda, un murete de hormigón— lleva la suya.
+   */
+  altura: number | null;
 };
 
 /** Una losa: se dibuja como un ambiente, por su contorno. */
@@ -1236,6 +1254,10 @@ function leerEstructura(valor: unknown): Estructura {
       profundidad: medida(r.profundidad, COLUMNA_INICIAL.profundidad),
       desde,
       arriba: numero(r.arriba),
+      altura: (() => {
+        const altura = numero(r.altura);
+        return altura !== null && altura > 0 ? altura : null;
+      })(),
     });
   }
 
@@ -1259,6 +1281,11 @@ function leerEstructura(valor: unknown): Estructura {
       alto: medida(r.alto, VIGA_INICIAL.alto),
       nivel: numero(r.nivel),
       tabique: r.tabique === true,
+      desde: numero(r.desde),
+      altura: (() => {
+        const altura = numero(r.altura);
+        return altura !== null && altura > 0 ? altura : null;
+      })(),
     });
   }
 

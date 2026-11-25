@@ -36,12 +36,19 @@ const EDITABLE: Record<string, Record<string, Regla>> = {
   abertura: { ancho: MAYOR_QUE_CERO, alto: MAYOR_QUE_CERO, antepecho: DESDE_CERO_O_NADA },
   ambiente: { alturaCielorraso: ALTURA_O_NADA },
   columna: {
-    arriba: NIVEL_O_NADA,
+    altura: ALTURA_O_NADA,
     desde: NIVEL_O_NADA,
     ancho: MAYOR_QUE_CERO,
     profundidad: MAYOR_QUE_CERO,
   },
-  viga: { ancho: MAYOR_QUE_CERO, alto: MAYOR_QUE_CERO, nivel: NIVEL_O_NADA },
+  // `desde` y `altura` son de los tabiques; en una viga no se usan.
+  viga: {
+    ancho: MAYOR_QUE_CERO,
+    alto: MAYOR_QUE_CERO,
+    nivel: NIVEL_O_NADA,
+    desde: NIVEL_O_NADA,
+    altura: ALTURA_O_NADA,
+  },
   // El nivel de una losa llega con su signo —-0,05— y se guarda como cuánto
   // más abajo queda, en positivo (`aplicarCambio`).
   losa: { espesor: MAYOR_QUE_CERO, bajoNpt: NIVEL_O_NADA },
@@ -85,7 +92,10 @@ export function aplicarCambio(
   // Una losa no queda por encima del piso que sostiene: con signo o sin él,
   // es cuánto más abajo.
   // El espesor de un muro va al medio centímetro, como en el editor.
+  // La altura de una columna reemplaza su "del piso de arriba", que ya no se
+  // escribe: vacía, va hasta su losa.
   const cambio = {
+    ...(tipo === "columna" && clave === "altura" ? { arriba: null } : {}),
     [clave]:
       tipo === "losa" && clave === "bajoNpt" && valor !== null
         ? Math.abs(valor)

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
@@ -92,9 +91,6 @@ export default async function TareasDelRubroPage({
       <ObraHeader obra={obra} activeSection="rubros" ocultarNav />
 
       <section style={ui.sectionHeader}>
-        <Link href={`/obras/${obra.slug}/rubros`} style={volver}>
-          ← Rubros
-        </Link>
         <p style={ui.eyebrow}>Tareas del rubro</p>
         <h2 style={ui.pageTitle}>{rubro.nombre}</h2>
         <p style={ui.subtitle}>Catálogo común a todas las obras.</p>
@@ -114,11 +110,3 @@ export default async function TareasDelRubroPage({
     </AppShell>
   );
 }
-
-const volver = {
-  display: "inline-block",
-  color: "#777777",
-  fontSize: "14px",
-  textDecoration: "none",
-  marginBottom: "12px",
-};

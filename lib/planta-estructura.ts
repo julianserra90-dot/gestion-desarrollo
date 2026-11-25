@@ -474,11 +474,14 @@ export function medirEstructura(
       if (!(areaDe(recortar(prisma.huella, huella)) * pixel2 > 1e-6)) continue;
       fondoDeSuLosa = Math.max(fondoDeSuLosa ?? prisma.desde, prisma.desde);
     }
-    // Salvo que diga dónde termina, medido desde el piso terminado de arriba.
+    // Salvo que diga cuánto sube, o —lo de antes— dónde termina medido desde
+    // el piso terminado de arriba.
     const hasta =
-      columna.arriba !== null && pisoAPiso !== null
-        ? pisoAPiso + columna.arriba
-        : fondoDeSuLosa ?? sinLosa;
+      columna.altura !== null
+        ? desde + columna.altura
+        : columna.arriba !== null && pisoAPiso !== null
+          ? pisoAPiso + columna.arriba
+          : fondoDeSuLosa ?? sinLosa;
     const altura = Math.max(0, hasta - desde);
     const prisma: Prisma = { huella, convexa: true, desde, hasta: desde + altura };
     // Una metálica no lleva hormigón: es un perfil, y se mide por su largo.
@@ -495,14 +498,16 @@ export function medirEstructura(
     const largoUnido = viga.ancho > 0 ? (areaDe(huella) * pixel2) / viga.ancho : distancia(viga.a, viga.b) * mpp;
     if (viga.tabique) {
       // Un tabique va como una columna: de la cara de arriba de la losa de
-      // abajo al fondo de la losa más alta que tiene encima.
+      // abajo al fondo de la losa más alta que tiene encima. Salvo que diga de
+      // dónde arranca —sobre el piso terminado— o cuánto sube.
       let fondoDeSuLosa: number | null = null;
       for (const { prisma } of losas) {
         if (!(areaDe(recortar(prisma.huella, huella)) * pixel2 > 1e-6)) continue;
         fondoDeSuLosa = Math.max(fondoDeSuLosa ?? prisma.desde, prisma.desde);
       }
-      const hasta = fondoDeSuLosa ?? sinLosa;
-      const prisma: Prisma = { huella, convexa: true, desde: arranque, hasta: Math.max(arranque, hasta) };
+      const desde = viga.desde ?? arranque;
+      const hasta = viga.altura !== null ? desde + viga.altura : fondoDeSuLosa ?? sinLosa;
+      const prisma: Prisma = { huella, convexa: true, desde, hasta: Math.max(desde, hasta) };
       const largo = largoUnido;
       return {
         viga,

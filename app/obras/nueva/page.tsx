@@ -1,5 +1,5 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import Volver from "@/components/Volver";
 import AppSidebar from "@/components/AppSidebar";
 import ObraForm from "@/components/ObraForm";
 import { createClient } from "@/lib/supabase/server";
@@ -21,6 +21,8 @@ export default async function NuevaObraPage({
 
   return (
     <AppShell sidebar={<AppSidebar activo="obras" />}>
+      <Volver href="/">Obras</Volver>
+
       <header style={header}>
         <div>
           <p style={eyebrow}>Gestión de desarrollo</p>
@@ -29,10 +31,6 @@ export default async function NuevaObraPage({
             Cargá los datos y definí qué empresas participan y en qué proporción.
           </p>
         </div>
-
-        <Link href="/" style={backLink}>
-          Volver a obras
-        </Link>
       </header>
 
       <ObraForm
@@ -96,13 +94,6 @@ const title = {
 const subtitle = {
   color: "#666666",
   margin: 0,
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
 };
 
 const panel = {

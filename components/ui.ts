@@ -208,6 +208,57 @@ export const secondaryButton = {
   whiteSpace: "nowrap" as const,
 };
 
+/**
+ * El "← Volver" de toda la app, sea enlace o botón: con borde y peso de
+ * botón, para que adónde se vuelve se vea antes que el resto de la barra.
+ */
+export const volver = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  background: "#ffffff",
+  color: "#111111",
+  border: "1px solid #dcdcdc",
+  borderRadius: "10px",
+  height: "38px",
+  boxSizing: "border-box" as const,
+  padding: "0 16px 0 12px",
+  fontSize: "14px",
+  fontWeight: 500,
+  lineHeight: 1.2,
+  fontFamily: "inherit",
+  cursor: "pointer",
+  textDecoration: "none",
+  whiteSpace: "nowrap" as const,
+  flex: "0 0 auto",
+};
+
+/**
+ * El botón que pasa de la planta al 3D y del 3D a la planta: negro, con letra
+ * blanca, en la esquina de abajo a la derecha del dibujo, para que se vea
+ * encima de cualquier cosa. El mismo lugar en las dos pantallas.
+ */
+export const botonDeVista = {
+  position: "absolute" as const,
+  right: "12px",
+  bottom: "12px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: "56px",
+  height: "40px",
+  boxSizing: "border-box" as const,
+  padding: "0 16px",
+  background: "#111111",
+  color: "#ffffff",
+  borderRadius: "10px",
+  boxShadow: "0 6px 18px -6px rgba(17, 17, 17, 0.45)",
+  fontSize: "14px",
+  fontWeight: 700,
+  letterSpacing: "0.02em",
+  textDecoration: "none",
+};
+
 export const input = {
   width: "100%",
   boxSizing: "border-box" as const,

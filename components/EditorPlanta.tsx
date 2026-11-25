@@ -8,6 +8,7 @@ import { useConfirmacion } from "@/components/Confirmacion";
 import DefinicionDePisos from "@/components/DefinicionDePisos";
 import IconoHerramienta from "@/components/IconoHerramienta";
 import TipoDeMuroEditor, { ListaDeCapas } from "@/components/TipoDeMuroEditor";
+import Volver from "@/components/Volver";
 import { type CapaDeVista, useCapasDeVista } from "@/lib/capas-de-vista";
 import {
   AlturaDeCapa,
@@ -1119,6 +1120,7 @@ export default function EditorPlanta({
           // De la losa de abajo al fondo de la de arriba: lo de casi todas.
           desde: null,
           arriba: null,
+          altura: null,
         },
       ],
     });
@@ -2175,6 +2177,8 @@ export default function EditorPlanta({
               alto: VIGA_INICIAL.alto,
               nivel: null,
               tabique: true,
+              desde: null,
+              altura: null,
             },
           ],
         });
@@ -2203,6 +2207,8 @@ export default function EditorPlanta({
               alto: moldeDeViga.alto,
               nivel: null,
               tabique: false,
+              desde: null,
+              altura: null,
             },
           ],
         });
@@ -3465,6 +3471,7 @@ export default function EditorPlanta({
             p: cursor.punto,
             desde: null,
             arriba: null,
+            altura: null,
             visto: false,
           },
           mpp
@@ -3894,9 +3901,9 @@ export default function EditorPlanta({
           dibuja —arquitectura o estructura— y guardar. */}
       <div style={barra}>
         <div style={ladoDeBarra}>
-          <Link href={`/obras/${slug}/plantas`} style={volverEnBarra}>
-            ← Plantas
-          </Link>
+          <Volver href={`/obras/${slug}/plantas`} enBarra>
+            Plantas
+          </Volver>
           {/* Sin escala no hay estructura: una sección en metros no tiene
               tamaño en el plano. */}
           <div style={selectorDeModo}>
@@ -3931,15 +3938,6 @@ export default function EditorPlanta({
                   pisosDeLaPlanta.length > 1 ? ` · ${pisosDeLaPlanta.length} pisos` : ""
                 }`}
           </button>
-          {/* El edificio armado con lo guardado: por eso es un enlace a otra
-              pantalla y no una vista de lo que se está dibujando. */}
-          <Link
-            href={`/obras/${slug}/plantas/3d?desde=${planta.id}`}
-            title={sucio ? "El 3D muestra lo guardado: guardá antes para ver estos cambios" : undefined}
-            style={{ ...botonDeNiveles, textDecoration: "none" }}
-          >
-            3D
-          </Link>
           <span style={nombreEnBarra}>{nombre || "Planta sin nombre"}</span>
         </div>
 
@@ -4007,6 +4005,18 @@ export default function EditorPlanta({
               <IconoHerramienta nombre={h.valor} />
             </button>
           ))}
+          {/* El bote de pintura: se pinta en el 3D, tocando las paredes, los
+              cielorrasos y los cajones. Va a lo guardado, como el 3D. */}
+          {modo === "arquitectura" && (
+            <Link
+              href={`/obras/${slug}/plantas/3d?desde=${planta.id}&modo=pintar`}
+              title={sucio ? "Pintar en 3D: guardá antes, el 3D muestra lo guardado" : "Pintar en 3D"}
+              aria-label="Pintar en 3D"
+              style={botonDeIcono}
+            >
+              <IconoHerramienta nombre="pintura" />
+            </Link>
+          )}
         </div>
 
         <div
@@ -5293,6 +5303,18 @@ export default function EditorPlanta({
               capaAMano
             )}
           </p>
+
+          {/* El edificio armado con lo guardado: por eso es un enlace a otra
+              pantalla y no una vista de lo que se está dibujando. En el 3D,
+              en el mismo lugar, el 2D vuelve a esta planta. */}
+          <Link
+            href={`/obras/${slug}/plantas/3d?desde=${planta.id}`}
+            title={sucio ? "El 3D muestra lo guardado: guardá antes para ver estos cambios" : "Ver en 3D"}
+            // Al margen de las otras cosas que flotan sobre el plano.
+            style={{ ...ui.botonDeVista, right: "10px", bottom: "10px" }}
+          >
+            3D
+          </Link>
         </div>
 
         <aside style={panel}>
@@ -6852,10 +6874,8 @@ export default function EditorPlanta({
                 </div>
                 <AlturaDeColumna
                   key={columnaElegida.id}
-                  arriba={columnaElegida.arriba}
-                  desde={columnaElegida.desde}
+                  columna={columnaElegida}
                   medida={medidaDeLaColumna}
-                  pisoAPiso={pisoAPiso}
                   alCambiar={(cambios) => cambiarPieza("columnas", columnaElegida.id, cambios)}
                 />
                 {(() => {
@@ -6917,6 +6937,36 @@ export default function EditorPlanta({
                     alCambiar={(ancho) => cambiarPieza("vigas", vigaElegida.id, { ancho })}
                   />
                 </label>
+                {/* De dónde arranca sobre el piso terminado y cuánto sube.
+                    Vacíos, lo que le toca: de la losa de abajo a la de arriba,
+                    y eso se lee en el campo. */}
+                {(() => {
+                  const medida = hormigon?.vigas.find((v) => v.id === vigaElegida.id);
+                  return (
+                    <div style={dosCampos}>
+                      <label style={campo}>
+                        <span style={rotulo}>Desde NPT (m)</span>
+                        <CampoNivel
+                          key={vigaElegida.id}
+                          etiqueta="De dónde arranca, desde el NPT"
+                          valor={vigaElegida.desde}
+                          vacio={medida ? formatNivel(medida.desde) : undefined}
+                          alCambiar={(desde) => cambiarPieza("vigas", vigaElegida.id, { desde })}
+                        />
+                      </label>
+                      <label style={campo}>
+                        <span style={rotulo}>Altura (m)</span>
+                        <CampoMetros
+                          key={vigaElegida.id}
+                          valor={vigaElegida.altura}
+                          vacio={medida ? formatMedida(medida.hasta - medida.desde) : undefined}
+                          alCambiar={(altura) => cambiarPieza("vigas", vigaElegida.id, { altura })}
+                          alVaciar={() => cambiarPieza("vigas", vigaElegida.id, { altura: null })}
+                        />
+                      </label>
+                    </div>
+                  );
+                })()}
                 <label style={campo}>
                   <span style={rotulo}>Línea de referencia</span>
                   <SelectorReferencia
@@ -6930,7 +6980,6 @@ export default function EditorPlanta({
                   return (
                     <>
                       <Renglon nombre="Largo">{formatMetros(medida.largo)}</Renglon>
-                      <Renglon nombre="Alto">{formatMetros(medida.hasta - medida.desde)}</Renglon>
                       <Renglon nombre="Nivel">
                         {formatNivel(medida.desde)} a {formatNivel(medida.hasta)}
                       </Renglon>
@@ -8547,91 +8596,46 @@ function CampoBajoNpt({
 }
 
 /**
- * De dónde a dónde va una columna, como en un programa de arquitectura: la
- * columna dibujada entre los dos pisos y, al lado, cuánto se separa del piso
- * terminado de arriba, cuánto del de la planta, y en el medio la altura que
- * resulta —que no se escribe: sale de las otras dos—.
+ * De dónde a dónde va una columna: de dónde arranca **desde el NPT** de la
+ * planta y cuánto sube, como un muro o un tabique. Todo se mide desde el
+ * mismo nivel.
  *
- * Vacíos, los dos campos dicen lo que le toca sola: arranca en la losa de
- * abajo y llega al fondo de la de arriba. Sin pisos definidos no hay piso de
- * arriba desde el cual medir, y ese campo queda bloqueado.
+ * Vacíos, dicen lo que le toca sola: arranca en la losa de abajo y llega al
+ * fondo de la de arriba. Una que se guardó terminando "a tanto del piso de
+ * arriba" muestra la altura que eso le da; al escribirle otra, manda la nueva.
  */
 function AlturaDeColumna({
-  arriba,
-  desde,
+  columna,
   medida,
-  pisoAPiso,
   alCambiar,
 }: {
-  arriba: number | null;
-  desde: number | null;
-  /** Lo que resulta, en metros sobre el piso terminado de la planta. */
+  columna: Columna;
+  /** Lo que resulta, en metros sobre el NPT de la planta. */
   medida: { desde: number; hasta: number; alto: number } | null;
-  /** A cuánto está el piso terminado de arriba, o null si no se sabe. */
-  pisoAPiso: number | null;
-  alCambiar: (cambios: { arriba?: number | null; desde?: number | null }) => void;
+  alCambiar: (cambios: { desde?: number | null; altura?: number | null; arriba?: null }) => void;
 }) {
+  const altura =
+    columna.altura ?? (columna.arriba !== null && medida ? Math.round(medida.alto * 1000) / 1000 : null);
   return (
-    <div style={alturaDeColumna}>
-      <svg
-        width="64"
-        height="132"
-        viewBox="0 0 64 132"
-        fill="none"
-        stroke="#9ca3af"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        {/* El piso de arriba y el de la planta, en perspectiva. */}
-        <path d="M4 22l14-10h34l-14 10z" fill="#f3f4f6" />
-        <path d="M4 118l14-10h34l-14 10z" fill="#f3f4f6" />
-        {/* La columna, que no llega al de arriba. */}
-        <path d="M20 112V36l8-6h8v76l-8 6z" fill="#ffffff" stroke="#374151" />
-        <path d="M20 36h8l8-6M28 36v76" stroke="#374151" />
-        {/* Las tres cotas: arriba, la altura, abajo. */}
-        <path d="M46 17h14M46 33h14M46 113h14" />
-        <path d="M56 17v16M56 33v80" stroke="#374151" />
-      </svg>
-
-      <div style={camposDeAltura}>
-        <label style={campo}>
-          <span style={rotulo}>Del piso de arriba</span>
-          <CampoNivel
-            etiqueta="Separación del piso terminado de arriba"
-            valor={arriba}
-            quieto={pisoAPiso === null}
-            vacio={
-              pisoAPiso === null
-                ? "faltan los pisos"
-                : medida
-                  ? formatNivel(medida.hasta - pisoAPiso)
-                  : undefined
-            }
-            alCambiar={(nuevo) => alCambiar({ arriba: nuevo })}
-          />
-        </label>
-        <label style={campo}>
-          <span style={rotulo}>Altura</span>
-          <input
-            type="text"
-            readOnly
-            tabIndex={-1}
-            aria-label="Altura de la columna"
-            value={medida ? formatMedida(medida.alto) : ""}
-            style={campoQuieto}
-          />
-        </label>
-        <label style={campo}>
-          <span style={rotulo}>Del piso de la planta</span>
-          <CampoNivel
-            etiqueta="Separación del piso terminado de la planta"
-            valor={desde}
-            vacio={medida ? formatNivel(medida.desde) : undefined}
-            alCambiar={(nuevo) => alCambiar({ desde: nuevo })}
-          />
-        </label>
-      </div>
+    <div style={dosCampos}>
+      <label style={campo}>
+        <span style={rotulo}>Desde NPT (m)</span>
+        <CampoNivel
+          etiqueta="De dónde arranca, desde el NPT"
+          valor={columna.desde}
+          vacio={medida ? formatNivel(medida.desde) : undefined}
+          alCambiar={(desde) => alCambiar({ desde })}
+        />
+      </label>
+      <label style={campo}>
+        <span style={rotulo}>Altura (m)</span>
+        <CampoMetros
+          valor={altura}
+          vacio={medida ? formatMedida(medida.alto) : undefined}
+          alCambiar={(nueva) => alCambiar({ altura: nueva, arriba: null })}
+          alVaciar={() => alCambiar({ altura: null, arriba: null })}
+        />
+      </label>
     </div>
   );
 }
@@ -9540,14 +9544,6 @@ const ladoDeBarra = {
   minWidth: 0,
 };
 
-const volverEnBarra = {
-  flex: "0 0 auto",
-  color: "#555555",
-  fontSize: "14px",
-  textDecoration: "none",
-  whiteSpace: "nowrap" as const,
-};
-
 /** Los niveles de la planta: una pastilla, al lado del modo. */
 const botonDeNiveles = {
   flex: "0 0 auto",
@@ -9693,18 +9689,6 @@ const botonDeModoActivo = {
 };
 
 /** El dibujo de la columna a la izquierda y sus tres medidas a la derecha. */
-const alturaDeColumna = {
-  display: "grid",
-  gridTemplateColumns: "64px minmax(0, 1fr)",
-  alignItems: "center",
-  gap: "12px",
-};
-
-const camposDeAltura = {
-  display: "grid",
-  gap: "8px",
-};
-
 const giroConBoton = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -9788,7 +9772,7 @@ const pista = {
   ...flotante,
   left: "10px",
   bottom: "10px",
-  maxWidth: "calc(100% - 20px)",
+  maxWidth: "calc(100% - 100px)",
   margin: 0,
   padding: "6px 10px",
   fontSize: "12px",

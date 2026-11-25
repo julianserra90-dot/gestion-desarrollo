@@ -1,6 +1,6 @@
-import Link from "next/link";
 import BotonImprimir from "@/components/BotonImprimir";
 import Logo from "@/components/Logo";
+import Volver from "@/components/Volver";
 import { getComputo, ordenDeRubro, type ItemComputo } from "@/lib/computo";
 import { formatMoney } from "@/lib/format";
 import { nombreMes } from "@/lib/meses";
@@ -64,9 +64,9 @@ export default async function PresupuestoDelComputoPage({
       <style>{IMPRESION}</style>
 
       <div style={barra} data-no-imprimir>
-        <Link href={`/obras/${obra.slug}/presupuestos/computo`} style={volver}>
-          ← Cómputo
-        </Link>
+        <Volver href={`/obras/${obra.slug}/presupuestos/computo`} enBarra>
+          Cómputo
+        </Volver>
         <BotonImprimir />
       </div>
 
@@ -225,8 +225,6 @@ const barra = {
   alignItems: "center",
   marginBottom: "24px",
 };
-
-const volver = { color: "#555555", fontSize: "14px", textDecoration: "none" };
 
 const encabezado = {
   display: "flex",

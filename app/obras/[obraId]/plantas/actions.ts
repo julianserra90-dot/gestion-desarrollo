@@ -8,7 +8,8 @@ import { capasAlDibujo, soloNucleo, tieneCapasDeAntes } from "@/lib/capas-al-dib
 import { getPase, type Pase } from "@/lib/pase-al-computo";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
 import { leerPisos } from "@/lib/pisos";
-import { leerDibujo, leerEscala, leerTiposDeAbertura } from "@/lib/planta-dibujo";
+import { leerDibujo, leerEscala, leerTiposDeAbertura, metrosPorPixel } from "@/lib/planta-dibujo";
+import { type Pincelada, pintar } from "@/lib/planta-pintura";
 import { getPisos, getPlantas, getSubtareas, getTiposDeMuroDeObra } from "@/lib/plantas";
 import { cantidadEnUnidad, cargasDelPlano, type TareaDelRubro } from "@/lib/avance-del-plano";
 import { modeloDePlanta } from "@/lib/planta-3d";
@@ -279,6 +280,72 @@ export async function editarEnPlanta(
     String(objeto),
     String(clave),
     valor === null ? null : Number(valor)
+  );
+  if ("error" in resultado) return { error: resultado.error };
+
+  const { data, error } = await supabase
+    .from("plantas")
+    .update({ dibujo: resultado.dibujo as unknown as Json })
+    .eq("id", plantaId)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (noTocoNada(data)) return { error: sinPermisoPara("modificar esta planta") };
+
+  revalidatePath("/", "layout");
+  return {};
+}
+
+/**
+ * Una pincelada del bote de pintura del 3D (`lib/planta-pintura.ts`): pinta, o
+ * despinta si ya tenía esa pintura, lo que se tocó. Como `editarEnPlanta`, va
+ * contra lo guardado.
+ */
+export async function pintarEnPlanta(
+  plantaId: string,
+  tarea: string,
+  pincelada: Pincelada
+): Promise<Resultado> {
+  const supabase = await createClient();
+
+  const [{ data: planta, error: alLeer }, { data: pintura }, { data: revestimientos }] = await Promise.all([
+    supabase.from("plantas").select("dibujo, escala, altura").eq("id", plantaId).maybeSingle(),
+    supabase.from("tareas").select("id").eq("id", String(tarea)).maybeSingle(),
+    // Lo que no se pinta: la pintura arranca donde termina.
+    supabase.from("tareas").select("id").eq("rubro", "Revestimientos"),
+  ]);
+  if (alLeer) return { error: alLeer.message };
+  if (!planta) return { error: "No se encontró la planta." };
+  if (!pintura) return { error: "Esa pintura no está en el catálogo." };
+
+  const mpp = metrosPorPixel(leerEscala(planta.escala));
+  if (mpp === null) return { error: "La planta no tiene escala." };
+
+  // Lo que llega del navegador, con lo justo y en su forma.
+  const numero = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  let toque: Pincelada | null = null;
+  if (pincelada?.donde === "cara") {
+    const t = pincelada.tramo;
+    const desde = numero(t?.desde);
+    const hasta = numero(t?.hasta);
+    const cara = t?.cara === 1 || t?.cara === -1 || t?.cara === "a" || t?.cara === "b" ? t.cara : null;
+    if (typeof t?.muroId === "string" && cara !== null && desde !== null && hasta !== null) {
+      toque = { donde: "cara", tramo: { muroId: t.muroId, cara, desde, hasta } };
+    }
+  } else if (pincelada?.donde === "cielorraso" && typeof pincelada.ambienteId === "string") {
+    toque = { donde: "cielorraso", ambienteId: pincelada.ambienteId };
+  } else if (pincelada?.donde === "cajon" && typeof pincelada.cajonId === "string") {
+    toque = { donde: "cajon", cajonId: pincelada.cajonId };
+  }
+  if (!toque) return { error: "Eso no se puede pintar." };
+
+  const resultado = pintar(
+    leerDibujo(planta.dibujo),
+    mpp,
+    Number(planta.altura),
+    pintura.id,
+    toque,
+    new Set((revestimientos ?? []).map((t) => t.id))
   );
   if ("error" in resultado) return { error: resultado.error };
 

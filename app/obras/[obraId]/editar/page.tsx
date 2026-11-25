@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import Volver from "@/components/Volver";
 import EditarNav from "@/components/EditarNav";
 import ImagenPortadaForm from "@/components/ImagenPortadaForm";
 import ObraForm from "@/components/ObraForm";
@@ -87,15 +88,13 @@ export default async function EditarObraPage({
     <AppShell
       sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="estado" />}
     >
+      <Volver href={`/obras/${obra.slug}`}>Obra</Volver>
+
       <header style={header}>
         <div>
           <p style={eyebrow}>{obra.nombre}</p>
           <h2 style={title}>Editar obra</h2>
         </div>
-
-        <Link href={`/obras/${obra.slug}`} style={backLink}>
-          Volver a la obra
-        </Link>
       </header>
 
       <EditarNav slug={obra.slug} activa="obra" />
@@ -284,13 +283,6 @@ const title = {
   fontWeight: 500,
   letterSpacing: "-0.01em",
   margin: "8px 0",
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
 };
 
 const avisoArchivada = {

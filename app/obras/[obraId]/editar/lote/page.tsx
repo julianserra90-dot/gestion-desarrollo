@@ -1,6 +1,7 @@
 import Link from "next/link";
 import InputMonto from "@/components/InputMonto";
 import AppShell from "@/components/AppShell";
+import Volver from "@/components/Volver";
 import EditarNav from "@/components/EditarNav";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
@@ -31,6 +32,8 @@ export default async function EditarDatosLotePage({
 
   return (
     <AppShell sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="lote" />}>
+      <Volver href={`/obras/${obra.slug}/lote`}>Lote</Volver>
+
       <header style={header}>
         <div>
           <p style={eyebrow}>{obra.nombre}</p>
@@ -39,10 +42,6 @@ export default async function EditarDatosLotePage({
             Los datos del terreno: lo que costó y cómo se lo identifica.
           </p>
         </div>
-
-        <Link href={`/obras/${obra.slug}/lote`} style={backLink}>
-          Volver al lote
-        </Link>
       </header>
 
       <EditarNav slug={obra.slug} activa="lote" />
@@ -228,13 +227,6 @@ const title = {
 const subtitle = {
   color: "#666666",
   margin: 0,
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
 };
 
 const grid = {

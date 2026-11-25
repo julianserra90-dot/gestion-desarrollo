@@ -1,5 +1,5 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import Volver from "@/components/Volver";
 import AppSidebar from "@/components/AppSidebar";
 import * as ui from "@/components/ui";
 import { ROL, ROL_CON_EMPRESA, leerRol } from "@/lib/roles";
@@ -31,15 +31,13 @@ export default async function PerfilPage({
 
   return (
     <AppShell sidebar={<AppSidebar activo="perfil" />}>
+      <Volver href="/">Obras</Volver>
+
       <header style={header}>
         <div>
           <p style={ui.eyebrow}>Gestión de desarrollo</p>
           <h2 style={ui.pageTitle}>Mi perfil</h2>
         </div>
-
-        <Link href="/" style={backLink}>
-          Volver a obras
-        </Link>
       </header>
 
       {error && <p style={errorBox}>{error}</p>}
@@ -100,13 +98,6 @@ const header = {
   borderBottom: "1px solid #e5e5e5",
   paddingBottom: "24px",
   marginBottom: "32px",
-};
-
-const backLink = {
-  color: "#111111",
-  textDecoration: "none",
-  borderBottom: "1px solid #111111",
-  paddingBottom: "4px",
 };
 
 const errorBox = {

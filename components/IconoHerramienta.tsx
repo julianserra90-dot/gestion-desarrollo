@@ -24,7 +24,8 @@ export type NombreHerramienta =
   | "tabique"
   | "losa"
   | "deshacer"
-  | "encuadrar";
+  | "encuadrar"
+  | "pintura";
 
 export default function IconoHerramienta({
   nombre,
@@ -149,4 +150,12 @@ const TRAZOS: Record<NombreHerramienta, React.ReactNode> = {
   ),
   // Las cuatro esquinas de un encuadre.
   encuadrar: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
+  // El bote de pintura volcado, con su gota.
+  pintura: (
+    <>
+      <path d="M11 3.5l7.5 7.5-6.5 6.5a1.6 1.6 0 01-2.3 0L4.5 12.3a1.6 1.6 0 010-2.3z" />
+      <path d="M4.5 11h14" />
+      <path d="M19.5 14.5s-2 2.4-2 3.7a2 2 0 004 0c0-1.3-2-3.7-2-3.7z" />
+    </>
+  ),
 };

@@ -47,6 +47,7 @@ import {
   recortar,
 } from "@/lib/planta-estructura";
 import { piezasDeCapas } from "@/lib/planta-capas";
+import { carasPintables } from "@/lib/planta-pintura";
 import type { Composicion } from "@/lib/tipos-de-muro";
 import {
   type Cara,
@@ -66,8 +67,11 @@ import {
 /** Qué es cada sólido: decide de qué color va y con qué se prende o apaga. */
 export type ClaseDeSolido =
   | "muro"
-  /** Lo que va sobre el ladrillo: revoques, revestimientos, pintura. */
+  /** Lo que va sobre el ladrillo: revoques, revestimientos. */
   | "capa"
+  /** Una pintura sobre una cara: no tiene espesor, se la ve como una piel de
+   *  color sobre lo que pinta. */
+  | "pintura"
   | "vidrio"
   | "puerta"
   | "piso"
@@ -175,7 +179,40 @@ export type Modelo = {
   /** Cuánto ocupa en planta, en metros: su huella arranca en 0,0. */
   ancho: number;
   fondo: number;
+  /**
+   * Dónde estaba ese 0,0 en el plano de la planta, en metros: lo que se le
+   * restó a todo. Con esto un punto tocado en el 3D vuelve a su lugar en el
+   * dibujo —el bote de pintura—.
+   */
+  origen: { x: number; y: number };
+  /**
+   * Las caras que se pueden pintar (`carasPintables`), en metros y corridas
+   * como los sólidos: el bote resalta la que tiene el mouse encima y, al
+   * tocarla, manda su tramo.
+   */
+  caras: CaraEn3D[];
 };
+
+/** Una cara pintable, como la ve el 3D. */
+export type CaraEn3D = {
+  /** Lo que se manda al pintarla. */
+  tramo: { muroId: string; cara: 1 | -1 | "a" | "b"; desde: number; hasta: number };
+  ambienteId: string | null;
+  /** Sus dos puntas sobre el plano, en metros: x, y. */
+  a: [number, number];
+  b: [number, number];
+  /** Hacia dónde mira, sobre el plano: hacia su ambiente. */
+  n: [number, number];
+  /** Entre qué alturas iría la pintura. `abajo` null: revestida hasta
+   *  arriba, no se pinta. */
+  abajo: number | null;
+  arriba: number;
+  /** Cuánto tiene encima: dónde queda la cara terminada, en metros. */
+  grosor: number;
+};
+
+/** Lo que mide de grueso una pintura en el 3D: lo justo para verla. */
+const PIEL_DE_PINTURA = 0.004;
 
 /** El espesor con que se dibuja lo que no tiene uno cargado: un piso sin
  *  capas, un cielorraso, un vidrio. Lo justo para que se vea. */
@@ -207,7 +244,9 @@ export function modeloDePlanta(
   nombres: Map<string, string> = new Map(),
   tipos: Map<string, Composicion> = new Map(),
   /** Las subtareas de cada tarea del catálogo: el pastinado, del porcelanato. */
-  subtareas: Map<string, string[]> = new Map()
+  subtareas: Map<string, string[]> = new Map(),
+  /** Las tareas que revisten: hasta dónde llegan es desde dónde se pinta. */
+  revestimientos: Set<string> = new Set()
 ): Modelo | null {
   const mpp = metrosPorPixel(planta.escala);
   if (mpp === null) return null;
@@ -303,7 +342,8 @@ export function modeloDePlanta(
     abajo: number,
     arriba: number,
     objeto: string,
-    grupo: string
+    grupo: string,
+    clase: ClaseDeSolido = "capa"
   ) => {
     const muro = dibujo.muros.find((m) => m.id === cara.muroId);
     if (!muro) return;
@@ -335,7 +375,7 @@ export function modeloDePlanta(
       const p1 = pano.hasta >= largoDePieza - 1e-9 ? 1e4 : s0 + pano.hasta;
       const huella = recortar(puntos, [en(p0, -1e4), en(p1, -1e4), en(p1, 1e4), en(p0, 1e4)]);
       if (huella.length < 3) continue;
-      sumar("capa", objeto, grupo, huella, de, a);
+      sumar(clase, objeto, grupo, huella, de, a);
     }
     return en;
   };
@@ -513,14 +553,42 @@ export function modeloDePlanta(
 
   // ---- Las capas dibujadas sobre las caras --------------------------------
   // Cada pieza, como una piel con su espesor entre sus alturas, sin los vanos
-  // de su muro. Una pintura no tiene espesor: en el 3D no se ve. Cada una es
-  // de su cara: el revoque del baño y el del pasillo se marcan por separado.
+  // de su muro. Una pintura no tiene espesor: va como una piel finita sobre lo
+  // que pinta, de su color, para ver qué está pintado. Cada una es de su
+  // cara: el revoque del baño y el del pasillo se marcan por separado.
   const caras = carasVisibles(dibujo.muros, dibujo.ambientes, mpp);
   for (const pieza of piezasDeCapas(dibujo, caras, mpp, techo)) {
-    if (!(pieza.capa.espesor > 0)) continue;
     const { cara } = pieza;
     const clave = claveDeCara(cara);
     const objeto = `capa:${pieza.capa.id}:${cara.muroId}:${clave}`;
+    if (!(pieza.capa.espesor > 0)) {
+      objetos[objeto] ??= {
+        titulo: "Pintura",
+        nombre: tarea(pieza.capa.tarea),
+        renglones: [
+          ["Cara", nombreDeCara(cara.muroId, clave)],
+          [
+            "Altura",
+            `${formatMetros(pieza.capa.desde)} a ${typeof pieza.capa.hasta === "number" ? formatMetros(pieza.capa.hasta) : pieza.capa.hasta}`,
+          ],
+        ],
+        campos: [],
+      };
+      const largo = cara.largo > 0 ? cara.largo : 1;
+      const d = { x: (cara.b.x - cara.a.x) / largo, y: (cara.b.y - cara.a.y) / largo };
+      const lado = cara.punta === null ? cara.lado : 1;
+      const o = { x: -d.y * lado, y: d.x * lado };
+      const en = (s: number, n: number): Punto => ({
+        x: cara.a.x + d.x * (s - cara.desde) + o.x * n,
+        y: cara.a.y + d.y * (s - cara.desde) + o.y * n,
+      });
+      // Sobre la cara de lo que tiene debajo: el revoque, o el ladrillo.
+      const n0 = pieza.n0;
+      const n1 = n0 + PIEL_DE_PINTURA / mpp;
+      const puntos = [en(pieza.s0, n0), en(pieza.s1, n0), en(pieza.s1, n1), en(pieza.s0, n1)];
+      levantarPiel(cara, puntos, pieza.s0, pieza.s1, pieza.abajo, pieza.arriba, objeto, `pintura|${pieza.capa.tarea ?? ""}`, "pintura");
+      continue;
+    }
     objetos[objeto] ??= {
       titulo: "Capa",
       nombre: tarea(pieza.capa.tarea),
@@ -727,7 +795,24 @@ export function modeloDePlanta(
             niveles(m.desde, m.hasta),
             ["Hormigón", formatM3(m.neto)],
           ],
-          campos: [{ clave: "ancho", nombre: "Espesor (m)", valor: viga.ancho }],
+          // Como en su ficha del editor: de dónde arranca sobre el piso
+          // terminado y cuánto sube. Vacíos, de losa a losa.
+          campos: [
+            { clave: "ancho", nombre: "Espesor (m)", valor: viga.ancho },
+            {
+              clave: "desde",
+              nombre: "Desde NPT (m)",
+              valor: viga.desde,
+              vacio: `${formatNivel(m.desde)} — su losa`,
+              conSigno: true,
+            },
+            {
+              clave: "altura",
+              nombre: "Altura (m)",
+              valor: viga.altura,
+              vacio: `${formatMetros(m.hasta - m.desde)} — hasta la losa`,
+            },
+          ],
         };
         continue;
       }
@@ -781,22 +866,22 @@ export function modeloDePlanta(
           niveles(m.desde, m.hasta),
           metalica ? ["Perfil", formatMetros(m.alto)] : ["Hormigón", formatM3(m.neto)],
         ],
-        // Como en su ficha del editor: cuánto se separa del piso de arriba y
-        // del de la planta; la altura es lo que resulta.
+        // Como en su ficha del editor y como el tabique: de dónde arranca
+        // desde el NPT y cuánto sube. Una que todavía termina "del piso de
+        // arriba" muestra la altura que le da.
         campos: [
           {
-            clave: "arriba",
-            nombre: "Del piso de arriba (m)",
-            valor: columna.arriba,
-            vacio: pisoAPiso !== null ? formatNivel(m.hasta - pisoAPiso) : "faltan los pisos",
-            conSigno: true,
-          },
-          {
             clave: "desde",
-            nombre: "Del piso de la planta (m)",
+            nombre: "Desde NPT (m)",
             valor: columna.desde,
             vacio: formatNivel(m.desde),
             conSigno: true,
+          },
+          {
+            clave: "altura",
+            nombre: "Altura (m)",
+            valor: columna.altura ?? (columna.arriba !== null ? Math.round(m.alto * 1000) / 1000 : null),
+            vacio: `${formatMetros(m.alto)} — hasta la losa`,
           },
           { clave: "ancho", nombre: "Ancho (m)", valor: columna.ancho },
           { clave: "profundidad", nombre: "Profundidad (m)", valor: columna.profundidad },
@@ -892,7 +977,8 @@ export function modeloDePlanta(
     }));
   }
 
-  if (enObra.length === 0) return { solidos: [], aristas: [], objetos, ancho: 0, fondo: 0 };
+  if (enObra.length === 0)
+    return { solidos: [], aristas: [], objetos, ancho: 0, fondo: 0, origen: { x: 0, y: 0 }, caras: [] };
 
   // ---- A su esquina ------------------------------------------------------
   let minX = Infinity;
@@ -942,6 +1028,26 @@ export function modeloDePlanta(
     objetos,
     ancho: alMm(maxX - minX),
     fondo: alMm(maxY - minY),
+    origen: { x: minX, y: minY },
+    caras: carasPintables(dibujo, mpp, planta.altura, revestimientos).map(({ cara, tramo, abajo, arriba, grosor }) => {
+      const largo = cara.largo > 0 ? cara.largo : 1;
+      const d = { x: (cara.b.x - cara.a.x) / largo, y: (cara.b.y - cara.a.y) / largo };
+      return {
+        tramo,
+        ambienteId: cara.ambienteId,
+        a: [alMm(cara.a.x * mpp - minX), alMm(cara.a.y * mpp - minY)] as [number, number],
+        b: [alMm(cara.b.x * mpp - minX), alMm(cara.b.y * mpp - minY)] as [number, number],
+        // Hacia dónde mira: un canto, hacia afuera de su punta, como lo
+        // levanta `levantarPiel`.
+        n: [-d.y * (cara.punta === null ? cara.lado : 1), d.x * (cara.punta === null ? cara.lado : 1)] as [
+          number,
+          number,
+        ],
+        abajo: abajo === null ? null : alMm(abajo),
+        arriba: alMm(arriba),
+        grosor: alMm(grosor),
+      };
+    }),
   };
 }
 

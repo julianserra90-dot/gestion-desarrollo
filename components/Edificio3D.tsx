@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -10,7 +10,7 @@ import * as ui from "@/components/ui";
 import { type CapaDeVista, useCapasDeVista } from "@/lib/capas-de-vista";
 import { cantidadEnUnidad } from "@/lib/avance-del-plano";
 import { formatNivel } from "@/lib/format";
-import type { Campo, ClaseDeSolido, Modelo, Solido } from "@/lib/planta-3d";
+import type { Campo, CaraEn3D, ClaseDeSolido, Modelo, Solido } from "@/lib/planta-3d";
 
 /** Un piso del edificio, con la planta que le toca. */
 export type PisoEn3D = {
@@ -48,11 +48,27 @@ export type MarcaDeAvance = {
 /** Qué se tocó: una cosa del dibujo de una planta, en uno de sus pisos. */
 type Elegido = { piso: number; planta: string; objeto: string };
 
-/** Qué hace arrastrar con el botón izquierdo. */
-type Modo = "girar" | "mover";
-
 /** Para qué se mira: el edificio, o el avance de una tarea. */
-type Vista = "ver" | "avance";
+type Vista = "ver" | "avance" | "pintar";
+
+/** Lo que se tocó con el bote de pintura (`lib/planta-pintura.ts`). */
+export type PinceladaEn3D =
+  | { donde: "cara"; tramo: CaraEn3D["tramo"] }
+  | { donde: "cielorraso"; ambienteId: string }
+  | { donde: "cajon"; cajonId: string };
+
+/**
+ * Lo que el bote tiene debajo: qué se pintaría, cómo se lo resalta y, si no se
+ * puede, por qué.
+ */
+type Objetivo = {
+  clave: string;
+  planta: string;
+  pincelada: PinceladaEn3D;
+  /** Lo que se resalta, a la altura de un piso. */
+  malla: (cota: number) => THREE.Mesh | null;
+  bloqueo?: string;
+};
 
 /**
  * El edificio levantado, para recorrerlo con el mouse.
@@ -77,13 +93,28 @@ export default function Edificio3D({
   marcas = [],
   marcar,
   inicial,
+  cabecera,
+  acciones,
+  plantaDeOrigen,
+  pinturas = [],
+  pintar,
 }: {
+  /** La planta de la que se vino: el botón 2D vuelve a ella. */
+  plantaDeOrigen?: { href: string; nombre: string };
+  /** Lo que la pantalla pone a la izquierda de la barra: volver y el título. */
+  cabecera?: ReactNode;
+  /** Lo que la pantalla suma a la barra, a la derecha: definir los pisos. */
+  acciones?: ReactNode;
   /**
    * Con qué abre: una tarea —se la ve como en Avance, sólo lo que la lleva—,
    * un piso por su nombre y una pieza por el suyo. Es lo que manda el cómputo
    * para mostrar de dónde sale un número del plano.
    */
-  inicial?: { tarea: string | null; nivel: string | null; cosa: string | null };
+  inicial?: { tarea: string | null; nivel: string | null; cosa: string | null; pintar?: boolean };
+  /** Las pinturas que ofrece el bote: las del rubro Pintura, sin sus subtareas. */
+  pinturas?: { id: string; nombre: string }[];
+  /** Pinta —o despinta— lo tocado de una planta, y guarda. */
+  pintar?: (planta: string, tarea: string, pincelada: PinceladaEn3D) => Promise<{ error?: string }>;
   /** El modelo de cada planta, por su id. */
   modelos: Record<string, Modelo>;
   pisos: PisoEn3D[];
@@ -114,6 +145,8 @@ export default function Edificio3D({
   const visor = useRef<{
     edificio: THREE.Group;
     resaltado: THREE.Group;
+    /** Lo que el bote resalta: la cara que se pintaría. */
+    apuntado: THREE.Group;
     controles: OrbitControls;
     encuadrar: (caja: THREE.Box3) => void;
     dibujar: () => void;
@@ -130,10 +163,12 @@ export default function Edificio3D({
     .map((o) => o.clave)
     .join(",");
   /** El piso que se mira solo, por su número; null son todos. */
+  /** Los menús que flotan sobre el modelo: cerrados no tapan nada. */
+  const [conCapasAbiertas, setConCapasAbiertas] = useState(false);
+  const [conPisosAbiertos, setConPisosAbiertos] = useState(false);
   const [soloElPiso, setSoloElPiso] = useState<number | null>(() =>
     inicial?.nivel ? pisos.find((p) => nombreDe(p) === inicial.nivel)?.numero ?? null : null
   );
-  const [modo, setModo] = useState<Modo>("girar");
   const [elegido, setElegido] = useState<Elegido | null>(() => {
     // La pieza que se pidió —"C03", "V07"—, en el piso pedido, si lleva la tarea.
     if (!inicial?.cosa || !inicial.tarea) return null;
@@ -150,8 +185,25 @@ export default function Edificio3D({
   const [errorAlEditar, setErrorAlEditar] = useState<string | null>(null);
   const [guardando, iniciarGuardado] = useTransition();
   const [vista, setVista] = useState<Vista>(() =>
-    inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea) ? "avance" : "ver"
+    inicial?.pintar && pintar
+      ? "pintar"
+      : inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea)
+        ? "avance"
+        : "ver"
   );
+  /** La pintura del bote: la de interiores, que es la de casi todo, hasta que se elija otra. */
+  const [pinturaElegida, setPinturaElegida] = useState<string | null>(
+    () => (pinturas.find((p) => /interior/i.test(p.nombre)) ?? pinturas[0])?.id ?? null
+  );
+  const [errorAlPintar, setErrorAlPintar] = useState<string | null>(null);
+  const [pintando, iniciarPintado] = useTransition();
+  /**
+   * Qué hacer con un toque mientras se pinta. El visor se arma una sola vez y
+   * su manejo del mouse no ve el estado de cada momento: lo lee de acá.
+   */
+  const pintor = useRef<((toque: THREE.Intersection) => void) | null>(null);
+  /** Lo mismo con el mouse encima, sin tocar: resalta lo que se pintaría. */
+  const sobrevuelo = useRef<((toque: THREE.Intersection | null) => void) | null>(null);
   /** La tarea cuyo avance se mira, por su id. */
   const [tareaVista, setTareaVista] = useState<string | null>(() =>
     inicial?.tarea && tareasDeAvance.some((t) => t.id === inicial.tarea) ? inicial.tarea : null
@@ -165,6 +217,17 @@ export default function Edificio3D({
   const [rubroVisto, setRubroVisto] = useState<string | null>(
     () => tareasDeAvance.find((t) => t.id === inicial?.tarea)?.rubro ?? null
   );
+  /**
+   * En Ver, los rubros apagados, como las capas: lo de un rubro con el ojo
+   * abierto se ve sólido y lo del resto apenas insinuado. Se pueden mirar
+   * varios a la vez. Ninguno apagado es todo el edificio, como siempre.
+   */
+  const [rubrosApagados, setRubrosApagados] = useState<string[]>(() => {
+    const delInicial = tareasDeAvance.find((t) => t.id === inicial?.tarea)?.rubro;
+    return delInicial
+      ? Array.from(new Set(tareasDeAvance.map((t) => t.rubro))).filter((r) => r !== delInicial)
+      : [];
+  });
   /** El día con que se marca lo hecho. */
   const [dia, setDia] = useState(hoy);
   const [marcando, iniciarMarcado] = useTransition();
@@ -182,14 +245,24 @@ export default function Edificio3D({
    * Vacía con una tarea en Avance, que ya se pinta por ella; mientras no haya
    * una elegida, el rubro se ve igual que en Ver.
    */
+  // En Ver manda lo prendido de cada rubro; con todos apagados no queda nada
+  // sólido —"-" no es ninguna tarea—.
   const tareasDelRubro =
-    rubroVisto !== null && tareaEnAvance === null
-      ? tareasDeAvance
-          .filter((t) => t.rubro === rubroVisto)
-          .map((t) => t.id)
-          .sort()
-          .join(",")
-      : "";
+    vista === "ver"
+      ? rubrosApagados.length === 0
+        ? ""
+        : tareasDeAvance
+            .filter((t) => !rubrosApagados.includes(t.rubro))
+            .map((t) => t.id)
+            .sort()
+            .join(",") || "-"
+      : vista === "avance" && rubroVisto !== null && tareaEnAvance === null
+        ? tareasDeAvance
+            .filter((t) => t.rubro === rubroVisto)
+            .map((t) => t.id)
+            .sort()
+            .join(",")
+        : "";
 
   /** Guarda una medida de lo elegido y vuelve a pedir el edificio: el modelo
    *  se rehace en el servidor, con las mismas cuentas de siempre. */
@@ -226,7 +299,8 @@ export default function Edificio3D({
 
     const edificio = new THREE.Group();
     const resaltado = new THREE.Group();
-    escena.add(edificio, resaltado);
+    const apuntado = new THREE.Group();
+    escena.add(edificio, resaltado, apuntado);
     // Una cámara nueva no está acomodada para nada.
     ultimoEncuadre.current = null;
 
@@ -238,6 +312,14 @@ export default function Edificio3D({
     // Mover la vista corre el punto que se mira en el plano de la pantalla:
     // es lo que se espera de "arrastrar el modelo".
     controles.screenSpacePanning = true;
+    // Como en cualquier programa de 3D: arrastrar con el izquierdo gira, con
+    // la rueda apretada (o el derecho) corre la vista, y la rueda acerca.
+    controles.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    controles.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
     const dibujar = () => render.render(escena, camara);
     controles.addEventListener("change", dibujar);
@@ -296,6 +378,11 @@ export default function Edificio3D({
         setElegido(null);
         return;
       }
+      // Con el bote en la mano, tocar es pintar.
+      if (pintor.current) {
+        pintor.current(toque);
+        return;
+      }
       // De qué sólido es el triángulo que se tocó: la malla tiene los de
       // todos fundidos, y guarda dónde termina cada uno.
       const datos = toque.object.userData as DatosDeMalla;
@@ -303,12 +390,46 @@ export default function Edificio3D({
       const objeto = datos.objetos[cual];
       setElegido(objeto ? { piso: datos.piso, planta: datos.planta, objeto } : null);
     };
+    // La rueda apretada, en Windows, abre el desplazamiento automático del
+    // navegador: acá es para correr la vista.
+    const sinAutoDesplazar = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault();
+    };
+    // Con el bote en la mano, lo que hay debajo del mouse se resalta antes de
+    // tocarlo. Una vez por cuadro, y no mientras se arrastra.
+    let cuadroDeSobrevuelo = 0;
+    const alMover = (e: PointerEvent) => {
+      if (!sobrevuelo.current || e.buttons !== 0) return;
+      cancelAnimationFrame(cuadroDeSobrevuelo);
+      const { clientX, clientY } = e;
+      cuadroDeSobrevuelo = requestAnimationFrame(() => {
+        const marco = render.domElement.getBoundingClientRect();
+        rayo.setFromCamera(
+          new THREE.Vector2(
+            ((clientX - marco.left) / marco.width) * 2 - 1,
+            -((clientY - marco.top) / marco.height) * 2 + 1
+          ),
+          camara
+        );
+        const toques = rayo.intersectObjects(tocables.current, false);
+        const toque = toques[0];
+        sobrevuelo.current?.(toque && toque.faceIndex !== undefined && toque.faceIndex !== null ? toque : null);
+      });
+    };
+    const alSalir = () => {
+      cancelAnimationFrame(cuadroDeSobrevuelo);
+      sobrevuelo.current?.(null);
+    };
     render.domElement.addEventListener("pointerdown", alBajar);
     render.domElement.addEventListener("pointerup", alSubir);
+    render.domElement.addEventListener("pointermove", alMover);
+    render.domElement.addEventListener("pointerleave", alSalir);
+    render.domElement.addEventListener("mousedown", sinAutoDesplazar);
 
     visor.current = {
       edificio,
       resaltado,
+      apuntado,
       controles,
       dibujar,
       // La cámara, de tres cuartos y desde arriba, a la distancia en que entra
@@ -335,7 +456,11 @@ export default function Edificio3D({
       cancelAnimationFrame(cuadro);
       observador.disconnect();
       render.domElement.removeEventListener("pointerdown", alBajar);
+      render.domElement.removeEventListener("mousedown", sinAutoDesplazar);
       render.domElement.removeEventListener("pointerup", alSubir);
+      render.domElement.removeEventListener("pointermove", alMover);
+      render.domElement.removeEventListener("pointerleave", alSalir);
+      cancelAnimationFrame(cuadroDeSobrevuelo);
       controles.dispose();
       render.dispose();
       render.domElement.remove();
@@ -344,15 +469,194 @@ export default function Edificio3D({
     };
   }, []);
 
-  // ---- Qué hace arrastrar -------------------------------------------------
+  // ---- El bote de pintura ------------------------------------------------
+  // Lo que hay debajo del mouse se resalta —la cara entera que se pintaría,
+  // entre las alturas en que iría la pintura—, y tocar manda eso mismo: la cara
+  // que viene calculada del servidor (`modelo.caras`), no un punto.
   useEffect(() => {
     const armado = visor.current;
-    if (!armado) return;
-    const accion = modo === "mover" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
-    armado.controles.mouseButtons.LEFT = accion;
-    // Con un dedo, lo mismo.
-    armado.controles.touches.ONE = modo === "mover" ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
-  }, [modo]);
+    const limpiar = () => {
+      if (!armado) return;
+      for (const hijo of [...armado.apuntado.children]) {
+        armado.apuntado.remove(hijo);
+        const malla = hijo as THREE.Mesh;
+        malla.geometry.dispose();
+        (malla.material as THREE.Material).dispose();
+      }
+    };
+    /** Los pisos que son de una planta y se están mirando: lo que se pinta en
+     *  ella se pinta en todos. */
+    const pisosDe = (planta: string) =>
+      pisos.filter((p) => p.planta === planta && (soloElPiso === null || p.numero === soloElPiso));
+    if (!armado || vista !== "pintar" || !pintar || !pinturaElegida) {
+      pintor.current = null;
+      sobrevuelo.current = null;
+      limpiar();
+      armado?.dibujar();
+      return;
+    }
+
+    const material = (color: string) =>
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
+      });
+    /** Los sólidos de una cosa —un cajón, un cielorraso—, a la altura de su piso. */
+    const deLaCosa = (modelo: Modelo, objeto: string, clase: ClaseDeSolido) => (cota: number) => {
+      const geometrias = modelo.solidos.filter((x) => x.objeto === objeto && x.clase === clase).map(geometriaDe);
+      if (geometrias.length === 0) return null;
+      const fundida = mergeGeometries(geometrias);
+      geometrias.forEach((g) => g.dispose());
+      fundida.translate(0, cota, 0);
+      return new THREE.Mesh(fundida, material(ACENTO));
+    };
+
+    const objetivoDe = (toque: THREE.Intersection): Objetivo | null => {
+      const datos = toque.object.userData as DatosDeMalla;
+      const cual = datos.hasta.findIndex((fin) => toque.faceIndex! < fin);
+      const objeto = datos.objetos[cual] ?? "";
+      const modelo = modelos[datos.planta];
+      const normal = toque.face?.normal;
+      const piso = pisos.find((p) => p.numero === datos.piso);
+      if (!modelo || !normal || !piso) return null;
+      const { cota } = piso;
+      // La clave no es del piso: es lo mismo en todos los de la planta.
+
+      if (objeto.startsWith("cajon:")) {
+        return {
+          clave: `${datos.planta}|${objeto}`,
+          planta: datos.planta,
+          pincelada: { donde: "cajon", cajonId: objeto.slice("cajon:".length) },
+          malla: deLaCosa(modelo, objeto, "cielorraso"),
+        };
+      }
+      if (datos.clase === "cielorraso" && objeto.startsWith("ambiente:")) {
+        return {
+          clave: `${datos.planta}|${objeto}|cielorraso`,
+          planta: datos.planta,
+          pincelada: { donde: "cielorraso", ambienteId: objeto.slice("ambiente:".length) },
+          malla: deLaCosa(modelo, objeto, "cielorraso"),
+        };
+      }
+      // La losa vista desde abajo: el cielorraso aplicado del ambiente que
+      // queda debajo, con la forma de su piso.
+      if (datos.clase === "losa" && normal.y < -0.5) {
+        const p = { x: toque.point.x, y: toque.point.z };
+        const suPiso = modelo.solidos.find((x) => x.clase === "piso" && adentroDe(p, x.puntos));
+        if (!suPiso) return null;
+        const alto = toque.point.y - cota;
+        return {
+          clave: `${datos.planta}|${suPiso.objeto}|cielorraso`,
+          planta: datos.planta,
+          pincelada: { donde: "cielorraso", ambienteId: suPiso.objeto.slice("ambiente:".length) },
+          malla: (enCota) => {
+            const g = geometriaDe({ ...suPiso, desde: alto - 0.012, hasta: alto - 0.002 });
+            g.translate(0, enCota, 0);
+            return new THREE.Mesh(g, material(ACENTO));
+          },
+        };
+      }
+      // Una pared: la cara pintable más cerca de lo tocado, del lado que se ve.
+      if (
+        (datos.clase === "muro" || datos.clase === "capa" || datos.clase === "pintura") &&
+        Math.abs(normal.y) < 0.5
+      ) {
+        const p = { x: toque.point.x + normal.x * 0.05, y: toque.point.z + normal.z * 0.05 };
+        const largoDeNormal = Math.hypot(normal.x, normal.z) || 1;
+        let mejor: CaraEn3D | null = null;
+        let lejos = 0.4;
+        for (const cara of modelo.caras) {
+          // Que mire para el mismo lado que lo tocado: un canto no se confunde
+          // con la cara larga que dobla en su punta.
+          if ((cara.n[0] * normal.x + cara.n[1] * normal.z) / largoDeNormal < 0.7) continue;
+          // Del lado de la cara al que mira, no del de atrás.
+          if ((p.x - cara.a[0]) * cara.n[0] + (p.y - cara.a[1]) * cara.n[1] < -0.02) continue;
+          const d = distanciaASegmento(p, cara.a, cara.b);
+          if (d < lejos) {
+            lejos = d;
+            mejor = cara;
+          }
+        }
+        if (!mejor) return null;
+        const cara = mejor;
+        const abajo = cara.abajo ?? 0;
+        return {
+          clave: `${datos.planta}|${cara.tramo.muroId}|${cara.tramo.cara}|${cara.tramo.desde}`,
+          planta: datos.planta,
+          pincelada: { donde: "cara", tramo: cara.tramo },
+          bloqueo:
+            cara.abajo === null
+              ? "Esa cara está revestida hasta arriba: no queda nada a la vista para pintar."
+              : undefined,
+          malla: (cota) => {
+            // Un paño delante de la cara terminada, entre sus dos alturas.
+            const afuera = cara.grosor + 0.006;
+            const [ax, ay] = [cara.a[0] + cara.n[0] * afuera, cara.a[1] + cara.n[1] * afuera];
+            const [bx, by] = [cara.b[0] + cara.n[0] * afuera, cara.b[1] + cara.n[1] * afuera];
+            const y0 = cota + abajo;
+            const y1 = cota + cara.arriba;
+            const g = new THREE.BufferGeometry();
+            g.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(
+                [ax, y0, ay, bx, y0, by, bx, y1, by, ax, y0, ay, bx, y1, by, ax, y1, ay],
+                3
+              )
+            );
+            return new THREE.Mesh(g, material(cara.abajo === null ? "#b91c1c" : ACENTO));
+          },
+        };
+      }
+      return null;
+    };
+
+    let ultima = "";
+    sobrevuelo.current = (toque) => {
+      const objetivo = toque ? objetivoDe(toque) : null;
+      const clave = objetivo?.clave ?? "";
+      if (clave === ultima) return;
+      ultima = clave;
+      limpiar();
+      // En cada piso de la planta: se pinta en todos.
+      if (objetivo) {
+        for (const p of pisosDe(objetivo.planta)) {
+          const malla = objetivo.malla(p.cota);
+          if (malla) armado.apuntado.add(malla);
+        }
+      }
+      armado.dibujar();
+    };
+
+    pintor.current = (toque) => {
+      const objetivo = objetivoDe(toque);
+      if (!objetivo) {
+        setErrorAlPintar("Tocá una pared, un cielorraso, la losa desde abajo o un cajón.");
+        return;
+      }
+      if (objetivo.bloqueo) {
+        setErrorAlPintar(objetivo.bloqueo);
+        return;
+      }
+      setErrorAlPintar(null);
+      iniciarPintado(async () => {
+        const r = await pintar(objetivo.planta, pinturaElegida, objetivo.pincelada);
+        setErrorAlPintar(r.error ?? null);
+        if (!r.error) router.refresh();
+      });
+    };
+
+    return () => {
+      pintor.current = null;
+      sobrevuelo.current = null;
+      limpiar();
+    };
+  }, [vista, pintar, pinturaElegida, modelos, pisos, soloElPiso, router]);
 
   // ---- El edificio: cada vez que cambia qué se muestra --------------------
   useEffect(() => {
@@ -742,7 +1046,8 @@ export default function Edificio3D({
   // un rubro elegido arriba, sólo las de ese rubro: mirando Cielorrasos, el
   // porcelanato del mismo baño no va.
   const tareasDelElegido = tareasDeAvance.flatMap((tarea) => {
-    if (rubroVisto !== null && tarea.rubro !== rubroVisto) return [];
+    if (vista === "ver" ? rubrosApagados.includes(tarea.rubro) : rubroVisto !== null && tarea.rubro !== rubroVisto)
+      return [];
     const medida = ficha?.tareas?.find((x) => x.tarea === tarea.id);
     return medida ? [{ tarea, cantidad: cantidadEnUnidad(medida, tarea.unidad) }] : [];
   });
@@ -775,142 +1080,264 @@ export default function Edificio3D({
 
   return (
     <div style={marco}>
-      {/* Arriba, cómo se mira el edificio; abajo, qué se ve de él. Separados,
-          porque antes todo iba en un renglón —píldoras, casillas y un
-          desplegable suelto— y nada decía qué mandaba sobre qué. */}
+      {/* Una sola barra, como en un programa de 3D: a la izquierda dónde se
+          está, a la derecha para qué se mira y los pisos de la obra. Lo que
+          cambia qué se ve flota sobre el modelo. */}
       <div style={barra}>
-        {/* Para qué se mira: el edificio, o el avance de una tarea. */}
-        <div style={selectorDeModo} role="group" aria-label="Para qué se mira">
-          {VISTAS.map((v) => (
-            <button
-              key={v.valor}
-              type="button"
-              aria-pressed={vista === v.valor}
-              onClick={() => {
-                setVista(v.valor);
-                setElegido(null);
-              }}
-              style={vista === v.valor ? botonDeModoActivo : botonDeModo}
-            >
-              {v.nombre}
-            </button>
-          ))}
-        </div>
-
+        <div style={grupo}>{cabecera}</div>
         <div style={grupo}>
-          <label style={casilla}>
-            Piso
-            <select
-              value={soloElPiso ?? ""}
-              onChange={(e) => setSoloElPiso(e.target.value === "" ? null : Number(e.target.value))}
-              style={selector}
-            >
-              <option value="">Todos</option>
-              {/* De arriba hacia abajo, como en la definición de pisos. */}
-              {[...conPlanta].reverse().map((p) => (
-                <option key={p.numero} value={p.numero}>
-                  {nombreDe(p)} · {formatNivel(p.cota)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {/* Qué hace arrastrar: girar el modelo o correrlo. */}
-          <div style={selectorDeModo} role="group" aria-label="Qué hace arrastrar">
-            {MODOS.map((m) => (
+          <div style={selectorDeModo} role="group" aria-label="Para qué se mira">
+            {VISTAS.filter((v) => v.valor !== "pintar" || (pintar && pinturas.length > 0)).map((v) => (
               <button
-                key={m.valor}
+                key={v.valor}
                 type="button"
-                aria-pressed={modo === m.valor}
-                onClick={() => setModo(m.valor)}
-                style={modo === m.valor ? botonDeModoActivo : botonDeModo}
-              >
-                {m.nombre}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div style={barraDeFiltros}>
-        {vista === "ver" && (
-          <div style={grupoDeFiltros}>
-            <span style={rotuloDeFiltro}>Qué se ve</span>
-            {OPCIONES.map((o) => (
-              <button
-                key={o.clave}
-                type="button"
-                aria-pressed={ve(o.clave)}
-                onClick={() => poner(o.clave, !ve(o.clave))}
-                style={ve(o.clave) ? fichaDeFiltroPuesta : fichaDeFiltro}
-              >
-                {o.nombre}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* El rubro vive acá en los dos modos, y se queda al cambiar de uno al
-            otro: en Ver deja sólido lo suyo, en Avance elige de qué son las
-            tareas. Sin tareas en el dibujo no hay nada que filtrar. */}
-        {rubros.length > 0 && (
-          <div style={grupoDeFiltros}>
-            <span style={rotuloDeFiltro}>Rubro</span>
-            <select
-              value={rubroVisto ?? ""}
-              onChange={(e) => {
-                const cual = e.target.value || null;
-                setRubroVisto(cual);
-                // Para ver un avance hace falta una tarea: la primera del rubro.
-                if (vista === "avance") {
-                  setTareaVista(tareasDeAvance.find((t) => t.rubro === cual)?.id ?? null);
-                }
-                setElegido(null);
-              }}
-              style={selector}
-              aria-label="Rubro"
-            >
-              <option value="">Todos</option>
-              {rubros.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            {vista === "avance" && (
-              <select
-                value={tareaVista ?? ""}
-                onChange={(e) => {
-                  setTareaVista(e.target.value || null);
+                aria-pressed={vista === v.valor}
+                onClick={() => {
+                  if (v.valor === "avance" && vista === "ver") {
+                    const prendidos = rubros.filter((r) => !rubrosApagados.includes(r));
+                    setRubroVisto(prendidos.length === 1 ? prendidos[0] : null);
+                  }
+                  if (v.valor === "ver" && vista === "avance") {
+                    setRubrosApagados(rubroVisto === null ? [] : rubros.filter((r) => r !== rubroVisto));
+                  }
+                  setErrorAlPintar(null);
+                  setVista(v.valor);
                   setElegido(null);
                 }}
-                style={{ ...selector, maxWidth: "340px" }}
-                aria-label="Tarea"
-                disabled={!rubroVisto}
+                style={vista === v.valor ? botonDeModoActivo : botonDeModo}
               >
-                <option value="" disabled>
-                  Tarea
-                </option>
-                {tareasDeAvance
-                  .filter((t) => t.rubro === rubroVisto)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.madre ? `↳ ${t.nombre}` : t.nombre}
-                    </option>
-                  ))}
-              </select>
-            )}
-            {vista === "ver" && rubroVisto !== null && (
-              <span style={notaDeFiltro}>el resto del edificio queda insinuado</span>
-            )}
+                {v.nombre}
+              </button>
+            ))}
           </div>
-        )}
+          {acciones}
+        </div>
       </div>
 
       <div style={cuerpo}>
-        <div ref={caja} style={{ ...lienzo, cursor: modo === "mover" ? "move" : "grab" }} />
+        <div style={visorConControles}>
+          <div ref={caja} style={vista === "pintar" ? { ...lienzo, cursor: "crosshair" } : lienzo} />
+
+          {/* A la izquierda, qué se ve: las capas en Ver, y el rubro —en
+              Avance, con su tarea—. */}
+          {/* En Pintar, a la izquierda sólo las capas: para apagar el
+              cielorraso y llegar a la pared de atrás. La pintura se elige en
+              el panel de la derecha, que no tapa el modelo. */}
+          {vista === "pintar" && (
+            <Menu
+              lado="izquierda"
+              ancho="240px"
+              titulo="Capas"
+              abierto={conCapasAbiertas}
+              alTocar={() => setConCapasAbiertas(!conCapasAbiertas)}
+            >
+              <div style={seccionFlotante}>
+                {OPCIONES.map((o) => (
+                  <button
+                    key={o.clave}
+                    type="button"
+                    aria-pressed={ve(o.clave)}
+                    onClick={() => poner(o.clave, !ve(o.clave))}
+                    style={ve(o.clave) ? filaDeCapa : filaDeCapaApagada}
+                  >
+                    <Ojo abierto={ve(o.clave)} />
+                    {o.nombre}
+                  </button>
+                ))}
+              </div>
+            </Menu>
+          )}
+
+          {vista !== "pintar" && (vista === "ver" || rubros.length > 0) && (
+            <Menu
+              lado="izquierda"
+              ancho="240px"
+              titulo={vista === "ver" ? "Capas" : "Rubro"}
+              resumen={
+                vista === "ver"
+                  ? rubrosApagados.length === 0
+                    ? undefined
+                    : rubros.length - rubrosApagados.length === 1
+                      ? rubros.find((r) => !rubrosApagados.includes(r))
+                      : `${rubros.length - rubrosApagados.length} de ${rubros.length} rubros`
+                  : tareaElegida?.nombre ?? rubroVisto ?? "Todos"
+              }
+              abierto={conCapasAbiertas}
+              alTocar={() => setConCapasAbiertas(!conCapasAbiertas)}
+            >
+              {vista === "ver" && (
+                <div style={seccionFlotante}>
+                  {OPCIONES.map((o) => (
+                    <button
+                      key={o.clave}
+                      type="button"
+                      aria-pressed={ve(o.clave)}
+                      onClick={() => poner(o.clave, !ve(o.clave))}
+                      style={ve(o.clave) ? filaDeCapa : filaDeCapaApagada}
+                    >
+                      <Ojo abierto={ve(o.clave)} />
+                      {o.nombre}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* El rubro se queda al cambiar de Ver a Avance: en Ver deja
+                  sólido lo suyo y el resto insinuado, en Avance elige de qué
+                  son las tareas. Sin tareas en el dibujo no hay qué filtrar. */}
+              {rubros.length > 0 && (
+                <div style={seccionFlotante}>
+                  {vista === "ver" && <span style={rotuloFlotante}>Rubro</span>}
+                  {/* En Ver, cada rubro con su ojo, como las capas: se
+                      prenden varios a la vez, y Todos los prende o los apaga
+                      juntos. En Avance, uno solo, el de las tareas. */}
+                  {vista === "ver" ? (
+                    <div style={seccionFlotante} role="group" aria-label="Rubros">
+                      <button
+                        type="button"
+                        aria-pressed={rubrosApagados.length === 0}
+                        onClick={() => setRubrosApagados(rubrosApagados.length === 0 ? rubros : [])}
+                        style={rubrosApagados.length === rubros.length ? filaDeCapaApagada : filaDeCapa}
+                      >
+                        <Ojo abierto={rubrosApagados.length < rubros.length} />
+                        Todos
+                      </button>
+                      {rubros.map((r) => {
+                        const prendido = !rubrosApagados.includes(r);
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            aria-pressed={prendido}
+                            onClick={() => {
+                              setRubrosApagados(
+                                prendido ? [...rubrosApagados, r] : rubrosApagados.filter((x) => x !== r)
+                              );
+                              setElegido(null);
+                            }}
+                            style={prendido ? filaDeCapa : filaDeCapaApagada}
+                          >
+                            <Ojo abierto={prendido} />
+                            <span style={nombreDePiso}>{r}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                  <div style={seccionFlotante} role="group" aria-label="Rubro">
+                    {[null, ...rubros].map((cual) => (
+                      <button
+                        key={cual ?? ""}
+                        type="button"
+                        aria-pressed={rubroVisto === cual}
+                        onClick={() => {
+                          setRubroVisto(cual);
+                          // Para ver un avance hace falta una tarea: la primera del rubro.
+                          if (vista === "avance") {
+                            setTareaVista(tareasDeAvance.find((t) => t.rubro === cual)?.id ?? null);
+                          }
+                          setElegido(null);
+                        }}
+                        style={rubroVisto === cual ? filaDePisoPuesta : filaDePiso}
+                      >
+                        <span style={nombreDePiso}>{cual ?? "Todos"}</span>
+                      </button>
+                    ))}
+                  </div>
+                  )}
+                  <div style={selectores}>
+                    {vista === "avance" && (
+                      <select
+                        value={tareaVista ?? ""}
+                        onChange={(e) => {
+                          setTareaVista(e.target.value || null);
+                          setElegido(null);
+                        }}
+                        style={selector}
+                        aria-label="Tarea"
+                        disabled={!rubroVisto}
+                      >
+                        <option value="" disabled>
+                          Tarea
+                        </option>
+                        {tareasDeAvance
+                          .filter((t) => t.rubro === rubroVisto)
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.madre ? `↳ ${t.nombre}` : t.nombre}
+                            </option>
+                          ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Menu>
+          )}
+
+          {/* A la derecha, los pisos apilados como en el edificio: el de
+              arriba, arriba. Uno solo, o todos. */}
+          <Menu
+            lado="derecha"
+            ancho="150px"
+            titulo="Pisos"
+            resumen={soloElPiso === null ? "Todos" : nombreDe(pisos.find((p) => p.numero === soloElPiso)!)}
+            abierto={conPisosAbiertos}
+            alTocar={() => setConPisosAbiertos(!conPisosAbiertos)}
+          >
+            <div style={seccionFlotante} role="group" aria-label="Piso">
+              <button
+                type="button"
+                aria-pressed={soloElPiso === null}
+                onClick={() => setSoloElPiso(null)}
+                style={soloElPiso === null ? filaDePisoPuesta : filaDePiso}
+              >
+                Todos
+              </button>
+              {[...conPlanta].reverse().map((p) => (
+                <button
+                  key={p.numero}
+                  type="button"
+                  aria-pressed={soloElPiso === p.numero}
+                  onClick={() => setSoloElPiso(soloElPiso === p.numero ? null : p.numero)}
+                  style={soloElPiso === p.numero ? filaDePisoPuesta : filaDePiso}
+                >
+                  <span style={nombreDePiso}>{nombreDe(p)}</span>
+                  <span style={nivelDePiso}>{formatNivel(p.cota)}</span>
+                </button>
+              ))}
+            </div>
+          </Menu>
+
+          {/* En el mismo lugar que el 3D de la planta: de vuelta a ella. */}
+          {plantaDeOrigen && (
+            <Link href={plantaDeOrigen.href} title={`Volver a ${plantaDeOrigen.nombre}`} style={ui.botonDeVista}>
+              2D
+            </Link>
+          )}
+        </div>
 
         <aside style={panel}>
-          {vista === "avance" ? (
+          {vista === "pintar" ? (
+            <>
+              <div style={seccionFlotante} role="group" aria-label="Pintura">
+                <p style={{ ...sobretitulo, marginBottom: "6px" }}>Pintura</p>
+                {pinturas.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-pressed={pinturaElegida === p.id}
+                    onClick={() => setPinturaElegida(p.id)}
+                    style={pinturaElegida === p.id ? filaDePisoPuesta : filaDePiso}
+                  >
+                    <span style={nombreDePiso}>{p.nombre}</span>
+                  </button>
+                ))}
+              </div>
+              {pintando && <p style={vacio}>Pintando…</p>}
+              {errorAlPintar && <p style={errorDeCampo}>{errorAlPintar}</p>}
+            </>
+          ) : vista === "avance" ? (
             tareaElegida || (ficha && elegido) ? (
               <>
                 {tareaElegida && (
@@ -1048,12 +1475,6 @@ export default function Edificio3D({
           )}
         </aside>
       </div>
-
-      <p style={pista}>
-        {modo === "mover"
-          ? "Arrastrá para mover la vista. La rueda acerca y aleja; un clic sin arrastrar elige."
-          : "Arrastrá para girar. La rueda acerca y aleja; con el botón derecho también se mueve; un clic sin arrastrar elige."}
-      </p>
     </div>
   );
 }
@@ -1135,6 +1556,75 @@ type DatosDeMalla = {
 };
 
 /** La geometría de un sólido: su huella levantada entre sus dos alturas. */
+/**
+ * Un menú que flota en una esquina de arriba del modelo. Cerrado es sólo su
+ * botón —el nombre y lo que está elegido—, para no tapar el edificio;
+ * tocándolo se despliega debajo.
+ */
+function Menu({
+  lado,
+  ancho,
+  titulo,
+  resumen,
+  abierto,
+  alTocar,
+  children,
+}: {
+  lado: "izquierda" | "derecha";
+  /** El ancho desplegado: cerrado mide lo que su botón. */
+  ancho: string;
+  titulo: string;
+  resumen?: string;
+  abierto: boolean;
+  alTocar: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        ...flotante,
+        ...(lado === "izquierda" ? { left: "12px" } : { right: "12px" }),
+        ...(abierto ? { width: ancho } : { maxWidth: "260px" }),
+      }}
+    >
+      <button type="button" aria-expanded={abierto} onClick={alTocar} style={cabezaDeMenu}>
+        <span style={tituloDeMenu}>{titulo}</span>
+        {resumen && <span style={resumenDeMenu}>{resumen}</span>}
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          aria-hidden="true"
+          style={{ flex: "0 0 auto", marginLeft: "auto", transform: abierto ? "rotate(180deg)" : undefined }}
+        >
+          <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {abierto && <div style={cuerpoDeMenu}>{children}</div>}
+    </div>
+  );
+}
+
+/** Prendida o apagada, como en las capas de cualquier programa de dibujo. */
+function Ojo({ abierto }: { abierto: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style={{ flex: "0 0 auto" }}>
+      <path
+        d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      {abierto ? (
+        <circle cx="8" cy="8" r="2" fill="currentColor" />
+      ) : (
+        <path d="M2.5 13.5 13.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
+
 function geometriaDe(solido: Solido): THREE.BufferGeometry {
   const forma = new THREE.Shape();
   for (let i = 0; i < solido.puntos.length; i += 2) {
@@ -1153,6 +1643,25 @@ function geometriaDe(solido: Solido): THREE.BufferGeometry {
   geometria.rotateX(-Math.PI / 2);
   geometria.translate(0, solido.desde, 0);
   return geometria;
+}
+
+/** Si un punto del plano está adentro de una huella dada como x0, y0, x1, y1… */
+function adentroDe(p: { x: number; y: number }, puntos: number[]) {
+  let dentro = false;
+  for (let i = 0, j = puntos.length - 2; i < puntos.length; j = i, i += 2) {
+    const [ax, ay, bx, by] = [puntos[i], puntos[i + 1], puntos[j], puntos[j + 1]];
+    if (ay > p.y !== by > p.y && p.x < ((bx - ax) * (p.y - ay)) / (by - ay) + ax) dentro = !dentro;
+  }
+  return dentro;
+}
+
+/** Cuánto hay de un punto a un segmento, en el plano. */
+function distanciaASegmento(p: { x: number; y: number }, a: [number, number], b: [number, number]) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const largo2 = dx * dx + dy * dy;
+  const t = largo2 > 0 ? Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.y - a[1]) * dy) / largo2)) : 0;
+  return Math.hypot(p.x - (a[0] + dx * t), p.y - (a[1] + dy * t));
 }
 
 function nombreDe(piso: PisoEn3D) {
@@ -1182,6 +1691,7 @@ const OPCIONES: { clave: CapaDeVista; nombre: string }[] = [
 const CAPA_DE: Record<ClaseDeSolido, CapaDeVista> = {
   muro: "muros",
   capa: "capas",
+  pintura: "capas",
   vidrio: "aberturas",
   puerta: "aberturas",
   piso: "ambientes",
@@ -1195,6 +1705,7 @@ const CAPA_DE: Record<ClaseDeSolido, CapaDeVista> = {
 const VISTAS: { valor: Vista; nombre: string }[] = [
   { valor: "ver", nombre: "Ver" },
   { valor: "avance", nombre: "Avance" },
+  { valor: "pintar", nombre: "Pintar" },
 ];
 
 /** Lo hecho, en el 3D y en el panel. */
@@ -1216,11 +1727,6 @@ function formatCantidad(n: number) {
   return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(n);
 }
 
-const MODOS: { valor: Modo; nombre: string }[] = [
-  { valor: "girar", nombre: "Girar" },
-  { valor: "mover", nombre: "Mover" },
-];
-
 /**
  * De qué color va cada cosa. La arquitectura, clara, como una maqueta; el
  * hormigón, gris; lo metálico, oscuro; la hoja de una puerta, madera; y lo
@@ -1231,6 +1737,8 @@ const ASPECTO: Record<ClaseDeSolido, { color: string; opacidad: number }> = {
   // Un pelo más cálida que el ladrillo: se lee dónde termina el muro y
   // empieza el revoque.
   capa: { color: "#f2eee6", opacidad: 1 },
+  // Celeste: se ve de lejos qué paredes ya están pintadas.
+  pintura: { color: "#9fcbee", opacidad: 1 },
   vidrio: { color: "#7cc4e8", opacidad: 0.4 },
   puerta: { color: "#b08457", opacidad: 1 },
   piso: { color: "#e3d7c3", opacidad: 1 },
@@ -1254,78 +1762,153 @@ const barra = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  flexWrap: "wrap" as const,
   gap: "12px",
 };
 
 const grupo = {
   display: "flex",
   alignItems: "center",
-  flexWrap: "wrap" as const,
-  gap: "16px",
+  gap: "12px",
+  minWidth: 0,
+};
+
+/** El visor y lo que flota sobre él. */
+const visorConControles = {
+  position: "relative" as const,
+  minWidth: 0,
+  minHeight: 0,
+  border: ui.BORDE,
+  borderRadius: "14px",
+  overflow: "hidden" as const,
+  background: "#f4f4f4",
 };
 
 /**
- * El renglón de los filtros, debajo del de cómo se mira. Va en su propia
- * línea y no apretado contra las píldoras: son dos cosas distintas, y así
- * cada grupo se lee por su rótulo.
+ * Los paneles que flotan sobre el modelo, como las barras de herramientas de
+ * un programa de 3D: blancos, con sombra, en las esquinas de arriba.
  */
-const barraDeFiltros = {
+const flotante = {
+  position: "absolute" as const,
+  top: "12px",
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "14px",
+  maxHeight: "calc(100% - 24px)",
+  overflowY: "auto" as const,
+  boxSizing: "border-box" as const,
+  padding: "4px",
+  background: "rgba(255, 255, 255, 0.94)",
+  border: ui.BORDE,
+  borderRadius: "12px",
+  boxShadow: ui.SOMBRA,
+};
+
+/** El botón de un menú: lo que se ve con el menú cerrado. */
+const cabezaDeMenu = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  width: "100%",
+  minWidth: 0,
+  padding: "8px 10px",
+  background: "transparent",
+  border: "none",
+  borderRadius: "8px",
+  color: "#111111",
+  fontFamily: "inherit",
+  textAlign: "left" as const,
+  cursor: "pointer",
+};
+const tituloDeMenu = {
   flex: "0 0 auto",
-  display: "flex",
-  alignItems: "center",
-  flexWrap: "wrap" as const,
-  gap: "8px 22px",
-  paddingBottom: "2px",
-  borderBottom: "1px solid #ededed",
-};
-const grupoDeFiltros = {
-  display: "flex",
-  alignItems: "center",
-  flexWrap: "wrap" as const,
-  gap: "6px",
-};
-const rotuloDeFiltro = {
-  marginRight: "4px",
   fontSize: "11px",
   fontWeight: 600,
-  letterSpacing: "0.08em",
+  letterSpacing: "0.06em",
   textTransform: "uppercase" as const,
-  color: "#9a9a9a",
+  color: "#8a8a8a",
 };
-const notaDeFiltro = {
-  marginLeft: "4px",
-  fontSize: "12px",
+const resumenDeMenu = {
+  minWidth: 0,
+  overflow: "hidden" as const,
+  textOverflow: "ellipsis" as const,
+  whiteSpace: "nowrap" as const,
+  fontSize: "13px",
+  fontWeight: 500,
+};
+const cuerpoDeMenu = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "14px",
+  padding: "2px 6px 6px",
+};
+
+const seccionFlotante = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "2px",
+};
+
+const rotuloFlotante = {
+  padding: "2px 8px 6px",
+  fontSize: "11px",
+  fontWeight: 600,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase" as const,
   color: "#8a8a8a",
 };
 
-/**
- * Cada parte del dibujo, como una ficha que se prende y se apaga. Antes eran
- * casillas: se leían como un formulario y había que apuntarle al cuadradito.
- *
- * Casi todas arrancan puestas, así que la puesta es la callada —blanca, con
- * su borde— y la apagada es la que se nota apagada. Al revés, el renglón
- * entero sería una pared negra.
- */
-const fichaDeFiltro = {
-  background: "#f4f4f4",
-  color: "#9a9a9a",
-  border: "1px solid transparent",
-  borderRadius: "999px",
-  padding: "5px 13px",
+const selectores = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "6px",
+};
+
+/** Una capa: el ojo y su nombre, en un renglón que se toca entero. */
+const filaDeCapa = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  width: "100%",
+  padding: "7px 8px",
+  background: "transparent",
+  border: "none",
+  borderRadius: "8px",
+  color: "#111111",
   fontSize: "13px",
-  lineHeight: 1.25,
+  fontFamily: "inherit",
+  textAlign: "left" as const,
   cursor: "pointer",
 };
-const fichaDeFiltroPuesta = {
-  ...fichaDeFiltro,
-  background: "#ffffff",
-  color: "#111111",
-  border: "1px solid #111111",
+const filaDeCapaApagada = { ...filaDeCapa, color: "#a5a5a5" };
+
+/** Un piso: su nombre y su nivel, en dos columnas alineadas. */
+const filaDePiso = {
+  ...filaDeCapa,
+  justifyContent: "space-between",
+};
+const filaDePisoPuesta = {
+  ...filaDePiso,
+  background: "#111111",
+  color: "#ffffff",
+  fontWeight: 600,
+};
+const nombreDePiso = {
+  minWidth: 0,
+  overflow: "hidden" as const,
+  textOverflow: "ellipsis" as const,
+  whiteSpace: "nowrap" as const,
+};
+const nivelDePiso = {
+  fontSize: "11px",
+  opacity: 0.7,
+  fontWeight: 400,
+  fontVariantNumeric: "tabular-nums" as const,
 };
 
 const selectorDeModo = {
   display: "flex",
+  height: "38px",
+  boxSizing: "border-box" as const,
   border: "1px solid #111111",
   borderRadius: "999px",
   overflow: "hidden" as const,
@@ -1335,8 +1918,9 @@ const botonDeModo = {
   background: "#ffffff",
   color: "#111111",
   border: "none",
-  padding: "7px 14px",
-  fontSize: "13px",
+  padding: "0 16px",
+  fontSize: "14px",
+  fontFamily: "inherit",
   cursor: "pointer",
 };
 
@@ -1347,19 +1931,10 @@ const botonDeModoActivo = {
   fontWeight: 600,
 };
 
-const casilla = {
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  fontSize: "14px",
-  color: "#333333",
-};
-
 const selector = {
   ...ui.input,
-  width: "auto",
   padding: "7px 10px",
-  fontSize: "14px",
+  fontSize: "13px",
 };
 
 const cuerpo = {
@@ -1371,12 +1946,9 @@ const cuerpo = {
 };
 
 const lienzo = {
-  minWidth: 0,
-  minHeight: 0,
-  border: ui.BORDE,
-  borderRadius: "14px",
-  overflow: "hidden" as const,
-  background: "#f4f4f4",
+  position: "absolute" as const,
+  inset: 0,
+  cursor: "grab",
 };
 
 const panel = {
@@ -1521,12 +2093,5 @@ const vacio = {
   fontSize: "13px",
   color: "#777777",
   lineHeight: 1.5,
-  margin: 0,
-};
-
-const pista = {
-  flex: "0 0 auto",
-  fontSize: "13px",
-  color: "#777777",
   margin: 0,
 };
