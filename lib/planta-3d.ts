@@ -56,6 +56,8 @@ import {
   adentro as dentro,
   arranqueDe,
   carasVisibles,
+  cuantoDeBanquina,
+  cuantoDelRevestimiento,
   cuerpoDeMuro,
   franjasEnPlanta,
   mamposteriaDeMuro,
@@ -82,6 +84,12 @@ export type ClaseDeSolido =
   | "cajon"
   /** La pintura de una cara de un cajón: va con los cajones, no con las capas. */
   | "pinturaDeCajon"
+  /** Una banquina: la base de albañilería de un mueble, del piso para arriba,
+   *  con su capa de vista. */
+  | "banquina"
+  /** El revestimiento de un lado de una banquina: una piel de 1 cm, que va
+   *  con las banquinas. */
+  | "revestimientoDeBanquina"
   /** La buña del cielorraso: un perfil chico en su borde, por los lados que
    *  la llevan. */
   | "buna"
@@ -714,6 +722,64 @@ export function modeloDePlanta(
     };
   }
 
+  // ---- Las banquinas -----------------------------------------------------
+  // Del piso terminado —el 0,00— a lo que sube: el cajón al revés.
+  for (const banquina of dibujo.banquinas) {
+    const objeto = `banquina:${banquina.id}`;
+    const ambiente = dibujo.ambientes.find((a) => dentro(centroDeArea(banquina.puntos), a.puntos));
+    const medida = medidas?.banquinas.find((b) => b.id === banquina.id);
+    sumar("banquina", objeto, objeto, banquina.puntos, 0, banquina.alto, tareasDe(banquina.capas));
+    // Los lados revestidos: una piel de 1 cm hacia afuera del contorno, como
+    // la pintura de un cajón, con la tarea del revestimiento para el avance.
+    const revestimiento = banquina.revestimiento;
+    if (revestimiento && revestimiento.lados.length > 0) {
+      let doble = 0;
+      for (let i = 0; i < banquina.puntos.length; i++) {
+        const p = banquina.puntos[i];
+        const q = banquina.puntos[(i + 1) % banquina.puntos.length];
+        doble += p.x * q.y - q.x * p.y;
+      }
+      const sentido = doble >= 0 ? -1 : 1;
+      const piel = FINO / 2 / mpp;
+      for (const lado of revestimiento.lados) {
+        const p = banquina.puntos[lado];
+        const q = banquina.puntos[(lado + 1) % banquina.puntos.length];
+        if (!p || !q) continue;
+        const largo = distancia(p, q);
+        if (!(largo > 0)) continue;
+        const n = { x: (-(q.y - p.y) / largo) * sentido * piel, y: ((q.x - p.x) / largo) * sentido * piel };
+        sumar(
+          "revestimientoDeBanquina",
+          objeto,
+          `revestimiento|${revestimiento.tarea}`,
+          [p, q, { x: q.x + n.x, y: q.y + n.y }, { x: p.x + n.x, y: p.y + n.y }],
+          0,
+          banquina.alto,
+          revestimiento.tarea ? [revestimiento.tarea] : undefined
+        );
+      }
+    }
+    objetos[objeto] = {
+      titulo: "Banquina",
+      nombre: ambiente?.nombre ?? "",
+      renglones: [
+        ["Alto", formatMetros(banquina.alto)],
+        ["Frentes", formatMetros(medida?.frentes ?? 0)],
+        ["Capas", capas(banquina.capas), partesDe(banquina.capas)],
+        ...((revestimiento
+          ? [
+              [
+                "Revestimiento",
+                `${tarea(revestimiento.tarea || null)} · ${formatM2(medida?.revestido ?? 0)}`,
+                [{ texto: tarea(revestimiento.tarea || null), tarea: revestimiento.tarea || null }],
+              ],
+            ]
+          : []) as Renglon[]),
+      ],
+      campos: [],
+    };
+  }
+
   // ---- Los ambientes: su piso y su cielorraso ----------------------------
   for (const ambiente of dibujo.ambientes) {
     const objeto = `ambiente:${ambiente.id}`;
@@ -1073,6 +1139,28 @@ export function modeloDePlanta(
     // La buña, por su largo: lo mismo que pasa al cómputo.
     if (ambiente.buna?.tarea) {
       anotar(`buna:${ambiente.id}`, ambiente.buna.tarea, 0, 0, largoDeBuna(anilloDeBuna(ambiente), mpp));
+    }
+  }
+  // Cada banquina, con todo lo que mide: la unidad de cada tarea elige al
+  // marcarla (`cantidadEnUnidad`), igual que en el pase al cómputo.
+  for (const m of medidas?.banquinas ?? []) {
+    const banquina = dibujo.banquinas.find((b) => b.id === m.id);
+    const cuanto = cuantoDeBanquina(m);
+    for (const tarea of new Set((banquina?.capas ?? []).map((c) => c.tarea))) {
+      anotar(`banquina:${m.id}`, tarea, cuanto.superficie, cuanto.volumen, cuanto.largo, cuanto.unidades);
+    }
+    // El revestimiento, con lo suyo y sin volumen, como en el cómputo
+    // (`cuantoDelRevestimiento`). Si es la misma tarea que una capa, se suma.
+    const revestimiento = banquina?.revestimiento;
+    if (revestimiento && revestimiento.lados.length > 0) {
+      anotar(
+        `banquina:${m.id}`,
+        revestimiento.tarea,
+        cuantoDelRevestimiento(m, "superficie") ?? 0,
+        0,
+        cuantoDelRevestimiento(m, "largo") ?? 0,
+        cuantoDelRevestimiento(m, "unidades") ?? 0
+      );
     }
   }
   if (medida) {

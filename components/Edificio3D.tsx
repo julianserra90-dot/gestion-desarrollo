@@ -2166,6 +2166,8 @@ const OPCIONES: { clave: CapaDeVista; nombre: string; madre?: CapaDeVista }[] = 
   { clave: "capas", nombre: "Capas", madre: "muros" },
   { clave: "aberturas", nombre: "Aberturas" },
   { clave: "ambientes", nombre: "Pisos" },
+  // Las banquinas apoyan en el piso, como los cajones cuelgan del cielorraso.
+  { clave: "banquinas", nombre: "Banquinas", madre: "ambientes" },
   { clave: "cielorrasos", nombre: "Cielorrasos" },
   { clave: "cajones", nombre: "Cajones", madre: "cielorrasos" },
   { clave: "bunas", nombre: "Buñas", madre: "cielorrasos" },
@@ -2183,6 +2185,8 @@ const CAPA_DE: Record<ClaseDeSolido, CapaDeVista> = {
   cielorraso: "cielorrasos",
   cajon: "cajones",
   pinturaDeCajon: "cajones",
+  banquina: "banquinas",
+  revestimientoDeBanquina: "banquinas",
   buna: "bunas",
   losa: "estructura",
   viga: "estructura",
@@ -2247,6 +2251,10 @@ const ASPECTO: Record<ClaseDeSolido, { color: string; opacidad: number }> = {
   cielorraso: { color: "#ffffff", opacidad: 0.55 },
   cajon: { color: "#ffffff", opacidad: 0.8 },
   pinturaDeCajon: { color: "#9fcbee", opacidad: 1 },
+  // Ladrillo claro: se lee como albañilería y no como el piso que pisa.
+  banquina: { color: "#d9b99b", opacidad: 1 },
+  // Gris azulado de porcelanato: se ve qué frente está revestido.
+  revestimientoDeBanquina: { color: "#8fa3b3", opacidad: 1 },
   // Ocre, como en la planta.
   buna: { color: "#b7791f", opacidad: 1 },
   losa: { color: "#b9bec7", opacidad: 1 },

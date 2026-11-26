@@ -14,6 +14,7 @@ export type NombreHerramienta =
   | "ambiente"
   | "capa"
   | "cajon"
+  | "banquina"
   | "abertura"
   | "medir"
   | "copiar"
@@ -90,6 +91,15 @@ const TRAZOS: Record<NombreHerramienta, React.ReactNode> = {
       <path d="M3 5h18" />
       <path d="M3 5v8h11V5" />
       <path d="M14 13h7" strokeDasharray="2 2" />
+    </>
+  ),
+  // El cajón al revés: el piso, y la banquina baja apoyada en él, rayada
+  // como la albañilería en un corte.
+  banquina: (
+    <>
+      <path d="M3 19h18" />
+      <path d="M5 19v-6h11v6" />
+      <path d="M8 19l3-6M12 19l3-6" />
     </>
   ),
   // Una puerta en planta: el muro cortado, la hoja y su barrido.

@@ -22,13 +22,13 @@
  * Sin React y sin base: recibe lo dibujado y lo guardado, y devuelve cuentas.
  */
 
-import { esPorMetro, esPorUnidad, queMide } from "@/lib/avance-del-plano";
+import { cantidadEnUnidad, esPorMetro, esPorUnidad, queMide } from "@/lib/avance-del-plano";
 import { cantidadDeElemento, type Forma } from "@/lib/medicion";
 import { nombreDePiso, type Piso } from "@/lib/pisos";
 import { metrosPorPixel, type Dibujo, type Escala } from "@/lib/planta-dibujo";
 import { medirEstructura } from "@/lib/planta-estructura";
 import type { Composicion } from "@/lib/tipos-de-muro";
-import { medirCaras, type FilaDeCapa } from "@/lib/planta-trazo";
+import { cuantoDeBanquina, cuantoDelRevestimiento, medirCaras, type FilaDeCapa } from "@/lib/planta-trazo";
 
 /** Lo que hace falta de una planta para computarla. */
 export type PlantaParaComputar = {
@@ -96,6 +96,7 @@ const ETIQUETAS = {
   paredes: "Paredes",
   pisos: "Pisos",
   cielorrasos: "Cielorrasos",
+  banquinas: "Banquinas",
 } as const;
 
 const alCentimetro = (n: number) => Math.round(n * 100) / 100;
@@ -155,6 +156,11 @@ function ubicacionesDe(planta: PlantaParaComputar, pisos: Piso[]) {
  *
  * Las aberturas van **un renglón por tipo** —"V01 · 2.º piso"—, con cuántas
  * hay: por unidad cuentan una cada una, en m² su vano y en metros su perímetro.
+ *
+ * Las banquinas van **un renglón por tarea y por piso**, y la unidad elige
+ * entre todo lo que miden: m³ su volumen, m² su superficie, metros sus
+ * frentes, por unidad cuántas son. Su revestimiento va igual, con lo suyo:
+ * m² lo revestido, metros esos lados, por unidad las banquinas que lo llevan.
  *
  * Los renglones salen en el orden del edificio: los pisos de abajo hacia
  * arriba, y en cada uno los muros, las paredes, los pisos y los cielorrasos.
@@ -335,6 +341,42 @@ export function delPlano(
       for (const c of medida.porCapa) agregar(ETIQUETAS.paredes, c);
       for (const c of medida.pisos) agregar(ETIQUETAS.pisos, c);
       for (const c of medida.cielorrasos) agregar(ETIQUETAS.cielorrasos, c);
+
+      // Las banquinas: cada capa en la unidad de su tarea, que es la que dice
+      // qué medida le toca —el ladrillo en m³ su volumen, el revoque en m² lo
+      // de arriba y los frentes, en metros los frentes, por unidad una—. Un
+      // renglón por tarea y por piso, como las terminaciones.
+      const deBanquinas = new Map<string, number>();
+      for (const m of medida.banquinas) {
+        const banquina = planta.dibujo.banquinas.find((b) => b.id === m.id);
+        const tareas = new Set((banquina?.capas ?? []).map((c) => c.tarea).filter((t) => t !== ""));
+        for (const tareaId of tareas) {
+          const unidad = unidadDe(tareaId);
+          const cuanto = unidad === null ? null : cantidadEnUnidad(cuantoDeBanquina(m), unidad);
+          if (cuanto === null) {
+            noSeMiden.set(tareaId, unidad);
+            continue;
+          }
+          deBanquinas.set(tareaId, (deBanquinas.get(tareaId) ?? 0) + cuanto);
+        }
+        // El revestimiento de sus lados, como una tarea más: si es la misma
+        // que una capa, se suman en el mismo renglón.
+        const revestimiento = banquina?.revestimiento;
+        if (revestimiento && revestimiento.tarea !== "" && revestimiento.lados.length > 0) {
+          const unidad = unidadDe(revestimiento.tarea);
+          const cuanto = cuantoDelRevestimiento(m, queMide(unidad));
+          if (cuanto === null) noSeMiden.set(revestimiento.tarea, unidad);
+          else deBanquinas.set(revestimiento.tarea, (deBanquinas.get(revestimiento.tarea) ?? 0) + cuanto);
+        }
+      }
+      for (const [tareaId, cuanto] of deBanquinas) {
+        const unidad = unidadDe(tareaId) ?? "";
+        const c = esVolumen(unidad) ? alCentimetroCubico(cuanto) : esPorUnidad(unidad) ? cuanto : alCentimetro(cuanto);
+        const elemento = { forma: "directo" as const, a: null, b: null, c, unidades };
+        const cantidad = cantidadDeElemento(elemento);
+        if (cantidad <= 0) continue;
+        renglones.push({ tareaId, nivel, etiqueta: ETIQUETAS.banquinas, ...elemento, cantidad, orden });
+      }
 
       // Lo que el plano da por largo y no por superficie: los zócalos, al pie
       // de las caras que los llevan, y las buñas, por el anillo del

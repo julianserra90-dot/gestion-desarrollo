@@ -39,6 +39,8 @@ const TRAZOS = {
   copiar: "M4 3.5h13v6H4zM17 6.5h3v5h-8v3M10.2 14.5h3.6v6h-3.6z",
   piso: "M3 17l9-5 9 5-9 5zM3 12l9-5 9 5",
   cajon: "M3 5h18M3 5v8h11V5",
+  // El cajón dado vuelta: el piso abajo y la banquina que sube de él.
+  banquina: "M3 19h18M5 19v-5h11v5",
 };
 
 export type NombreDeIcono = keyof typeof TRAZOS;

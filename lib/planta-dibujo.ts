@@ -222,6 +222,86 @@ export type CaraDeCajon = "fondo" | number;
 /** Una pintura de un cajón y en qué caras va. */
 export type PinturaDeCajon = { tarea: string; caras: CaraDeCajon[] };
 
+/**
+ * Una banquina: el cajón al revés, en el piso. La base de albañilería —de
+ * ladrillo o de hormigón— sobre la que se apoyan los muebles de una cocina o
+ * un placard. Se dibuja por su contorno, como un cajón, y sube desde el piso
+ * del ambiente lo que diga su alto.
+ *
+ * Se computa su arriba —el área—, sus **frentes** por lo que sube —los lados
+ * que no van contra un muro— y su volumen: el ladrillo se cotiza por m³ y el
+ * revoque por m², y cuál lleva cada capa lo dice la unidad de su tarea.
+ */
+export type Banquina = {
+  id: string;
+  /** El contorno, sin repetir el primer punto al final. */
+  puntos: Punto[];
+  /** Cuánto sube desde el piso, en metros. */
+  alto: number;
+  /** De qué es, por capas: el ladrillo, el revoque, la carpeta de arriba. */
+  capas: Capa[];
+  /** El revestimiento de sus frentes —el porcelanato que sigue al del piso,
+   *  el cerámico de abajo del mueble—, o null si no lleva. */
+  revestimiento: RevestimientoDeBanquina | null;
+};
+
+/**
+ * El revestimiento de una banquina: una tarea y en qué lados va, como la buña
+ * del cielorraso, que se prende y se apaga lado por lado.
+ *
+ * Los lados van **por su lugar en el contorno** —el que arranca en
+ * `puntos[i]`, como las caras de un cajón— y no marcados en cada punto, como
+ * el anillo de la buña: los puntos de una banquina los rehacen todas las
+ * herramientas de contorno que comparte con el ambiente y el cajón (mover una
+ * esquina pone un `Punto` nuevo en su lugar), y una marca guardada adentro del
+ * punto se perdería en cualquiera de ellas. Con índices, lo único que los
+ * mueve es sumar o sacar puntos, y eso pasa en tres lugares que los corren a
+ * mano: `ladosConPuntoAgregado`, `ladosConPuntoQuitado` y `ladosCorridos`.
+ */
+export type RevestimientoDeBanquina = {
+  /** La tarea del catálogo. "" sin elegir. */
+  tarea: string;
+  /** Los lados que lo llevan, sin repetir. */
+  lados: number[];
+};
+
+/**
+ * Los lados revestidos después de meter un punto en el lado `indice`: ese lado
+ * queda partido en dos y **las dos mitades** siguen como estaba él; los que
+ * vienen después corren un lugar.
+ */
+export function ladosConPuntoAgregado(lados: number[], indice: number): number[] {
+  return lados.flatMap((l) => (l < indice ? [l] : l === indice ? [l, l + 1] : [l + 1]));
+}
+
+/**
+ * Los lados revestidos después de sacar el punto `indice`: el lado que
+ * arrancaba en él desaparece, y el de antes —que ahora llega hasta el punto
+ * siguiente— se queda con lo suyo. Los de después corren un lugar para atrás.
+ */
+export function ladosConPuntoQuitado(lados: number[], indice: number): number[] {
+  return lados.filter((l) => l !== indice).map((l) => (l > indice ? l - 1 : l));
+}
+
+/**
+ * Los lados revestidos después de correr el lado `indice` (`moverLado`).
+ * `origen` dice de qué punto viejo sale cada nuevo; correr un lado puede
+ * sumar puntos —el escalón—, y los dos que salen del mismo viejo son parte del
+ * lado corrido: llevan lo que llevaba él. Igual que `anilloCorrido` con la
+ * buña. `lados` es lo de **al agarrarlo**: se rehace desde ahí en cada movida.
+ */
+export function ladosCorridos(lados: number[], indice: number, origen: number[]): number[] {
+  const llevaba = new Set(lados);
+  const n = origen.length;
+  const nuevos: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const deAca = origen[k];
+    const lleva = deAca === origen[(k + 1) % n] ? llevaba.has(indice) : llevaba.has(deAca);
+    if (lleva) nuevos.push(k);
+  }
+  return nuevos;
+}
+
 export type TipoAbertura = "puerta" | "ventana";
 
 /**
@@ -588,6 +668,8 @@ export type Dibujo = {
   capas: CapaDibujada[];
   /** Los cajones de cielorraso. */
   cajones: Cajon[];
+  /** Las banquinas: las bases de albañilería de los muebles, en el piso. */
+  banquinas: Banquina[];
   /** Los tipos de abertura guardados, además de los que ya están colocados. */
   tiposDeAbertura: TipoDeAbertura[];
   /**
@@ -610,6 +692,7 @@ export const DIBUJO_VACIO: Dibujo = {
   estructura: ESTRUCTURA_VACIA,
   capas: [],
   cajones: [],
+  banquinas: [],
   tiposDeAbertura: [],
   caras: {},
 };
@@ -1033,6 +1116,7 @@ export function leerDibujo(valor: unknown): Dibujo {
     estructura: leerEstructura(crudo.estructura),
     capas,
     cajones: leerCajones(crudo.cajones),
+    banquinas: leerBanquinas(crudo.banquinas),
     tiposDeAbertura: leerTiposDeAbertura(crudo.tiposDeAbertura),
     caras,
   };
@@ -1110,6 +1194,42 @@ function leerCajones(valor: unknown): Cajon[] {
     });
   }
   return cajones;
+}
+
+/** Las banquinas, como los cajones: una con menos de tres puntos no encierra
+ *  nada, y una sin alto que sirva sale con la de una cocina, 10 cm. */
+function leerBanquinas(valor: unknown): Banquina[] {
+  const banquinas: Banquina[] = [];
+  for (const b of Array.isArray(valor) ? valor : []) {
+    if (typeof b !== "object" || b === null) continue;
+    const r = b as Record<string, unknown>;
+    const puntos = (Array.isArray(r.puntos) ? r.puntos : [])
+      .map(punto)
+      .filter((p): p is Punto => p !== null);
+    const alto = numero(r.alto);
+    if (typeof r.id !== "string" || puntos.length < 3) continue;
+    // El revestimiento, sin lados que no existen ni repetidos: un dibujo
+    // guardado a medias no puede revestir un lado de más.
+    let revestimiento: RevestimientoDeBanquina | null = null;
+    if (typeof r.revestimiento === "object" && r.revestimiento !== null) {
+      const crudo = r.revestimiento as Record<string, unknown>;
+      const lados = (Array.isArray(crudo.lados) ? crudo.lados : []).filter(
+        (l): l is number => typeof l === "number" && Number.isInteger(l) && l >= 0 && l < puntos.length
+      );
+      revestimiento = {
+        tarea: typeof crudo.tarea === "string" ? crudo.tarea : "",
+        lados: Array.from(new Set(lados)).sort((a, b) => a - b),
+      };
+    }
+    banquinas.push({
+      id: r.id,
+      puntos,
+      alto: alto !== null && alto > 0 ? alto : 0.1,
+      capas: leerCapas(r.capas),
+      revestimiento,
+    });
+  }
+  return banquinas;
 }
 
 /**

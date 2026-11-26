@@ -93,6 +93,10 @@ export async function getPase(obraId: string): Promise<{ pase: Pase } | { error:
       for (const c of cajon.capas) usadas.add(c.tarea);
       for (const p of cajon.pinturas) usadas.add(p.tarea);
     }
+    for (const banquina of d.banquinas) {
+      for (const c of banquina.capas) usadas.add(c.tarea);
+      if (banquina.revestimiento?.tarea) usadas.add(banquina.revestimiento.tarea);
+    }
     for (const m of d.muros) {
       if (m.zocalo.exterior) usadas.add(m.zocalo.exterior);
       if (m.zocalo.interior) usadas.add(m.zocalo.interior);

@@ -26,6 +26,7 @@ import {
   Segmentado,
   SelectorDeTarea,
 } from "@/components/PanelPropiedades";
+import { queMide } from "@/lib/avance-del-plano";
 import { tieneCapasDeAntes } from "@/lib/capas-al-dibujo";
 import {
   type PiezaDeCapa,
@@ -72,6 +73,7 @@ import {
   type Capa,
   type CapaDibujada,
   type Cajon,
+  type Banquina,
   type Columna,
   type Dibujo,
   type Escala,
@@ -103,6 +105,9 @@ import {
   centroDe,
   conAcabado,
   distancia,
+  ladosConPuntoAgregado,
+  ladosConPuntoQuitado,
+  ladosCorridos,
   medir,
   metrosPorPixel,
   nombreDeApertura,
@@ -153,6 +158,7 @@ type Herramienta =
   | "ambiente"
   | "capa"
   | "cajon"
+  | "banquina"
   | "abertura"
   | "medir"
   | "copiar"
@@ -182,6 +188,7 @@ const CAPAS_DE_VISTA: { valor: CapaDeVista; nombre: string }[] = [
   { valor: "capas", nombre: "Capas" },
   { valor: "aberturas", nombre: "Aberturas" },
   { valor: "cajones", nombre: "Cajones" },
+  { valor: "banquinas", nombre: "Banquinas" },
   { valor: "bunas", nombre: "Buñas" },
   { valor: "estructura", nombre: "Estructura" },
   { valor: "cotas", nombre: "Cotas" },
@@ -214,7 +221,7 @@ type Seleccion = {
   // La buña se elige aparte del ambiente —su id es el del ambiente— porque su
   // anillo se edita encima del contorno: elegirla es decir cuál de los dos se
   // agarra.
-  tipo: "muro" | "ambiente" | "abertura" | "columna" | "viga" | "losa" | "capa" | "cajon" | "buna";
+  tipo: "muro" | "ambiente" | "abertura" | "columna" | "viga" | "losa" | "capa" | "cajon" | "banquina" | "buna";
   id: string;
   /** De una capa, el tramo que se tocó: es el que se puede quitar. */
   tramo?: number;
@@ -240,7 +247,7 @@ type Agarre =
   // se corrió.
   | {
       tipo: "lado";
-      de: "ambiente" | "losa" | "cajon" | "cielorraso" | "buna";
+      de: "ambiente" | "losa" | "cajon" | "banquina" | "cielorraso" | "buna";
       id: string;
       indice: number;
       inicio: Punto;
@@ -248,9 +255,13 @@ type Agarre =
       /** De una buña, lo que llevaba cada lado al agarrarla: el anillo se
        *  rehace desde el de entonces en cada movida. */
       lleva?: boolean[];
+      /** De una banquina, sus lados revestidos al agarrarla: igual que la
+       *  buña, se rehacen desde los de entonces. */
+      lados?: number[];
     }
   | { tipo: "losa"; id: string; indice: number }
   | { tipo: "cajon"; id: string; indice: number }
+  | { tipo: "banquina"; id: string; indice: number }
   // Una esquina del borde del cielorraso de un ambiente, o del anillo de su
   // buña. `id` es el del ambiente en los dos casos.
   | { tipo: "cielorraso"; id: string; indice: number }
@@ -344,6 +355,7 @@ const HERRAMIENTAS: Record<Modo, { valor: Herramienta; nombre: string }[]> = {
     { valor: "ambiente", nombre: "Ambiente" },
     { valor: "capa", nombre: "Capa" },
     { valor: "cajon", nombre: "Cajón" },
+    { valor: "banquina", nombre: "Banquina" },
     { valor: "abertura", nombre: "Abertura" },
     { valor: "medir", nombre: "Medir" },
     { valor: "copiar", nombre: "Copiar" },
@@ -622,6 +634,11 @@ export default function EditorPlanta({
     fondo: null,
     capas: [],
   });
+  /** Con qué sale la próxima banquina: lo que sube —10 cm, la de una cocina— y sus capas. */
+  const [moldeDeBanquina, setMoldeDeBanquina] = useState<{ alto: number; capas: Capa[] }>({
+    alto: 0.1,
+    capas: [],
+  });
   /** Los puntos de la capa que se marca a mano, cada uno sobre una cara. */
   const [puntosDeCapa, setPuntosDeCapa] = useState<PuntoEnCara[]>([]);
   /**
@@ -812,6 +829,19 @@ export default function EditorPlanta({
   const tipoDelMolde = tipoMolde ? mapaDeTipos.get(tipoMolde) ?? null : null;
   /** Lo que puede ser una capa de un muro: lo de m² y lo de m³. */
   const tareasDeCapa = tiposDeMuro;
+  /** Lo que puede ser una capa de una banquina: todo lo que ella mide —el
+   *  ladrillo común en m³, el revoque en m², un guardacanto en metros—. Con las
+   *  de m² solas, como un cielorraso, el ladrillo no se podía elegir. */
+  const tareasDeBanquina = useMemo(
+    () => tareasDelCatalogo.filter((t) => queMide(t.unidad) !== null),
+    [tareasDelCatalogo]
+  );
+  /** Lo que puede revestir sus lados: en m², en metros o por unidad. En m³ no
+   *  hay qué medirle. */
+  const tareasDeRevestimiento = useMemo(
+    () => tareasDelCatalogo.filter((t) => ["superficie", "largo", "unidades"].includes(queMide(t.unidad) ?? "")),
+    [tareasDelCatalogo]
+  );
   const largoEncimado = solapes.reduce((t, s) => t + s.largo, 0) * (mpp ?? 0);
 
   // La estructura: cuánto hormigón lleva, y la huella de cada columna y cada
@@ -1161,6 +1191,56 @@ export default function EditorPlanta({
       },
     });
 
+  /** La banquina se cierra como el cajón: con lo que sube el molde y sus capas. */
+  const cerrarBanquina = (puntos: Punto[]) => {
+    if (puntos.length < 3) return;
+    const id = crypto.randomUUID();
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        banquinas: [
+          ...dibujo.banquinas,
+          { id, puntos, alto: moldeDeBanquina.alto, capas: moldeDeBanquina.capas, revestimiento: null },
+        ],
+      },
+    });
+    setEnCurso([]);
+    elegir({ tipo: "banquina", id });
+  };
+
+  const cambiarBanquina = (id: string, cambios: Partial<Banquina>) =>
+    cambiar({
+      escala,
+      dibujo: {
+        ...dibujo,
+        banquinas: dibujo.banquinas.map((b) => (b.id === id ? { ...b, ...cambios } : b)),
+      },
+    });
+
+  /**
+   * El trazo con el contorno de una banquina cambiado **y sus lados
+   * revestidos corridos** con `rehacer`: sumar o sacar un punto cambia el
+   * lugar de los lados, y cada marca tiene que seguir pegada al suyo.
+   */
+  const conPuntosDeBanquina = (id: string, puntos: Punto[], rehacer: (lados: number[]) => number[]): Trazo => ({
+    escala,
+    dibujo: {
+      ...dibujo,
+      banquinas: dibujo.banquinas.map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              puntos,
+              revestimiento: b.revestimiento
+                ? { ...b.revestimiento, lados: rehacer(b.revestimiento.lados) }
+                : null,
+            }
+          : b
+      ),
+    },
+  });
+
   const cerrarLosa = (puntos: Punto[]) => {
     if (puntos.length < 3) return;
     const id = crypto.randomUUID();
@@ -1184,7 +1264,7 @@ export default function EditorPlanta({
 
   /** El trazo con el contorno de un ambiente o de una losa cambiado. */
   const conPuntos = (
-    de: "ambiente" | "losa" | "cajon" | "cielorraso",
+    de: "ambiente" | "losa" | "cajon" | "banquina" | "cielorraso",
     id: string,
     puntos: Punto[]
   ): Trazo =>
@@ -1208,6 +1288,14 @@ export default function EditorPlanta({
               cajones: dibujo.cajones.map((c) => (c.id === id ? { ...c, puntos } : c)),
             },
           }
+        : de === "banquina"
+        ? {
+            escala,
+            dibujo: {
+              ...dibujo,
+              banquinas: dibujo.banquinas.map((b) => (b.id === id ? { ...b, puntos } : b)),
+            },
+          }
         : {
           escala,
           dibujo: {
@@ -1226,6 +1314,11 @@ export default function EditorPlanta({
     }
     if (tipo === "cajon") {
       cambiar({ escala, dibujo: { ...dibujo, cajones: dibujo.cajones.filter((c) => c.id !== id) } });
+      setSeleccion(null);
+      return;
+    }
+    if (tipo === "banquina") {
+      cambiar({ escala, dibujo: { ...dibujo, banquinas: dibujo.banquinas.filter((b) => b.id !== id) } });
       setSeleccion(null);
       return;
     }
@@ -2219,10 +2312,11 @@ export default function EditorPlanta({
       return;
     }
 
-    if (herramienta === "ambiente" || herramienta === "losa" || herramienta === "cajon") {
+    if (herramienta === "ambiente" || herramienta === "losa" || herramienta === "cajon" || herramienta === "banquina") {
       if (enCurso.length >= 3 && mismoPunto(enCurso[0], p)) {
         if (herramienta === "losa") cerrarLosa(enCurso);
         else if (herramienta === "cajon") cerrarCajon(enCurso);
+        else if (herramienta === "banquina") cerrarBanquina(enCurso);
         else cerrarAmbiente(enCurso);
       } else if (!ultimo || !mismoPunto(ultimo, p)) {
         setEnCurso([...enCurso, p]);
@@ -2611,7 +2705,12 @@ export default function EditorPlanta({
           setSucio(true);
           return;
         }
-        setTrazo(conPuntos(agarrado.de, agarrado.id, corrido.puntos));
+        const lados = agarrado.lados;
+        setTrazo(
+          agarrado.de === "banquina" && lados
+            ? conPuntosDeBanquina(agarrado.id, corrido.puntos, () => ladosCorridos(lados, indice, corrido.origen))
+            : conPuntos(agarrado.de, agarrado.id, corrido.puntos)
+        );
         setGuias(alineadoCon ? [{ desde: alineadoCon, hasta: corrido.a }] : []);
         setSucio(true);
         return;
@@ -2672,6 +2771,8 @@ export default function EditorPlanta({
             ? losaAgarrada?.puntos[agarrado.indice]
             : agarrado.tipo === "cajon"
               ? dibujo.cajones.find((c) => c.id === agarrado.id)?.puntos[agarrado.indice]
+              : agarrado.tipo === "banquina"
+              ? dibujo.banquinas.find((b) => b.id === agarrado.id)?.puntos[agarrado.indice]
               : agarrado.tipo === "buna"
                 ? anilloDelAmbiente(agarrado.id)[agarrado.indice]
                 : agarrado.tipo === "cielorraso"
@@ -2769,6 +2870,8 @@ export default function EditorPlanta({
             ? losaAgarrada?.puntos
             : agarrado.tipo === "cajon"
               ? dibujo.cajones.find((c) => c.id === agarrado.id)?.puntos
+              : agarrado.tipo === "banquina"
+              ? dibujo.banquinas.find((b) => b.id === agarrado.id)?.puntos
               : agarrado.tipo === "cielorraso"
                 ? contornoDelAmbiente(agarrado.id)
                 : dibujo.ambientes.find((a) => a.id === agarrado.id)?.puntos;
@@ -2794,7 +2897,8 @@ export default function EditorPlanta({
       herramienta === "viga" ||
       herramienta === "tabique" ||
       herramienta === "losa" ||
-      herramienta === "cajon"
+      herramienta === "cajon" ||
+      herramienta === "banquina"
     ) {
       const ajuste = ajustarAlDibujar(aPlano(e));
       setCursor(ajuste);
@@ -2966,7 +3070,7 @@ export default function EditorPlanta({
     amb: { id: string; puntos: Punto[] },
     indice: number,
     crudo: Punto,
-    de: "ambiente" | "losa" | "cajon" | "cielorraso" | "buna" = "ambiente"
+    de: "ambiente" | "losa" | "cajon" | "banquina" | "cielorraso" | "buna" = "ambiente"
   ) => {
     const a = amb.puntos[indice];
     const b = amb.puntos[(indice + 1) % amb.puntos.length];
@@ -2996,12 +3100,11 @@ export default function EditorPlanta({
       return;
     }
 
+    const puntos = [...amb.puntos.slice(0, indice + 1), nuevo, ...amb.puntos.slice(indice + 1)];
     cambiar(
-      conPuntos(de, amb.id, [
-        ...amb.puntos.slice(0, indice + 1),
-        nuevo,
-        ...amb.puntos.slice(indice + 1),
-      ])
+      de === "banquina"
+        ? conPuntosDeBanquina(amb.id, puntos, (lados) => ladosConPuntoAgregado(lados, indice))
+        : conPuntos(de, amb.id, puntos)
     );
   };
 
@@ -3010,7 +3113,7 @@ export default function EditorPlanta({
   const quitarPunto = (
     amb: { id: string; puntos: Punto[] },
     indice: number,
-    de: "ambiente" | "losa" | "cajon" | "cielorraso" | "buna" = "ambiente"
+    de: "ambiente" | "losa" | "cajon" | "banquina" | "cielorraso" | "buna" = "ambiente"
   ) => {
     if (amb.puntos.length <= 3) return;
     if (de === "buna") {
@@ -3019,12 +3122,11 @@ export default function EditorPlanta({
       cambiar(conBuna(amb.id, anillo.filter((_, k) => k !== indice)));
       return;
     }
+    const puntos = amb.puntos.filter((_, k) => k !== indice);
     cambiar(
-      conPuntos(
-        de,
-        amb.id,
-        amb.puntos.filter((_, k) => k !== indice)
-      )
+      de === "banquina"
+        ? conPuntosDeBanquina(amb.id, puntos, (lados) => ladosConPuntoQuitado(lados, indice))
+        : conPuntos(de, amb.id, puntos)
     );
   };
 
@@ -3087,6 +3189,7 @@ export default function EditorPlanta({
       if (herramienta === "ambiente") cerrarAmbiente(enCurso);
       else if (herramienta === "losa") cerrarLosa(enCurso);
       else if (herramienta === "cajon") cerrarCajon(enCurso);
+      else if (herramienta === "banquina") cerrarBanquina(enCurso);
       else if (herramienta === "capa") terminarCapaAMano();
       else setEnCurso([]);
     } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -3154,6 +3257,11 @@ export default function EditorPlanta({
     seleccion?.tipo === "cajon" ? dibujo.cajones.find((c) => c.id === seleccion.id) ?? null : null;
   const medidaDelCajon = cajonElegido
     ? terminaciones?.cajones.find((c) => c.id === cajonElegido.id) ?? null
+    : null;
+  const banquinaElegida =
+    seleccion?.tipo === "banquina" ? dibujo.banquinas.find((b) => b.id === seleccion.id) ?? null : null;
+  const medidaDeLaBanquina = banquinaElegida
+    ? terminaciones?.banquinas.find((b) => b.id === banquinaElegida.id) ?? null
     : null;
   /** Lo que mide la capa elegida, sumando todas sus piezas. */
   const superficieDeLaCapa = capaElegida
@@ -3389,7 +3497,8 @@ export default function EditorPlanta({
     herramienta === "viga" ||
     herramienta === "tabique" ||
     herramienta === "losa" ||
-    herramienta === "cajon";
+    herramienta === "cajon" ||
+    herramienta === "banquina";
   // La columna no traza nada, pero su punto se marca con el mismo imán.
   const marcando = dibujando || herramienta === "columna";
   // Las figuras sólo se dejan tocar con Seleccionar: dibujando, un clic sobre
@@ -3453,7 +3562,9 @@ export default function EditorPlanta({
       ? { de: "losa" as const, id: losaElegida.id, puntos: losaElegida.puntos }
       : cajonElegido
         ? { de: "cajon" as const, id: cajonElegido.id, puntos: cajonElegido.puntos }
-        : null;
+        : banquinaElegida
+          ? { de: "banquina" as const, id: banquinaElegida.id, puntos: banquinaElegida.puntos }
+          : null;
 
   /** De qué color van las agarraderas de lo que se está editando: la buña en
    *  el suyo, porque su anillo nace encima de otro contorno y hay que poder
@@ -4055,6 +4166,7 @@ export default function EditorPlanta({
               if (herramienta === "ambiente") cerrarAmbiente(enCurso);
               else if (herramienta === "losa") cerrarLosa(enCurso);
               else if (herramienta === "cajon") cerrarCajon(enCurso);
+              else if (herramienta === "banquina") cerrarBanquina(enCurso);
               else if (herramienta === "muro" || herramienta === "viga" || herramienta === "tabique") setEnCurso([]);
               else if (herramienta === "capa" && capaAMano) terminarCapaAMano();
             }}
@@ -4072,6 +4184,17 @@ export default function EditorPlanta({
                 patternTransform="rotate(45)"
               >
                 <line x1={0} y1={0} x2={0} y2={5 * u} stroke="#3a3a3a" strokeWidth={0.7 * u} />
+              </pattern>
+              {/* El de la banquina, más abierto y para el otro lado, del color
+                  del ladrillo: es albañilería, no hormigón ni un cajón. */}
+              <pattern
+                id="rayado-de-banquina"
+                patternUnits="userSpaceOnUse"
+                width={7 * u}
+                height={7 * u}
+                patternTransform="rotate(-45)"
+              >
+                <line x1={0} y1={0} x2={0} y2={7 * u} stroke={BANQUINA} strokeWidth={1 * u} />
               </pattern>
             </defs>
             {ve("plano") && (
@@ -4127,6 +4250,50 @@ export default function EditorPlanta({
                         </tspan>
                       )}
                     </text>
+                  </g>
+                );
+              })}
+
+              {/* Las banquinas, rayadas: apoyan en el piso, así que van antes
+                  que los cajones, que cuelgan del techo y se leen encima. */}
+              {ve("banquinas") && dibujo.banquinas.map((b) => {
+                const elegida = banquinaElegida?.id === b.id;
+                return (
+                  <g key={b.id}>
+                    <polygon
+                      points={b.puntos.map((p) => `${p.x},${p.y}`).join(" ")}
+                      fill="url(#rayado-de-banquina)"
+                      fillOpacity={elegida ? 1 : 0.75}
+                      stroke={elegida ? ACENTO : BANQUINA}
+                      strokeWidth={(elegida ? 2 : 1.3) * u}
+                      style={{ pointerEvents: tocable }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        lienzo.current?.focus({ preventScroll: true });
+                        elegir({ tipo: "banquina", id: b.id });
+                      }}
+                    />
+                    {/* Los lados revestidos, con un trazo grueso: se ve de
+                        lejos qué frente lleva cerámico. */}
+                    {(b.revestimiento?.lados ?? []).map((i) => {
+                      const p = b.puntos[i];
+                      const q = b.puntos[(i + 1) % b.puntos.length];
+                      if (!p || !q) return null;
+                      return (
+                        <line
+                          key={`revestido-${i}`}
+                          x1={p.x}
+                          y1={p.y}
+                          x2={q.x}
+                          y2={q.y}
+                          stroke={REVESTIMIENTO_DE_BANQUINA}
+                          strokeWidth={4 * u}
+                          strokeLinecap="round"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      );
+                    })}
                   </g>
                 );
               })}
@@ -5103,6 +5270,10 @@ export default function EditorPlanta({
                           contorno.de === "buna"
                             ? anilloElegido.map((v) => v.lleva)
                             : undefined,
+                        lados:
+                          contorno.de === "banquina"
+                            ? banquinaElegida?.revestimiento?.lados
+                            : undefined,
                       });
                     }}
                   />
@@ -5166,6 +5337,47 @@ export default function EditorPlanta({
                       if (e.button !== 0) return;
                       e.stopPropagation();
                       cambiar(conBuna(contorno.id, conLadoCambiado(anilloElegido, lado.indice)));
+                    }}
+                  />
+                );
+              })}
+
+            {/* Con la banquina elegida y revestida, lo mismo que la buña: el
+                punto del medio de cada lado, corrido hacia adentro, dice si
+                ese lado lleva revestimiento. Un clic lo cambia. */}
+            {herramienta === "seleccionar" &&
+              banquinaElegida?.revestimiento &&
+              banquinaElegida.puntos.map((p, i) => {
+                const revestimiento = banquinaElegida.revestimiento;
+                if (!revestimiento) return null;
+                const q = banquinaElegida.puntos[(i + 1) % banquinaElegida.puntos.length];
+                const centro = centroDe(banquinaElegida.puntos);
+                const mitad = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+                const hacia = { x: centro.x - mitad.x, y: centro.y - mitad.y };
+                const lejos = Math.hypot(hacia.x, hacia.y) || 1;
+                const corrida = Math.min(11 * u, lejos / 2);
+                const lleva = revestimiento.lados.includes(i);
+                return (
+                  <circle
+                    key={`revestido-${i}`}
+                    cx={mitad.x + (hacia.x / lejos) * corrida}
+                    cy={mitad.y + (hacia.y / lejos) * corrida}
+                    r={5 * u}
+                    fill={lleva ? REVESTIMIENTO_DE_BANQUINA : "#ffffff"}
+                    stroke={REVESTIMIENTO_DE_BANQUINA}
+                    strokeWidth={2 * u}
+                    style={{ cursor: "pointer" }}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      e.stopPropagation();
+                      cambiarBanquina(banquinaElegida.id, {
+                        revestimiento: {
+                          ...revestimiento,
+                          lados: lleva
+                            ? revestimiento.lados.filter((l) => l !== i)
+                            : [...revestimiento.lados, i].sort((a, b) => a - b),
+                        },
+                      });
                     }}
                   />
                 );
@@ -5865,6 +6077,126 @@ export default function EditorPlanta({
                       { valor: formatM2(medidaDelCajon.area), nombre: "fondo" },
                       { valor: formatMetros(medidaDelCajon.frentes), nombre: "de frente" },
                       { valor: formatM2(medidaDelCajon.superficie), nombre: "en total" },
+                    ]}
+                  />
+                )}
+              </section>
+            )}
+
+            {herramienta === "banquina" && !banquinaElegida && (
+              <section style={bloqueDePanel}>
+                <Encabezado icono="banquina" color={BANQUINA} titulo="Banquina nueva" detalle="Su contorno, como un cajón" />
+                <Seccion titulo="Banquina">
+                  <Fila icono="altura" nombre="Alto">
+                    <CampoNumero
+                      valor={moldeDeBanquina.alto}
+                      unidad="m"
+                      paso={0.05}
+                      alCambiar={(alto) => alto !== null && alto > 0 && setMoldeDeBanquina({ ...moldeDeBanquina, alto })}
+                    />
+                  </Fila>
+                </Seccion>
+                <Seccion titulo="Capas" cuenta={moldeDeBanquina.capas.length}>
+                  <EditorDeCapas
+                    capas={moldeDeBanquina.capas}
+                    disponibles={tareasDeBanquina}
+                    primero={RUBROS_DE_BANQUINA}
+                    alCambiar={(capas) => setMoldeDeBanquina({ ...moldeDeBanquina, capas })}
+                  />
+                </Seccion>
+              </section>
+            )}
+
+            {banquinaElegida && (
+              <section style={bloqueDePanel}>
+                <Encabezado
+                  icono="banquina"
+                  color={BANQUINA}
+                  titulo="Banquina"
+                  detalle={
+                    medidaDeLaBanquina?.ambienteId
+                      ? dibujo.ambientes.find((a) => a.id === medidaDeLaBanquina.ambienteId)?.nombre || "Ambiente sin nombre"
+                      : "Sin ambiente"
+                  }
+                >
+                  <BotonIcono icono="borrar" nombre="Borrar banquina" peligro onClick={borrarSeleccion} />
+                </Encabezado>
+                <Seccion titulo="Banquina">
+                  <Fila icono="altura" nombre="Alto">
+                    <CampoNumero
+                      key={banquinaElegida.id}
+                      valor={banquinaElegida.alto}
+                      unidad="m"
+                      paso={0.05}
+                      alCambiar={(alto) => alto !== null && alto > 0 && cambiarBanquina(banquinaElegida.id, { alto })}
+                    />
+                  </Fila>
+                </Seccion>
+                {/* Cada capa se lleva al cómputo en la unidad de su tarea: el
+                    ladrillo en m³, el revoque en m², un guardacanto en metros. */}
+                <Seccion titulo="Capas" cuenta={banquinaElegida.capas.length}>
+                  <EditorDeCapas
+                    capas={banquinaElegida.capas}
+                    disponibles={tareasDeBanquina}
+                    primero={RUBROS_DE_BANQUINA}
+                    alCambiar={(capas) => cambiarBanquina(banquinaElegida.id, { capas })}
+                  />
+                </Seccion>
+                {/* El revestimiento, lado por lado, como la buña del
+                    cielorraso: arranca en los frentes —lo que no va contra un
+                    muro— y en el plano se prende y apaga cada lado. */}
+                <Seccion titulo="Revestimiento">
+                  <label style={casilla}>
+                    <input
+                      type="checkbox"
+                      checked={banquinaElegida.revestimiento !== null}
+                      onChange={(e) =>
+                        cambiarBanquina(banquinaElegida.id, {
+                          revestimiento: e.target.checked
+                            ? {
+                                tarea: "",
+                                lados: (medidaDeLaBanquina?.libres ?? [])
+                                  .map((libre, i) => (libre > 0.01 ? i : -1))
+                                  .filter((i) => i >= 0),
+                              }
+                            : null,
+                        })
+                      }
+                    />
+                    Lleva revestimiento
+                  </label>
+                  {banquinaElegida.revestimiento && (
+                    <>
+                      <SelectorDeTarea
+                        valor={banquinaElegida.revestimiento.tarea || null}
+                        tareas={tareasDeRevestimiento}
+                        primero={RUBROS_DE_REVESTIMIENTO}
+                        vacio="—"
+                        alCambiar={(tarea) =>
+                          banquinaElegida.revestimiento &&
+                          cambiarBanquina(banquinaElegida.id, {
+                            revestimiento: { ...banquinaElegida.revestimiento, tarea: tarea ?? "" },
+                          })
+                        }
+                      />
+                      <p style={ayuda}>
+                        {medidaDeLaBanquina
+                          ? `${formatM2(medidaDeLaBanquina.revestido)} en ${banquinaElegida.revestimiento.lados.length} ${
+                              banquinaElegida.revestimiento.lados.length === 1 ? "lado" : "lados"
+                            }`
+                          : "Sin escala no se puede medir."}
+                        {" — cada lado se prende y se apaga en el plano."}
+                      </p>
+                    </>
+                  )}
+                </Seccion>
+                {/* Lo de arriba ya va en el total: en tres, como las demás. */}
+                {medidaDeLaBanquina && (
+                  <Medidas
+                    valores={[
+                      { valor: formatMetros(medidaDeLaBanquina.frentes), nombre: "de frente" },
+                      { valor: formatM2(medidaDeLaBanquina.superficie), nombre: "en total" },
+                      { valor: formatM3(medidaDeLaBanquina.volumen), nombre: "de volumen" },
                     ]}
                   />
                 )}
@@ -7427,6 +7759,22 @@ export default function EditorPlanta({
                           {formatM2(terminaciones.sinPiso)}
                         </Renglon>
                       )}
+                    </Grupo>
+                  )}
+
+                  {/* Las banquinas, todas juntas y en las tres medidas: cuál
+                      se lleva cada tarea lo dice su unidad, al pasar al cómputo. */}
+                  {terminaciones && terminaciones.banquinas.length > 0 && (
+                    <Grupo titulo="Banquinas" total={`${terminaciones.banquinas.length} u`}>
+                      <Renglon nombre="Superficie, con los frentes">
+                        {formatM2(terminaciones.banquinas.reduce((t, b) => t + b.superficie, 0))}
+                      </Renglon>
+                      <Renglon nombre="Frentes">
+                        {formatMetros(terminaciones.banquinas.reduce((t, b) => t + b.frentes, 0))}
+                      </Renglon>
+                      <Renglon nombre="Volumen">
+                        {formatM3(terminaciones.banquinas.reduce((t, b) => t + b.volumen, 0))}
+                      </Renglon>
                     </Grupo>
                   )}
 
@@ -9047,6 +9395,12 @@ function ladosDe(puntos: Punto[]): { a: Punto; b: Punto }[] {
 const RUBROS_DE_PARED = ["Revoques", "Revestimientos", "Pintura", "Aislaciones"];
 const RUBROS_DE_PISO = ["Contrapisos", "Pisos", "Aislaciones"];
 const RUBROS_DE_CIELORRASO = ["Cielorrasos", "Pintura"];
+// La banquina es albañilería: el rubro de la obra y, en el catálogo de la
+// revista, donde están los ladrillos, los revoques y las carpetas.
+const RUBROS_DE_BANQUINA = ["Albañilería", "Mamposterías y Tabiquerías", "Revoques", "Contrapisos"];
+// El revestimiento de una banquina: los cerámicos y porcelanatos del
+// catálogo, y los zócalos, que van por metro.
+const RUBROS_DE_REVESTIMIENTO = ["Revestimientos", "Zócalos", "Pisos"];
 
 /** Las capas de una cara en una línea, cada una con su altura si no llega al
  *  techo: es lo que no se deduce mirando el nombre. */
@@ -9410,6 +9764,10 @@ function pistaDe(
       return puntos < 3
         ? "Clic en cada esquina del cajón: su fondo y sus frentes, los lados que no van contra un muro."
         : "Para cerrarlo, clic en la primera esquina o Enter.";
+    case "banquina":
+      return puntos < 3
+        ? "Clic en cada esquina de la banquina: lo de arriba y sus frentes, los lados que no van contra un muro."
+        : "Para cerrarla, clic en la primera esquina o Enter.";
     case "copiar":
       return copiado
         ? "Clic en cada uno que va igual. Esc para tomar otro."
@@ -9464,6 +9822,11 @@ const ACENTO = "#e8590c";
 const AZUL = "#1d4ed8";
 /** El de la buña: una línea del cielorraso, que no es ni muro ni ambiente. */
 const BUNA = "#a16207";
+/** El de la banquina: ladrillo apagado, que no se confunda con lo elegido. */
+const BANQUINA = "#8c4a3c";
+/** El de los lados revestidos de una banquina: el gris azulado del
+ *  porcelanato, como en el 3D. */
+const REVESTIMIENTO_DE_BANQUINA = "#4f7391";
 /** El color de lo que se mide y no queda: distinto de todo lo que se guarda. */
 const VIOLETA = "#7c3aed";
 /** El de las guías: finito y frío, para que no se confunda con el trazo. */

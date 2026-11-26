@@ -16,6 +16,7 @@ export type CapaDeVista =
   | "capas"
   | "aberturas"
   | "cajones"
+  | "banquinas"
   | "bunas"
   | "cielorrasos"
   | "estructura"
@@ -30,6 +31,7 @@ const AL_EMPEZAR: Record<CapaDeVista, boolean> = {
   capas: true,
   aberturas: true,
   cajones: true,
+  banquinas: true,
   bunas: true,
   cielorrasos: false,
   estructura: true,

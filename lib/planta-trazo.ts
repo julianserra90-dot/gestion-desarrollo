@@ -2103,7 +2103,60 @@ export type MedidaDeCaras = {
   piezas: PiezaDeCapa[];
   /** Cada cajón de cielorraso con lo que mide. */
   cajones: MedidaDeCajon[];
+  /** Cada banquina con lo que mide. Sus capas no van en `pisos` ni en
+   *  `muros`: cada una se lleva en la unidad de su tarea (`cuantoDeBanquina`). */
+  banquinas: MedidaDeBanquina[];
 };
+
+export type MedidaDeBanquina = {
+  id: string;
+  /** El ambiente donde está, o null. */
+  ambienteId: string | null;
+  /** Lo de arriba, en m²: donde apoya el mueble. */
+  area: number;
+  /** Los metros de frente: lo de su contorno que no va contra un muro. */
+  frentes: number;
+  /** Cuánto sube desde el piso. */
+  alto: number;
+  /** Lo de arriba más los frentes por lo que sube: lo que se revoca. */
+  superficie: number;
+  /** Lo de arriba por lo que sube: lo que se llena de ladrillo o de hormigón. */
+  volumen: number;
+  /** m² de revestimiento: lo libre de los lados que lo llevan, por lo que
+   *  sube. Lo que va contra un muro no se reviste aunque el lado esté marcado. */
+  revestido: number;
+  /** Los metros de esos lados, sin lo que va contra un muro. */
+  largoRevestido: number;
+  /** Lo libre de cada lado, en metros, por su lugar en el contorno: con qué
+   *  lados arranca revestida (los que no van contra un muro). */
+  libres: number[];
+};
+
+/**
+ * Lo que mide una banquina de cada forma, para llevarle a cada capa lo que
+ * corresponde a la unidad de su tarea (`cantidadEnUnidad`): el ladrillo o el
+ * hormigón en m³ su volumen, el revoque en m² su superficie, un guardacanto en
+ * metros sus frentes, y por unidad es una.
+ */
+export function cuantoDeBanquina(medida: MedidaDeBanquina) {
+  return { superficie: medida.superficie, volumen: medida.volumen, largo: medida.frentes, unidades: 1 };
+}
+
+/**
+ * Lo que mide el revestimiento de una banquina en una unidad: m² lo revestido,
+ * metros el largo de esos lados, y por unidad una banquina —si de verdad tiene
+ * algo revestido: los lados marcados que van todos contra un muro no cuentan—.
+ * No tiene volumen: una tarea en m³, o en gl, no se le lleva (null).
+ */
+export function cuantoDelRevestimiento(
+  medida: Pick<MedidaDeBanquina, "revestido" | "largoRevestido">,
+  mide: "superficie" | "volumen" | "largo" | "unidades" | null
+): number | null {
+  if (mide === "superficie") return medida.revestido;
+  if (mide === "largo") return medida.largoRevestido;
+  if (mide === "unidades") return medida.largoRevestido > 0 ? 1 : 0;
+  return null;
+}
 
 export type MedidaDeCajon = {
   id: string;
@@ -2482,6 +2535,32 @@ export function medirCaras(
     if (ambiente) bajoCajones.set(ambiente.id, (bajoCajones.get(ambiente.id) ?? 0) + area);
   }
 
+  // Las banquinas: lo de arriba, los frentes por lo que sube y el volumen. Al
+  // revés que el cajón, **no** se le descuentan al piso del ambiente: el
+  // contrapiso y la carpeta se hacen antes y corren por debajo.
+  const banquinas: MedidaDeBanquina[] = [];
+  for (const banquina of dibujo.banquinas) {
+    const centro = centroDe(banquina.puntos);
+    const ambiente = dibujo.ambientes.find((a) => adentro(centro, a.puntos)) ?? null;
+    const alto = Math.max(0, banquina.alto);
+    const area = areaDe(banquina.puntos) * mpp * mpp;
+    const libres = bordesLibres(banquina.puntos, cuerposEnteros, 0.06 / mpp).map((l) => l * mpp);
+    const frentes = libres.reduce((t, l) => t + l, 0);
+    const largoRevestido = (banquina.revestimiento?.lados ?? []).reduce((t, i) => t + (libres[i] ?? 0), 0);
+    banquinas.push({
+      id: banquina.id,
+      ambienteId: ambiente?.id ?? null,
+      area,
+      frentes,
+      alto,
+      superficie: area + frentes * alto,
+      volumen: area * alto,
+      revestido: largoRevestido * alto,
+      largoRevestido,
+      libres,
+    });
+  }
+
   // Las buñas, en metros lineales: el anillo de cada ambiente que lleva, sin
   // los lados apagados.
   const bunas = new Map<string, number>();
@@ -2545,5 +2624,6 @@ export function medirCaras(
     bunas: Array.from(bunas, ([capa, largo]) => ({ capa, largo })),
     piezas,
     cajones,
+    banquinas,
   };
 }

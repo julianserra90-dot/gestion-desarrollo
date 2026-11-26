@@ -2093,6 +2093,66 @@ que baja.
   clic). Su panel: fondo, frente que resulta, capas y las medidas (fondo, m de
   frente, total). En el 3D es un volumen del fondo a su techo.
 
+#### Banquinas (26/11/2026)
+
+El cajón al revés, en el piso: la base de albañilería —ladrillo u hormigón—
+sobre la que apoyan los muebles de una cocina o un placard.
+
+- **Modelo** (`Dibujo.banquinas: Banquina[]`, `leerBanquinas`): su contorno,
+  como un cajón; su **alto** desde el piso terminado (10 cm si no trae uno que
+  sirva); y sus capas. Sin pinturas por cara. Va en el JSON del dibujo: no
+  hubo migración.
+- **Medida** (`medirCaras` → `banquinas`, `MedidaDeBanquina`): lo de arriba
+  (m²), los **frentes** —lo que no va contra un muro, con el mismo
+  `bordesLibres` del cajón—, la superficie (arriba + frentes × alto) y el
+  volumen (arriba × alto). **No** se le descuenta al piso del ambiente: el
+  contrapiso corre por debajo.
+- **Cómputo** (`delPlano`, renglón **Banquinas**, uno por tarea y piso): cada
+  capa se lleva en la unidad de su tarea, como el muro elige entre m² y m³ —
+  `cantidadEnUnidad(cuantoDeBanquina(medida), unidad)`: m³ el volumen, m² la
+  superficie, ml los frentes, por unidad una por banquina—. Una en gl cae en
+  "no se miden".
+- **Herramienta Banquina**: al lado de Cajón, se contornea igual y se edita
+  igual (puntos, lados, doble clic, Supr). En la planta va rayada color
+  ladrillo, debajo de los cajones. El panel: alto, capas —con Albañilería,
+  Mamposterías, Revoques y Contrapisos primero en el desplegable, que ordena y
+  no filtra, como el del cajón— y las medidas.
+- **3D**: un prisma del 0,00 a su alto, clase `banquina`, con la capa de vista
+  **Banquinas** (subcapa de Pisos, prendida al empezar) y su ficha (alto,
+  frentes, capas). Se marca el avance (`banquina:<id>` en `marcarEnElPlano`),
+  con lo que mide en cada unidad.
+- **Las capas ofrecen todo el catálogo que la banquina mide** (m², m³, metros,
+  unidades), no sólo lo de m² como el cajón: con eso solo no se podía elegir
+  el ladrillo común, que va en m³.
+- **Revestimiento por lado** (pedido del usuario: "en alguno de los bordes
+  puede llegar a tener colocación de revestimiento… la misma lógica del
+  cielorraso"). `Banquina.revestimiento: { tarea, lados } | null`; los lados
+  por su lugar en el contorno (el que arranca en `puntos[i]`, como las caras
+  del cajón). **Por qué índices y no una marca en cada punto, como el anillo
+  de la buña**: los puntos de la banquina los rehacen las herramientas de
+  contorno que comparte con el ambiente y el cajón —mover una esquina pone un
+  `Punto` nuevo— y la marca se perdería; con índices lo único que los corre es
+  sumar o sacar puntos, y eso se arregla en tres funciones de
+  `planta-dibujo.ts`: `ladosConPuntoAgregado` (el lado partido queda revestido
+  en sus dos mitades), `ladosConPuntoQuitado` (el lado que arrancaba en el
+  punto sacado se va; el anterior se queda con lo suyo) y `ladosCorridos`
+  (correr un lado, con el escalón de `moverLado`: mismo criterio que
+  `anilloCorrido`). El agarre del lado guarda los lados de al agarrarlo.
+  - **Medida**: `revestido` (m², lo libre de esos lados por el alto: contra
+    un muro no se reviste aunque esté marcado) y `largoRevestido` (m);
+    `libres`, lo libre de cada lado.
+  - **Cómputo** (`cuantoDelRevestimiento`): m² lo revestido, metros el largo,
+    por unidad una banquina con algo revestido; m³ o gl, "no se miden". En el
+    mismo renglón Banquinas: si es la misma tarea que una capa, se suman.
+  - **Editor**: sección Revestimiento con "Lleva revestimiento" —arranca con
+    los lados libres, más de 1 cm—, la tarea (Revestimientos, Zócalos y Pisos
+    primero) y "x m² en N lados". En el plano, los lados revestidos con un
+    trazo grueso gris azulado; con la banquina elegida, el punto del medio de
+    cada lado, corrido hacia adentro como el de la buña, lo prende y apaga.
+  - **3D**: una piel de 1 cm en cada lado revestido (clase
+    `revestimientoDeBanquina`, con la capa Banquinas), con su tarea para el
+    avance; la ficha suma el renglón Revestimiento (tarea y m²).
+
 #### Buña del cielorraso (24/11/2026)
 
 Pedido del usuario: ver dónde hay cielorraso y poder marcarle la **buña** —la
