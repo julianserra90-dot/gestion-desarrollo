@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // El indicador de Next (sólo en desarrollo) viene abajo a la izquierda y
+  // tapa el "Salir" de la barra lateral.
+  devIndicators: {
+    position: "bottom-right",
+  },
   experimental: {
     serverActions: {
       // Las fotos ya van comprimidas (~400 KB), pero un lote de varias suma.

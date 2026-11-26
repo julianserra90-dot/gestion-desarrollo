@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { cerrarSesion } from "@/app/login/actions";
 import IconoObra, { type NombreIcono } from "@/components/IconoObra";
 import { SECCIONES } from "@/components/ObraHeader";
 import { ANCHO_SIDEBAR_CERRADO } from "@/lib/layout";
@@ -67,17 +68,9 @@ export default function ObraSidebar({
       onMouseEnter={() => setAbierta(true)}
       onMouseLeave={() => setAbierta(false)}
     >
-      {/* Lo que no es navegar por la obra: salir de ella y editarla. Juntos
-          arriba, donde se ven; abajo del todo el engranaje pasaba
-          desapercibido y la cabecera lo repetía. */}
       <Link href="/" style={filaChrome} title="Volver a obras">
         <IconoObra nombre="grid" />
         {abierta && <span>Volver a obras</span>}
-      </Link>
-
-      <Link href={href("/editar")} style={filaChrome} title="Editar obra">
-        <IconoObra nombre="engranaje" />
-        {abierta && <span>Editar obra</span>}
       </Link>
 
       <div style={separador} />
@@ -111,6 +104,24 @@ export default function ObraSidebar({
           </Link>
         ))}
       </nav>
+
+      {/* Al pie, fijos: editar la obra y salir. "Salir" va siempre en el mismo
+          lugar —abajo de todo—, igual que en la barra de la lista de obras,
+          así se encuentra sin buscarlo. Las secciones de arriba se desplazan
+          si no entran; estos dos no. */}
+      <div style={separador} />
+
+      <Link href={href("/editar")} style={filaChrome} title="Editar obra">
+        <IconoObra nombre="engranaje" />
+        {abierta && <span>Editar obra</span>}
+      </Link>
+
+      <form action={cerrarSesion}>
+        <button type="submit" style={filaBoton} title="Salir">
+          <IconoObra nombre="salir" />
+          {abierta && <span>Salir</span>}
+        </button>
+      </form>
     </aside>
   );
 }
@@ -149,6 +160,16 @@ const filaBase = {
 const filaChrome = {
   ...filaBase,
   color: "#999999",
+};
+
+const filaBoton = {
+  ...filaChrome,
+  width: "100%",
+  boxSizing: "border-box" as const,
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  fontFamily: "Arial, Helvetica, sans-serif",
 };
 
 const separador = {
