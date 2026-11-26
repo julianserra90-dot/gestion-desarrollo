@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import BuscadorAgenda from "@/components/BuscadorAgenda";
+import BuscadorEnAcordeones from "@/components/BuscadorEnAcordeones";
 import FilaProveedor, { AltaProveedor } from "@/components/FilaProveedor";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
@@ -363,9 +363,12 @@ async function Agenda({
         // Un acordeón por rubro, todos plegados: la agenda se recorre por
         // rubro y se abre el que se busca. El buscador abre solos los que
         // tienen coincidencias.
-        <BuscadorAgenda>
+        <BuscadorEnAcordeones
+          placeholder="Buscar por nombre, teléfono o rubro"
+          etiqueta="Buscar en la agenda"
+        >
           {grupos.map(([rubro, lista]) => (
-            <details key={rubro} data-rubro={rubro} style={acordeonRubro}>
+            <details key={rubro} data-grupo={rubro} style={acordeonRubro}>
               <summary style={{ cursor: "pointer" }}>
                 <span style={rubro === SIN_RUBRO ? tituloSinRubro : tituloRubro}>
                   {rubro}
@@ -388,7 +391,7 @@ async function Agenda({
               </div>
             </details>
           ))}
-        </BuscadorAgenda>
+        </BuscadorEnAcordeones>
       )}
     </AppShell>
   );

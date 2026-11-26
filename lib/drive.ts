@@ -135,9 +135,22 @@ export type TipoArchivo =
  *   Gestión de desarrollo / <obra> / <tipo>
  */
 export async function carpetaDe(obraSlug: string, tipo: TipoArchivo) {
+  return asegurarCarpeta(tipo, await carpetaDeObra(obraSlug));
+}
+
+/**
+ * La carpeta de la obra (Gestión de desarrollo / <obra>), con las de fotos,
+ * documentos, comprobantes y plantas adentro. Se crea si todavía no subió
+ * nada, así el enlace nunca lleva a una carpeta que no existe.
+ */
+export async function carpetaDeObra(obraSlug: string) {
   const raiz = await asegurarCarpeta(RAIZ);
-  const obra = await asegurarCarpeta(obraSlug, raiz);
-  return asegurarCarpeta(tipo, obra);
+  return asegurarCarpeta(obraSlug, raiz);
+}
+
+/** La dirección de una carpeta en la web de Drive. */
+export function enlaceDeCarpeta(carpetaId: string) {
+  return `https://drive.google.com/drive/folders/${encodeURIComponent(carpetaId)}`;
 }
 
 export type ArchivoSubido = {

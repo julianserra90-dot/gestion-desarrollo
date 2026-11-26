@@ -163,7 +163,7 @@ export async function subirDocumento(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect(`/obras/${slug}/archivo`);
+  redirect(`/obras/${slug}/documentos`);
 }
 
 /**
@@ -301,7 +301,7 @@ export async function actualizarDocumento(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect(`/obras/${slug}/archivo`);
+  redirect(`/obras/${slug}/documentos`);
 }
 
 /** Saca un archivo de un documento sin tocar el resto de la ficha. */
@@ -430,7 +430,7 @@ export async function eliminarDocumento(formData: FormData) {
   );
 
   revalidatePath("/", "layout");
-  redirect(`/obras/${slug}/archivo`);
+  redirect(`/obras/${slug}/documentos`);
 }
 
 function numeroDeVersion(version: string | null): number {

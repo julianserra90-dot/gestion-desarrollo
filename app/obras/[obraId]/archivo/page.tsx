@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import ArchivoNav from "@/components/ArchivoNav";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
@@ -43,10 +44,26 @@ export default async function ArchivoPage({
           <p style={ui.eyebrow}>Documentación</p>
           <h2 style={ui.pageTitle}>Archivo</h2>
         </div>
-        <Link href={`/obras/${obra.slug}/documentos/nuevo`} style={ui.button}>
-          Subir documento
-        </Link>
+        <div style={botones}>
+          {/* La carpeta de la obra en Drive. La abre quien la tenga
+              compartida; eso lo decide Drive, no la app. Va en otra pestaña
+              porque es salir de la app. */}
+          <a
+            href={`/obras/${obra.slug}/drive`}
+            target="_blank"
+            rel="noreferrer"
+            style={ui.secondaryButton}
+            title="La carpeta de esta obra en Google Drive: fotos, documentos, comprobantes y plantas. Se abre si la tenés compartida."
+          >
+            Abrir en Drive ↗
+          </a>
+          <Link href={`/obras/${obra.slug}/documentos/nuevo`} style={ui.button}>
+            Subir documento
+          </Link>
+        </div>
       </section>
+
+      <ArchivoNav slug={obra.slug} activa="carpetas" />
 
       {/* Por dónde se va: Archivo › Obra › Albañilería. */}
       <nav style={migas} aria-label="Carpetas">
@@ -140,6 +157,13 @@ const cabecera = {
   alignItems: "flex-start",
   gap: "16px",
   marginBottom: "20px",
+};
+
+const botones = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "12px",
+  alignItems: "center",
 };
 
 const migas = {

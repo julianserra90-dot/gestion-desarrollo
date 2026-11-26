@@ -1,5 +1,7 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import ArchivoNav from "@/components/ArchivoNav";
+import BuscadorEnAcordeones from "@/components/BuscadorEnAcordeones";
 import BotonDescarga from "@/components/BotonDescarga";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
@@ -70,13 +72,15 @@ export default async function DocumentosPage({
       <section style={cabeceraPagina}>
         <div>
           <p style={ui.eyebrow}>Documentación</p>
-          <h2 style={ui.pageTitle}>Documentos</h2>
+          <h2 style={ui.pageTitle}>Archivo</h2>
         </div>
 
         <Link href={`/obras/${obra.slug}/documentos/nuevo`} style={ui.button}>
           Subir documento
         </Link>
       </section>
+
+      <ArchivoNav slug={obra.slug} activa="documentos" />
 
       {error && <p style={errorBox}>{error}</p>}
 
@@ -141,86 +145,112 @@ export default async function DocumentosPage({
           </p>
         </section>
       ) : (
-        carpetas.map(([carpeta, docs]) => (
-          <section key={carpeta} style={ui.panelConMargen}>
-            <div style={cabeceraCarpeta}>
-              <h3 style={tituloCarpeta}>{carpeta}</h3>
-              <span style={contadorCarpeta}>
-                {docs.length} {docs.length === 1 ? "documento" : "documentos"}
-              </span>
-            </div>
+        // Un acordeón por rubro (o por título, en lo administrativo), todos
+        // plegados: con muchos rubros y muchos planos la lista abierta se
+        // hacía interminable. El buscador abre solos los que coinciden.
+        <div style={{ marginTop: "24px" }}>
+          <BuscadorEnAcordeones
+            placeholder="Buscar por documento, archivo, rubro, versión o quién lo subió"
+            etiqueta="Buscar documentos"
+          >
+            {carpetas.map(([carpeta, docs]) => (
+              <details key={carpeta} data-grupo={carpeta} style={acordeonCarpeta}>
+                <summary style={cabeceraCarpeta}>
+                  <span style={tituloCarpeta}>{carpeta}</span>{" "}
+                  <span style={contadorCarpeta}>
+                    · {docs.length} {docs.length === 1 ? "documento" : "documentos"}
+                  </span>
+                </summary>
 
-            <table style={ui.table}>
-              <thead>
-                <tr>
-                  <th style={ui.th}>Documento</th>
-                  {!ambitoActivo && <th style={ui.th}>Ámbito</th>}
-                  <th style={ui.th}>Versión</th>
-                  <th style={ui.th}>Estado</th>
-                  <th style={ui.th}>Fecha</th>
-                  <th style={ui.th}>Subido por</th>
-                  <th style={ui.th}>Archivos</th>
-                  <th style={ui.th} />
-                </tr>
-              </thead>
-              <tbody>
-                {docs.map((doc) => (
-                  <tr key={doc.id} style={doc.estado === "Obsoleto" ? filaObsoleta : undefined}>
-                    <td style={ui.td}>{doc.nombre}</td>
-                    {!ambitoActivo && <td style={ui.td}>{doc.ambito}</td>}
-                    <td style={ui.td}>{doc.version ?? "—"}</td>
-                    <td style={ui.td}>{doc.estado}</td>
-                    <td style={ui.td}>{formatDate(doc.fecha)}</td>
-                    <td style={ui.td}>{doc.subidoPor ?? "—"}</td>
-                    <td style={ui.td}>
-                      {doc.archivos.length === 0 ? (
-                        <span style={{ color: "#aaaaaa" }}>Sin archivo</span>
-                      ) : (
-                        <div style={listaArchivos}>
-                          {doc.archivos.map((archivo) => (
-                            <span key={archivo.id} style={chipArchivo}>
+                <div style={{ overflowX: "auto", marginTop: "16px" }}>
+                  <table style={ui.table}>
+                    <thead>
+                      <tr>
+                        <th style={ui.th}>Documento</th>
+                        {!ambitoActivo && <th style={ui.th}>Ámbito</th>}
+                        <th style={ui.th}>Versión</th>
+                        <th style={ui.th}>Estado</th>
+                        <th style={ui.th}>Fecha</th>
+                        <th style={ui.th}>Subido por</th>
+                        <th style={ui.th}>Archivos</th>
+                        <th style={ui.th} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {docs.map((doc) => (
+                        <tr
+                          key={doc.id}
+                          style={doc.estado === "Obsoleto" ? filaObsoleta : undefined}
+                          data-busca={[
+                            doc.nombre,
+                            doc.titulo,
+                            doc.version,
+                            doc.estado,
+                            doc.subidoPor,
+                            doc.ambito,
+                            ...doc.archivos.map((a) => a.nombre),
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        >
+                          <td style={ui.td}>{doc.nombre}</td>
+                          {!ambitoActivo && <td style={ui.td}>{doc.ambito}</td>}
+                          <td style={ui.td}>{doc.version ?? "—"}</td>
+                          <td style={ui.td}>{doc.estado}</td>
+                          <td style={ui.td}>{formatDate(doc.fecha)}</td>
+                          <td style={ui.td}>{doc.subidoPor ?? "—"}</td>
+                          <td style={ui.td}>
+                            {doc.archivos.length === 0 ? (
+                              <span style={{ color: "#aaaaaa" }}>Sin archivo</span>
+                            ) : (
+                              <div style={listaArchivos}>
+                                {doc.archivos.map((archivo) => (
+                                  <span key={archivo.id} style={chipArchivo}>
+                                    <Link
+                                      href={`/ver/${archivo.driveFileId}?volver=${encodeURIComponent(
+                                        `/obras/${obra.slug}/documentos`
+                                      )}`}
+                                      style={verLink}
+                                    >
+                                      {archivo.tipo ?? "Ver"}
+                                    </Link>
+                                    <BotonDescarga
+                                      fileId={archivo.driveFileId}
+                                      variante="icono"
+                                      etiqueta={`Descargar ${archivo.nombre}`}
+                                    />
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td style={ui.td}>
+                            <div style={accionesFila}>
+                              {doc.estado !== "Obsoleto" && (
+                                <Link
+                                  href={`/obras/${obra.slug}/documentos/nuevo?reemplaza=${doc.id}`}
+                                  style={verLink}
+                                >
+                                  Nueva versión
+                                </Link>
+                              )}
                               <Link
-                                href={`/ver/${archivo.driveFileId}?volver=${encodeURIComponent(
-                                  `/obras/${obra.slug}/documentos`
-                                )}`}
+                                href={`/obras/${obra.slug}/documentos/${doc.id}/editar`}
                                 style={verLink}
                               >
-                                {archivo.tipo ?? "Ver"}
+                                Editar
                               </Link>
-                              <BotonDescarga
-                                fileId={archivo.driveFileId}
-                                variante="icono"
-                                etiqueta={`Descargar ${archivo.nombre}`}
-                              />
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td style={ui.td}>
-                      <div style={accionesFila}>
-                        {doc.estado !== "Obsoleto" && (
-                          <Link
-                            href={`/obras/${obra.slug}/documentos/nuevo?reemplaza=${doc.id}`}
-                            style={verLink}
-                          >
-                            Nueva versión
-                          </Link>
-                        )}
-                        <Link
-                          href={`/obras/${obra.slug}/documentos/${doc.id}/editar`}
-                          style={verLink}
-                        >
-                          Editar
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ))
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ))}
+          </BuscadorEnAcordeones>
+        </div>
       )}
     </AppShell>
   );
@@ -254,18 +284,20 @@ const cabeceraPagina = {
   marginBottom: "28px",
 };
 
+const acordeonCarpeta = {
+  ...ui.panel,
+  marginBottom: "12px",
+};
+
+// Sin `display: flex` en el summary: se perdería el triangulito, que es la
+// única señal de que el rubro se abre.
 const cabeceraCarpeta = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-  gap: "12px",
-  marginBottom: "16px",
+  cursor: "pointer",
 };
 
 const tituloCarpeta = {
   fontSize: "16px",
   fontWeight: 600,
-  margin: 0,
 };
 
 const contadorCarpeta = {
