@@ -4,9 +4,10 @@
  * Alta, edición y borrado del catálogo de proveedores y contratistas.
  *
  * El catálogo es **uno solo para todas las obras** —así el mismo plomero sirve
- * en dos edificios—, pero se entra desde Presupuestos de una obra, que es donde
- * uno se acuerda de que hay que corregirlo. Por eso cada acción recibe el
- * `slug`: sólo para saber a dónde volver.
+ * en dos edificios—, pero cada obra marca los suyos (`obra_proveedores`) y los
+ * desplegables ofrecen sólo ésos. Se entra desde Presupuestos de una obra:
+ * cada acción recibe el `slug` para saber a dónde volver, y el `obra_id` para
+ * sumar o sacar de esa obra.
  *
  * Modificar y borrar son de admin (política `proveedores_admin`; agregar lo
  * puede hacer cualquiera, porque el formulario de gastos ya lo hacía). Con RLS
@@ -18,6 +19,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { noTocoNada } from "@/lib/permisos";
+import { marcarProveedorEnObra } from "@/lib/proveedores";
 import { createClient } from "@/lib/supabase/server";
 import { TIPOS_DE_PROVEEDOR } from "@/lib/proveedores-tipos";
 
@@ -34,15 +36,77 @@ export async function crearProveedor(formData: FormData) {
     volverCon(volver, "Elegí si es contratista, proveedor o varios.");
   }
 
+  const obraId = String(formData.get("obra_id") ?? "");
   const supabase = await createClient();
-  const { error } = await supabase.from("proveedores").insert({
-    nombre,
-    tipo,
-    telefono: opcional(formData.get("telefono")),
-    rubro_id: opcional(formData.get("rubro_id")),
-  });
+  const { data: creado, error } = await supabase
+    .from("proveedores")
+    .insert({
+      nombre,
+      tipo,
+      telefono: opcional(formData.get("telefono")),
+      rubro_id: opcional(formData.get("rubro_id")),
+    })
+    .select("id")
+    .single();
 
-  if (error) volverCon(volver, mensajeDeError(error, nombre));
+  if (error?.code === "23505") {
+    // Ya está en el catálogo, cargado desde otra obra: no es un error, es que
+    // esta obra también trabaja con él. Se suma acá y listo.
+    const { data: existente } = await supabase
+      .from("proveedores")
+      .select("id")
+      .eq("nombre", nombre)
+      .eq("tipo", tipo)
+      .maybeSingle();
+    if (!existente) volverCon(volver, mensajeDeError(error, nombre));
+    await marcarProveedorEnObra(supabase, obraId, existente.id);
+    listo(volver);
+  }
+
+  if (error || !creado) volverCon(volver, error?.message ?? "No se pudo guardar.");
+
+  await marcarProveedorEnObra(supabase, obraId, creado.id);
+
+  listo(volver);
+}
+
+/** Suma a esta obra uno que ya estaba en el catálogo. */
+export async function sumarProveedorAObra(formData: FormData) {
+  const volver = rutaDeVuelta(formData);
+  const obraId = String(formData.get("obra_id") ?? "");
+  const id = String(formData.get("proveedor_id") ?? "");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("obra_proveedores")
+    .upsert(
+      { obra_id: obraId, proveedor_id: id },
+      { onConflict: "obra_id,proveedor_id", ignoreDuplicates: true }
+    );
+
+  if (error) volverCon(volver, error.message);
+
+  listo(volver);
+}
+
+/**
+ * Lo saca de los desplegables de esta obra. No borra nada: los gastos y
+ * cotizaciones que ya tiene siguen a su nombre, y sigue en el catálogo para
+ * las otras obras.
+ */
+export async function quitarProveedorDeObra(formData: FormData) {
+  const volver = rutaDeVuelta(formData);
+  const obraId = String(formData.get("obra_id") ?? "");
+  const id = String(formData.get("proveedor_id") ?? "");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("obra_proveedores")
+    .delete()
+    .eq("obra_id", obraId)
+    .eq("proveedor_id", id);
+
+  if (error) volverCon(volver, error.message);
 
   listo(volver);
 }
@@ -100,10 +164,24 @@ export async function eliminarProveedor(formData: FormData) {
   listo(volver);
 }
 
-/** El slug viaja en el form porque el catálogo no sabe de obras. */
+/**
+ * A dónde se vuelve después de guardar. Se edita desde dos lados —esta
+ * pantalla y la agenda de Gremios—, así que el form puede mandar `volver`.
+ * Sólo se acepta una ruta de la misma obra: un redirect a cualquier lado
+ * armado desde el form sería una puerta abierta.
+ */
 function rutaDeVuelta(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
-  return `/obras/${slug}/presupuestos/contratistas`;
+  const pedida = String(formData.get("volver") ?? "");
+  const base = `/obras/${slug}/`;
+  if (slug && pedida.startsWith(base) && !pedida.includes("//")) {
+    // Sin el `ok` o el `error` de una vuelta anterior: los pone `listo`.
+    const url = new URL(pedida, "http://x");
+    url.searchParams.delete("ok");
+    url.searchParams.delete("error");
+    return url.pathname + url.search;
+  }
+  return `${base}presupuestos/contratistas`;
 }
 
 /**
@@ -123,10 +201,10 @@ function mensajeDeError(error: { code?: string; message: string }, nombre: strin
 }
 
 function volverCon(ruta: string, mensaje: string): never {
-  redirect(`${ruta}?error=${encodeURIComponent(mensaje)}`);
+  redirect(`${ruta}${ruta.includes("?") ? "&" : "?"}error=${encodeURIComponent(mensaje)}`);
 }
 
 function listo(ruta: string): never {
   revalidatePath("/", "layout");
-  redirect(`${ruta}?ok=1`);
+  redirect(`${ruta}${ruta.includes("?") ? "&" : "?"}ok=1`);
 }

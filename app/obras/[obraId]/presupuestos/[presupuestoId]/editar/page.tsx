@@ -6,6 +6,7 @@ import * as ui from "@/components/ui";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
+import { getProveedoresDeObra } from "@/lib/proveedores";
 import { getRubrosActivos } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import { actualizarPresupuesto, eliminarPresupuesto } from "../../actions";
@@ -40,12 +41,12 @@ export default async function EditarPresupuestoPage({
     return <AppShell>Cotización no encontrada</AppShell>;
   }
 
-  const [rubros, { data: proveedores }, cotizacion, materiales, { data: items }] =
+  const [rubros, proveedores, cotizacion, materiales, { data: items }] =
     await Promise.all([
       // El rubro de la cotización viaja aunque esté desmarcado, si no
       // desaparecería del desplegable y se perdería al guardar.
       getRubrosActivos(obra.id, presupuesto.rubro_id),
-      supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
+      getProveedoresDeObra(obra.id, [presupuesto.proveedor_id]),
       getCotizacionActual(),
       getMaterialesCatalogo(),
       supabase
@@ -87,7 +88,7 @@ export default async function EditarPresupuestoPage({
         obraId={obra.id}
         slug={obra.slug}
         rubros={rubros}
-        proveedores={proveedores ?? []}
+        proveedores={proveedores}
         error={error}
         presupuesto={presupuesto}
         cotizacion={cotizacion?.promedio ?? null}

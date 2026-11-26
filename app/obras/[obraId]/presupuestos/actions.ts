@@ -8,6 +8,7 @@ import { eliminarArchivo, subirArchivo } from "@/lib/drive";
 import { leerItems, sumaDeItems } from "@/lib/items-material";
 import type { ItemMaterial } from "@/lib/items-material";
 import { noTocoNada, sinPermisoPara } from "@/lib/permisos";
+import { marcarProveedorEnObra } from "@/lib/proveedores";
 import { createClient } from "@/lib/supabase/server";
 
 type PresupuestoUpdate = Database["public"]["Tables"]["presupuestos"]["Update"];
@@ -28,9 +29,20 @@ function tipoProveedorPara(tipo: string) {
  * Si el formulario mandó uno nuevo se crea, o se reutiliza el que ya exista con
  * ese nombre y tipo. Es el mismo catálogo que usan los gastos: aprobar una
  * cotización tiene que dejar al gremio listo para elegir cuando llegue la
- * factura.
+ * factura. Por eso también queda marcado en la obra.
  */
 async function resolverProveedor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  formData: FormData,
+  tipo: string,
+  obraId: string
+): Promise<{ id: string | null; error?: string }> {
+  const resuelto = await proveedorDelFormulario(supabase, formData, tipo);
+  if (resuelto.id) await marcarProveedorEnObra(supabase, obraId, resuelto.id);
+  return resuelto;
+}
+
+async function proveedorDelFormulario(
   supabase: Awaited<ReturnType<typeof createClient>>,
   formData: FormData,
   tipo: string
@@ -158,7 +170,12 @@ export async function crearPresupuesto(formData: FormData) {
 
   const supabase = await createClient();
 
-  const proveedor = await resolverProveedor(supabase, formData, campos.tipo);
+  const proveedor = await resolverProveedor(
+    supabase,
+    formData,
+    campos.tipo,
+    obraId
+  );
   if (proveedor.error) volver(proveedor.error);
 
   if (!proveedor.id) {
@@ -263,7 +280,7 @@ export async function actualizarPresupuesto(formData: FormData) {
 
   const { data: actual } = await supabase
     .from("presupuestos")
-    .select("comprobante_drive_id, estado")
+    .select("comprobante_drive_id, estado, obra_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -272,7 +289,12 @@ export async function actualizarPresupuesto(formData: FormData) {
     return;
   }
 
-  const proveedor = await resolverProveedor(supabase, formData, campos.tipo);
+  const proveedor = await resolverProveedor(
+    supabase,
+    formData,
+    campos.tipo,
+    actual.obra_id
+  );
   if (proveedor.error) volver(proveedor.error);
 
   if (!proveedor.id) {

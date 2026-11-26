@@ -14,6 +14,7 @@ import type { ItemMaterial } from "@/lib/items-material";
 import { GASTO_COMPARTIDO, centavos, repartirPago } from "@/lib/reparto";
 import type { Reparto } from "@/lib/reparto";
 import type { MontoConvertido } from "@/lib/dolar";
+import { marcarProveedorEnObra } from "@/lib/proveedores";
 import { createClient } from "@/lib/supabase/server";
 
 type GastoUpdate = Database["public"]["Tables"]["gastos"]["Update"];
@@ -160,8 +161,23 @@ function tipoProveedorPara(tipoGasto: string) {
  * Si el formulario mandó uno nuevo, se crea (o se reutiliza el que ya exista
  * con ese nombre y tipo, para no duplicar el catálogo). Si no, se usa el
  * seleccionado del desplegable.
+ *
+ * Sea cual sea, queda marcado en la obra: el que se sumó acá —o el que ya
+ * existía en otra obra y se escribió igual— aparece en el desplegable la
+ * próxima vez.
  */
 async function resolverProveedor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  formData: FormData,
+  tipoGasto: string,
+  obraId: string
+): Promise<{ id: string | null; error?: string }> {
+  const resuelto = await proveedorDelFormulario(supabase, formData, tipoGasto);
+  if (resuelto.id) await marcarProveedorEnObra(supabase, obraId, resuelto.id);
+  return resuelto;
+}
+
+async function proveedorDelFormulario(
   supabase: Awaited<ReturnType<typeof createClient>>,
   formData: FormData,
   tipoGasto: string
@@ -646,7 +662,7 @@ export async function crearGasto(formData: FormData) {
       : null;
   const comprobanteFinal = archivoComprobante ?? comprobanteDelBorrador;
 
-  const proveedor = await resolverProveedor(supabase, formData, tipoGasto);
+  const proveedor = await resolverProveedor(supabase, formData, tipoGasto, obraId);
   if (proveedor.error) {
     if (archivoComprobante) {
       await eliminarArchivo(archivoComprobante.id).catch(() => {});
@@ -893,7 +909,12 @@ export async function actualizarGasto(formData: FormData) {
     return;
   }
 
-  const proveedor = await resolverProveedor(supabase, formData, tipoGasto);
+  const proveedor = await resolverProveedor(
+    supabase,
+    formData,
+    tipoGasto,
+    actual.obra_id
+  );
   if (proveedor.error) {
     volver(proveedor.error);
   }

@@ -1,11 +1,14 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import BuscadorAgenda from "@/components/BuscadorAgenda";
+import FilaProveedor, { AltaProveedor } from "@/components/FilaProveedor";
 import ObraHeader from "@/components/ObraHeader";
 import ObraSidebar from "@/components/ObraSidebar";
 import * as ui from "@/components/ui";
 import { ordenDeRubro } from "@/lib/computo";
 import { formatMoney } from "@/lib/format";
 import { getObraPorSlug } from "@/lib/obras";
+import { getCatalogoDesdeObra, type ProveedorDeCatalogo } from "@/lib/proveedores";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -33,6 +36,17 @@ const SOLAPAS = [
   },
 ] as const;
 
+/**
+ * La agenda: quién es quién en la obra, por rubro, con su teléfono, editable
+ * en el lugar. Se filtra igual que las solapas de plata —mano de obra por un
+ * lado, proveedores de materiales por el otro—, pero lo que se mira son las
+ * personas, no los montos.
+ */
+const FILTROS_AGENDA = [
+  { clave: "mano-de-obra", nombre: "Mano de obra", tipo: "Contratista" },
+  { clave: "materiales", nombre: "Proveedores de materiales", tipo: "Proveedor" },
+] as const;
+
 type Fila = {
   rubroId: string | null;
   rubro: string;
@@ -46,14 +60,23 @@ export default async function GremiosPage({
   searchParams,
 }: {
   params: Promise<{ obraId: string }>;
-  searchParams: Promise<{ tipo?: string }>;
+  searchParams: Promise<{
+    tipo?: string;
+    de?: string;
+    error?: string;
+    ok?: string;
+  }>;
 }) {
   const { obraId } = await params;
-  const { tipo } = await searchParams;
+  const { tipo, de, error, ok } = await searchParams;
   const obra = await getObraPorSlug(obraId);
 
   if (!obra) {
     return <AppShell>Obra no encontrada</AppShell>;
+  }
+
+  if (tipo === "agenda") {
+    return <Agenda obra={obra} de={de} error={error} ok={ok} />;
   }
 
   const solapa = SOLAPAS.find((s) => s.clave === tipo) ?? SOLAPAS[0];
@@ -124,31 +147,11 @@ export default async function GremiosPage({
     .filter((f) => f.aprobado > 0)
     .reduce((acc, f) => acc + (f.aprobado - f.pagado), 0);
 
-  const base = `/obras/${obra.slug}/presupuestos/gremios`;
-
   return (
     <AppShell
       sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="gremios" />}
     >
-      <ObraHeader obra={obra} activeSection="gremios" ocultarNav />
-
-      <section style={ui.sectionHeader}>
-        <p style={ui.eyebrow}>Situación económica</p>
-        <h2 style={ui.pageTitle}>Gremios</h2>
-      </section>
-
-
-      <nav style={barraSolapas}>
-        {SOLAPAS.map((s) => (
-          <Link
-            key={s.clave}
-            href={`${base}?tipo=${s.clave}`}
-            style={s.clave === solapa.clave ? solapaActiva : solapaItem}
-          >
-            {s.nombre}
-          </Link>
-        ))}
-      </nav>
+      <Encabezado obra={obra} activa={solapa.clave} />
 
       <section style={ui.statsGrid}>
         <div style={ui.statCard}>
@@ -224,11 +227,235 @@ export default async function GremiosPage({
           </table>
         </div>
       )}
+
     </AppShell>
   );
 }
 
+/** El título y las solapas, iguales en las de plata y en la agenda. */
+function Encabezado({
+  obra,
+  activa,
+}: {
+  obra: Obra;
+  activa: string;
+}) {
+  const base = `/obras/${obra.slug}/presupuestos/gremios`;
+  const solapas = [
+    ...SOLAPAS.map((s) => ({ clave: s.clave, nombre: s.nombre })),
+    { clave: "agenda", nombre: "Agenda" },
+  ];
+
+  return (
+    <>
+      <ObraHeader obra={obra} activeSection="gremios" ocultarNav />
+
+      <section style={ui.sectionHeader}>
+        <p style={ui.eyebrow}>Situación económica</p>
+        <h2 style={ui.pageTitle}>Gremios</h2>
+      </section>
+
+      <nav style={barraSolapas}>
+        {solapas.map((s) => (
+          <Link
+            key={s.clave}
+            href={`${base}?tipo=${s.clave}`}
+            style={s.clave === activa ? solapaActiva : solapaItem}
+          >
+            {s.nombre}
+          </Link>
+        ))}
+      </nav>
+    </>
+  );
+}
+
+/**
+ * La agenda de la obra: cada gremio o proveedor con su rubro y su teléfono,
+ * agrupados por rubro y editables en el lugar. Muestra los que la obra tiene
+ * marcados, los mismos que ofrecen los desplegables de gastos y cotizaciones.
+ * Los que no tienen rubro van al final, para que se note que falta ponérselo.
+ */
+async function Agenda({
+  obra,
+  de,
+  error,
+  ok,
+}: {
+  obra: Obra;
+  de?: string;
+  error?: string;
+  ok?: string;
+}) {
+  const filtro = FILTROS_AGENDA.find((f) => f.clave === de) ?? FILTROS_AGENDA[0];
+  const { catalogo, rubros, deLaObra, uso, esAdmin } = await getCatalogoDesdeObra(
+    obra.id
+  );
+
+  const base = `/obras/${obra.slug}/presupuestos/gremios?tipo=agenda`;
+  const volver = `${base}&de=${filtro.clave}`;
+
+  const nombreRubro = new Map(rubros.map((r) => [r.id, r.nombre]));
+  const porRubro = new Map<string, ProveedorDeCatalogo[]>();
+  for (const p of catalogo) {
+    if (p.tipo !== filtro.tipo || !deLaObra.has(p.id)) continue;
+    const rubro = (p.rubro_id && nombreRubro.get(p.rubro_id)) || SIN_RUBRO;
+    porRubro.set(rubro, [...(porRubro.get(rubro) ?? []), p]);
+  }
+  const grupos = [...porRubro.entries()].sort(([a], [b]) => {
+    if (a === SIN_RUBRO) return 1;
+    if (b === SIN_RUBRO) return -1;
+    return ordenDeRubro(a) - ordenDeRubro(b) || a.localeCompare(b, "es");
+  });
+  const cuantos = grupos.reduce((n, [, lista]) => n + lista.length, 0);
+
+  return (
+    <AppShell
+      sidebar={<ObraSidebar obraSlug={obra.slug} activeSection="gremios" />}
+    >
+      <Encabezado obra={obra} activa="agenda" />
+
+      <nav style={filtros}>
+        {FILTROS_AGENDA.map((f) => (
+          <Link
+            key={f.clave}
+            href={`${base}&de=${f.clave}`}
+            style={f.clave === filtro.clave ? filtroActivo : filtroItem}
+          >
+            {f.nombre}
+          </Link>
+        ))}
+      </nav>
+
+      {error && <p style={avisoError}>{error}</p>}
+      {ok && <p style={avisoOk}>Listo, se guardó.</p>}
+
+      {!esAdmin && (
+        <p style={avisoGris}>
+          Podés agregar y sacar de esta obra, pero modificar y eliminar es cosa
+          del administrador: el nombre y el teléfono son los mismos en todas las
+          obras.
+        </p>
+      )}
+
+      <details style={{ ...ui.panel, marginBottom: "16px" }}>
+        <summary style={{ cursor: "pointer" }}>
+          Agregar a la agenda{" "}
+          <span style={ui.note}>
+            · {cuantos} {filtro.tipo === "Contratista" ? "de mano de obra" : "proveedores de materiales"} en esta obra
+          </span>
+        </summary>
+        <div style={{ marginTop: "20px" }}>
+          <AltaProveedor obra={obra} rubros={rubros} volver={volver} tipo={filtro.tipo} />
+        </div>
+      </details>
+
+      {grupos.length === 0 ? (
+        <p style={ui.note}>
+          Esta obra todavía no tiene ninguno. Agregalo arriba, o sumá uno de
+          otra obra desde{" "}
+          <Link href={`/obras/${obra.slug}/presupuestos/contratistas`} style={{ color: "#111111" }}>
+            Contratistas y proveedores
+          </Link>
+          .
+        </p>
+      ) : (
+        // Un acordeón por rubro, todos plegados: la agenda se recorre por
+        // rubro y se abre el que se busca. El buscador abre solos los que
+        // tienen coincidencias.
+        <BuscadorAgenda>
+          {grupos.map(([rubro, lista]) => (
+            <details key={rubro} data-rubro={rubro} style={acordeonRubro}>
+              <summary style={{ cursor: "pointer" }}>
+                <span style={rubro === SIN_RUBRO ? tituloSinRubro : tituloRubro}>
+                  {rubro}
+                </span>{" "}
+                <span style={ui.note}>· {lista.length}</span>
+              </summary>
+              <div style={{ display: "grid", gap: "16px", marginTop: "16px" }}>
+                {lista.map((p) => (
+                  <FilaProveedor
+                    key={p.id}
+                    proveedor={p}
+                    obra={obra}
+                    rubros={rubros}
+                    uso={uso.get(p.id)}
+                    esAdmin={esAdmin}
+                    volver={volver}
+                    busca={`${p.nombre} ${p.telefono ?? ""}`}
+                  />
+                ))}
+              </div>
+            </details>
+          ))}
+        </BuscadorAgenda>
+      )}
+    </AppShell>
+  );
+}
+
+type Obra = NonNullable<Awaited<ReturnType<typeof getObraPorSlug>>>;
+
+const SIN_RUBRO = "Sin rubro asignado";
+
 const ROJO = "#b91c1c";
+
+const filtros = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "8px",
+  marginBottom: "20px",
+};
+
+const filtroItem = {
+  fontSize: "13px",
+  color: "#555555",
+  textDecoration: "none",
+  padding: "6px 14px",
+  border: "1px solid #dcdcdc",
+  borderRadius: "999px",
+};
+
+const filtroActivo = {
+  ...filtroItem,
+  color: "#ffffff",
+  background: "#111111",
+  borderColor: "#111111",
+};
+
+const avisoError = {
+  border: "1px solid #111111",
+  padding: "14px",
+  marginBottom: "20px",
+  fontSize: "14px",
+};
+
+const avisoOk = {
+  ...avisoError,
+  borderColor: "#dcdcdc",
+  color: "#555555",
+};
+
+const avisoGris = {
+  ...avisoError,
+  borderColor: "#dcdcdc",
+  color: "#777777",
+};
+
+const acordeonRubro = {
+  ...ui.panel,
+  marginBottom: "12px",
+};
+
+const tituloRubro = {
+  fontSize: "16px",
+  fontWeight: 600,
+};
+
+const tituloSinRubro = {
+  ...tituloRubro,
+  color: "#999999",
+};
 
 const barraSolapas = {
   display: "flex",

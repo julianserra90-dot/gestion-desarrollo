@@ -1793,6 +1793,53 @@ export type Database = {
           },
         ]
       }
+      obra_proveedores: {
+        Row: {
+          creado_en: string
+          obra_id: string
+          proveedor_id: string
+        }
+        Insert: {
+          creado_en?: string
+          obra_id: string
+          proveedor_id: string
+        }
+        Update: {
+          creado_en?: string
+          obra_id?: string
+          proveedor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "obra_proveedores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_caja"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "obra_proveedores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obra_resumen"
+            referencedColumns: ["obra_id"]
+          },
+          {
+            foreignKeyName: "obra_proveedores_obra_id_fkey"
+            columns: ["obra_id"]
+            isOneToOne: false
+            referencedRelation: "obras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "obra_proveedores_proveedor_id_fkey"
+            columns: ["proveedor_id"]
+            isOneToOne: false
+            referencedRelation: "proveedores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       obra_socios: {
         Row: {
           empresa_id: string

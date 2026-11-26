@@ -7,6 +7,7 @@ import * as ui from "@/components/ui";
 import {
   facturasDelBorrador,
   itemsDelBorrador,
+  resumenDelBorrador,
   type CamposBorrador,
 } from "@/lib/borradores";
 import { getCaja } from "@/lib/caja";
@@ -19,6 +20,7 @@ import {
   getPresupuestosConItems,
   getPresupuestosDeObra,
 } from "@/lib/presupuestos";
+import { getProveedoresDeObra } from "@/lib/proveedores";
 import { getRubrosDeObra } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import { crearGasto, descartarBorrador, guardarBorrador } from "../actions";
@@ -55,7 +57,6 @@ export default async function NuevoGastoPage({
   const [
     rubros,
     { data: socios },
-    { data: proveedores },
     presupuestos,
     presupuestosConItems,
     detallesPredefinidos,
@@ -65,7 +66,6 @@ export default async function NuevoGastoPage({
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")
       .eq("obra_id", obra.id),
-    supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
     getPresupuestosDeObra(obra.id),
     getPresupuestosConItems(obra.id),
     getDetalles("Gasto"),
@@ -126,6 +126,13 @@ export default async function NuevoGastoPage({
           .order("orden"),
       ])
     : [{ data: null }, { data: null }];
+
+  // Los proveedores que la obra tiene marcados. El del gasto que se repite o
+  // el del borrador viajan aunque no lo estén, para no perderlos al guardar.
+  const proveedores = await getProveedoresDeObra(obra.id, [
+    repetido?.proveedor_id,
+    borrador ? resumenDelBorrador(borrador.campos).proveedorId : null,
+  ]);
 
   // La fecha la pone la pantalla, no el módulo: el servidor corre en UTC y a
   // la noche "hoy" en Buenos Aires todavía es ayer allá.
@@ -191,7 +198,7 @@ export default async function NuevoGastoPage({
           slug={obra.slug}
           rubros={rubros}
           socios={listaSocios}
-          proveedores={proveedores ?? []}
+          proveedores={proveedores}
           saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
           presupuestos={presupuestos}
           presupuestosConItems={presupuestosConItems}

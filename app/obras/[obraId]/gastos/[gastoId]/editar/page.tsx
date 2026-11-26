@@ -12,6 +12,7 @@ import {
   getPresupuestosConItems,
   getPresupuestosDeObra,
 } from "@/lib/presupuestos";
+import { getProveedoresDeObra } from "@/lib/proveedores";
 import { getRubrosDeObra } from "@/lib/rubros";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -54,7 +55,7 @@ export default async function EditarGastoPage({
   const [
     rubros,
     { data: socios },
-    { data: proveedores },
+    proveedores,
     presupuestos,
     presupuestosConItems,
     detallesPredefinidos,
@@ -66,7 +67,9 @@ export default async function EditarGastoPage({
       .from("obra_socios")
       .select("empresa_id, porcentaje, empresas(nombre)")
       .eq("obra_id", obra.id),
-    supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
+    // El proveedor del gasto viaja aunque la obra no lo tenga marcado, por
+    // la misma razón que el rubro.
+    getProveedoresDeObra(obra.id, [gasto.proveedor_id]),
     getPresupuestosDeObra(obra.id),
     getPresupuestosConItems(obra.id),
     getDetalles("Gasto"),
@@ -137,7 +140,7 @@ export default async function EditarGastoPage({
         slug={obra.slug}
         rubros={rubros}
         socios={listaSocios}
-        proveedores={proveedores ?? []}
+        proveedores={proveedores}
         saldosCaja={{ ars: caja.arsSaldo, usd: caja.usdSaldo }}
         presupuestos={presupuestos}
         presupuestosConItems={presupuestosConItems}

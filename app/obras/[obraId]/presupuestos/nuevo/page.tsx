@@ -7,8 +7,8 @@ import * as ui from "@/components/ui";
 import { getCotizacionActual } from "@/lib/dolar";
 import { getMaterialesCatalogo } from "@/lib/materiales";
 import { getObraPorSlug } from "@/lib/obras";
+import { getProveedoresDeObra } from "@/lib/proveedores";
 import { getRubrosActivos } from "@/lib/rubros";
-import { createClient } from "@/lib/supabase/server";
 import { crearPresupuesto } from "../actions";
 
 export default async function NuevoPresupuestoPage({
@@ -26,12 +26,10 @@ export default async function NuevoPresupuestoPage({
     return <AppShell>Obra no encontrada</AppShell>;
   }
 
-  const supabase = await createClient();
-
-  const [rubros, { data: proveedores }, cotizacion, materiales] =
+  const [rubros, proveedores, cotizacion, materiales] =
     await Promise.all([
       getRubrosActivos(obra.id),
-      supabase.from("proveedores").select("id, nombre, tipo").order("nombre"),
+      getProveedoresDeObra(obra.id),
       getCotizacionActual(),
       // El catálogo de materiales, para detallar qué se cotizó. Es común a
       // todas las obras, igual que el de proveedores.
@@ -66,7 +64,7 @@ export default async function NuevoPresupuestoPage({
           obraId={obra.id}
           slug={obra.slug}
           rubros={rubros}
-          proveedores={proveedores ?? []}
+          proveedores={proveedores}
           error={error}
           cotizacion={cotizacion?.promedio ?? null}
           rubroSugerido={rubro}
