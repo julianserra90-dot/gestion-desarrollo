@@ -308,7 +308,7 @@ export default function SubirDocumentoForm({
       </div>
 
       <div style={acciones}>
-        <Link href={`/obras/${slug}/archivo`} style={ui.secondaryButton}>
+        <Link href={`/obras/${slug}/documentos`} style={ui.secondaryButton}>
           Cancelar
         </Link>
 

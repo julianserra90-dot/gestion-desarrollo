@@ -53,10 +53,11 @@ export const SECCIONES: (Solapa & { hijas?: Solapa[] })[] = [
       { key: "presupuestos", label: "Presupuestos", path: "/presupuestos" },
       { key: "avances", label: "Avances", path: "/avances" },
       { key: "fotos", label: "Fotos", path: "/fotos" },
-      // Todo lo que se fue cargando —documentos, planos, facturas, fotos—, en
-      // carpetas. La clave sigue siendo "documentos": las fichas de un
-      // documento cuelgan de acá.
-      { key: "documentos", label: "Archivo", path: "/archivo" },
+      // Todo lo que se fue cargando —documentos, planos, facturas, fotos—.
+      // Entra por su primera solapa, "Documentos y versiones"; la segunda,
+      // "Carpetas", lo muestra ordenado como un Drive. La clave sigue siendo
+      // "documentos": las fichas de un documento cuelgan de acá.
+      { key: "documentos", label: "Archivo", path: "/documentos" },
       // Al lado del Archivo pero no adentro: allá el plano se guarda, acá se
       // calca para medirlo y se levanta en 3D.
       { key: "plantas", label: "Plantas y 3D", path: "/plantas" },

@@ -22,16 +22,16 @@ export default function ArchivoNav({
   return (
     <nav style={contenedor}>
       <Link
-        href={`/obras/${slug}/archivo`}
-        style={activa === "carpetas" ? itemActivo : item}
-      >
-        Carpetas
-      </Link>
-      <Link
         href={`/obras/${slug}/documentos`}
         style={activa === "documentos" ? itemActivo : item}
       >
         Documentos y versiones
+      </Link>
+      <Link
+        href={`/obras/${slug}/archivo`}
+        style={activa === "carpetas" ? itemActivo : item}
+      >
+        Carpetas
       </Link>
     </nav>
   );
