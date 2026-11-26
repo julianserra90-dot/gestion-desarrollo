@@ -412,7 +412,12 @@ const filtroItem = {
   color: "#555555",
   textDecoration: "none",
   padding: "6px 14px",
-  border: "1px solid #dcdcdc",
+  // Borde en propiedades sueltas y no `border`: el activo cambia sólo el
+  // color, y mezclar la abreviada con `borderColor` hace que React avise al
+  // pasar de un filtro al otro.
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "#dcdcdc",
   borderRadius: "999px",
 };
 
